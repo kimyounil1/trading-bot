@@ -39,6 +39,7 @@ from src.data_loader import load_price_data
 from src.strategy import add_indicators, generate_signal
 from src.risk_manager import check_buy_allowed, check_exit_allowed
 from src.ml_model import predict_ai_score
+from src.candidate_cache import load_latest_candidate_cache
 from src.portfolio_backtester import (
     run_portfolio_backtest,
     save_portfolio_backtest_outputs,
@@ -1423,14 +1424,15 @@ def render_paper_execution() -> None:
     st.header("Paper Execution")
 
     st.warning(
-        "이 페이지는 Alpaca paper 주문/청산을 실행할 수 있습니다. "
-        "실계좌가 아니라 paper mode에서만 사용하세요."
+        "이 페이지는 캐시된 후보 결과를 사용합니다. "
+        "100개 티커 계산은 10분마다 백그라운드 timer가 수행합니다."
     )
-
-    account, clock, settings, exit_df, buy_df = build_cms_dry_run_rows()
 
     lock_enabled = is_cms_execution_enabled()
     required_phrase = get_required_phrase()
+    clock = get_market_clock()
+    account = get_account_summary()
+    settings = load_settings()
 
     st.subheader("Safety Checks")
 
@@ -1446,16 +1448,50 @@ def render_paper_execution() -> None:
         f"Next close: {clock.next_close}"
     )
 
-    allowed = lock_enabled and clock.is_open and ALPACA_PAPER
+    st.divider()
 
-    if not lock_enabled:
-        st.error("CMS execution lock is disabled. Enable it from Execution Lock page first.")
+    st.subheader("Cached Candidates")
 
-    if not clock.is_open:
-        st.error("Market is closed. CMS paper execution is blocked.")
+    try:
+        meta, exit_df, buy_df = load_latest_candidate_cache()
+    except Exception as exc:
+        st.error(f"No candidate cache available: {exc}")
+        st.info("Run `python -m src.generate_candidate_cache` or enable candidate cache timer.")
+        return
 
-    if not ALPACA_PAPER:
-        st.error("ALPACA_PAPER is False. CMS execution is blocked.")
+    generated_at = str(meta.get("generated_at"))
+    generated_dt = pd.to_datetime(generated_at)
+    cache_age_minutes = (pd.Timestamp.now() - generated_dt).total_seconds() / 60
+
+    c5, c6, c7, c8 = st.columns(4)
+    c5.metric("Cache Generated", generated_at)
+    c6.metric("Cache Age", f"{cache_age_minutes:.1f} min")
+    c7.metric("Watchlist Size", meta.get("watchlist_size"))
+    c8.metric("Cached Market Open", str(meta.get("market_is_open")))
+
+    cache_fresh = cache_age_minutes <= 15
+
+    if cache_fresh:
+        st.success("Candidate cache is fresh.")
+    else:
+        st.error("Candidate cache is stale. Execution is blocked until cache refreshes.")
+
+    if st.button("Refresh Cache Now"):
+        with st.spinner("Refreshing candidate cache now..."):
+            proc = subprocess.run(
+                [str(ROOT_DIR / ".venv/bin/python"), "-m", "src.generate_candidate_cache"],
+                cwd=str(ROOT_DIR),
+                capture_output=True,
+                text=True,
+                timeout=1800,
+            )
+
+        if proc.returncode == 0:
+            st.success("Candidate cache refreshed. Reload this page.")
+            st.code(proc.stdout[-4000:], language="text")
+        else:
+            st.error("Candidate cache refresh failed.")
+            st.code((proc.stderr or proc.stdout)[-8000:], language="text")
 
     st.divider()
 
@@ -1466,14 +1502,45 @@ def render_paper_execution() -> None:
         st.dataframe(exit_df, use_container_width=True)
 
     st.subheader("Buy Candidates")
+
     if buy_df.empty:
         st.info("No buy candidates.")
     else:
-        st.dataframe(buy_df, use_container_width=True)
+        sort_cols = []
+        if "would_submit_if_execute" in buy_df.columns:
+            sort_cols.append("would_submit_if_execute")
+        if "risk_allowed" in buy_df.columns:
+            sort_cols.append("risk_allowed")
+        if "ai_score" in buy_df.columns:
+            sort_cols.append("ai_score")
+
+        if sort_cols:
+            display_df = buy_df.sort_values(
+                sort_cols,
+                ascending=[False for _ in sort_cols],
+            )
+        else:
+            display_df = buy_df
+
+        st.dataframe(display_df, use_container_width=True)
 
     st.divider()
 
     st.subheader("Final Confirmation")
+
+    allowed = lock_enabled and clock.is_open and ALPACA_PAPER and cache_fresh
+
+    if not lock_enabled:
+        st.error("CMS execution lock is disabled.")
+
+    if not clock.is_open:
+        st.error("Market is closed. CMS paper execution is blocked.")
+
+    if not ALPACA_PAPER:
+        st.error("ALPACA_PAPER is False. CMS execution is blocked.")
+
+    if not cache_fresh:
+        st.error("Candidate cache is stale. Refresh cache before executing.")
 
     st.write("실행 가능 상태:", "YES" if allowed else "NO")
 
@@ -1506,15 +1573,13 @@ def render_paper_execution() -> None:
         )
 
         if result_df.empty:
-            st.warning("No paper actions were executed.")
+            st.warning(f"No paper actions were executed. History: {history_dir.relative_to(ROOT_DIR)}")
         else:
             st.success(
                 f"Paper actions submitted and checked. "
                 f"History: {history_dir.relative_to(ROOT_DIR)}"
             )
             st.dataframe(result_df, use_container_width=True)
-
-
 
 def render_execution_runs() -> None:
     st.header("Execution Runs")
@@ -1676,8 +1741,8 @@ def render_scheduler() -> None:
     st.header("Scheduler")
 
     st.warning(
-        "현재 자동 실행은 기본 dry-run 전용으로 구성합니다. "
-        "execute 자동 실행은 충분한 paper 검증 후 별도로 바꾸는 것을 추천합니다."
+        "자동 execute는 실제 Alpaca paper 주문/청산을 실행합니다. "
+        "처음에는 dry-run으로 며칠 확인한 뒤 execute로 바꾸는 것을 추천합니다."
     )
 
     config = load_scheduler_config()
@@ -1685,36 +1750,144 @@ def render_scheduler() -> None:
     st.subheader("Scheduler Config")
 
     enabled = st.checkbox("Enabled in config", value=bool(config.get("enabled", False)))
+
     mode = st.selectbox(
         "Mode",
         ["dry-run", "execute"],
         index=0 if config.get("mode", "dry-run") == "dry-run" else 1,
     )
-    on_calendar = st.text_input(
-        "systemd OnCalendar",
-        value=str(config.get("systemd_on_calendar", "Mon..Fri 10:00")),
-    )
+
     timezone = st.text_input(
         "Timezone",
         value=str(config.get("timezone", "America/New_York")),
     )
+
+    current_times = config.get("on_calendar_times") or [
+        config.get("systemd_on_calendar", "Mon..Fri 10:00:00")
+    ]
+
+    default_time_1 = current_times[0] if len(current_times) > 0 else "Mon..Fri 10:00:00"
+    default_time_2 = current_times[1] if len(current_times) > 1 else "Mon..Fri 15:30:00"
+
+    on_calendar_1 = st.text_input(
+        "Run time 1",
+        value=default_time_1,
+        help="Example: Mon..Fri 10:00:00, New York market time assumption",
+    )
+
+    on_calendar_2 = st.text_input(
+        "Run time 2",
+        value=default_time_2,
+        help="Example: Mon..Fri 15:30:00",
+    )
+
     schedule_note = st.text_area(
         "Schedule Note",
         value=str(config.get("schedule_note", "")),
     )
 
+    st.info(
+        "주의: systemd timer는 서버/PC의 로컬 타임존 기준으로 실행됩니다. "
+        "미국 동부 시간 기준으로 정확히 돌리고 싶으면 서버 타임존을 확인하거나 "
+        "실행 시 봇의 market_clock guard에 의존하세요. 지금 봇은 시장이 닫혀 있으면 execute도 차단합니다."
+    )
+
     if st.button("Save Scheduler Config"):
+        times = [
+            item.strip()
+            for item in [on_calendar_1, on_calendar_2]
+            if item.strip()
+        ]
+
         new_config = {
             "enabled": bool(enabled),
             "mode": mode,
             "timezone": timezone,
             "schedule_note": schedule_note,
-            "systemd_on_calendar": on_calendar,
+            "on_calendar_times": times,
             "service_name": "trading-bot.service",
             "timer_name": "trading-bot.timer",
         }
         save_scheduler_config(new_config)
         st.success("Scheduler config saved.")
+
+    st.divider()
+
+    st.subheader("Apply systemd Timer")
+
+    st.write(
+        "아래 버튼은 config/scheduler_config.json 기준으로 user-level systemd timer 파일을 생성/갱신합니다."
+    )
+
+    col_apply, col_enable, col_disable = st.columns(3)
+
+    if col_apply.button("Apply Timer Files", type="primary"):
+        proc = subprocess.run(
+            [str(ROOT_DIR / "scripts/install_user_timer.sh")],
+            cwd=str(ROOT_DIR),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if proc.returncode == 0:
+            st.success("Timer files applied.")
+            st.code(proc.stdout, language="text")
+        else:
+            st.error("Failed to apply timer files.")
+            st.code(proc.stderr, language="text")
+
+    if col_enable.button("Enable Timer"):
+        proc = subprocess.run(
+            ["systemctl", "--user", "enable", "--now", "trading-bot.timer"],
+            cwd=str(ROOT_DIR),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if proc.returncode == 0:
+            st.success("Timer enabled.")
+            st.code(proc.stdout or "enabled", language="text")
+        else:
+            st.error("Failed to enable timer.")
+            st.code(proc.stderr, language="text")
+
+    if col_disable.button("Disable Timer"):
+        proc = subprocess.run(
+            ["systemctl", "--user", "disable", "--now", "trading-bot.timer"],
+            cwd=str(ROOT_DIR),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if proc.returncode == 0:
+            st.success("Timer disabled.")
+            st.code(proc.stdout or "disabled", language="text")
+        else:
+            st.error("Failed to disable timer.")
+            st.code(proc.stderr, language="text")
+
+    st.divider()
+
+    st.subheader("Timer Status")
+
+    if st.button("Refresh Timer Status"):
+        proc = subprocess.run(
+            ["systemctl", "--user", "list-timers", "trading-bot.timer"],
+            cwd=str(ROOT_DIR),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        st.code((proc.stdout or proc.stderr)[-8000:], language="text")
+
+        proc_status = subprocess.run(
+            ["systemctl", "--user", "status", "trading-bot.timer"],
+            cwd=str(ROOT_DIR),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        st.code((proc_status.stdout or proc_status.stderr)[-8000:], language="text")
 
     st.divider()
 
@@ -1744,19 +1917,6 @@ def render_scheduler() -> None:
 
     st.divider()
 
-    st.subheader("systemd Timer Commands")
-
-    st.code(
-        """./scripts/install_user_timer.sh
-systemctl --user enable --now trading-bot.timer
-systemctl --user list-timers trading-bot.timer
-systemctl --user status trading-bot.timer
-systemctl --user disable --now trading-bot.timer""",
-        language="bash",
-    )
-
-    st.divider()
-
     st.subheader("Recent Bot Run Logs")
 
     logs = get_recent_bot_run_logs(limit=10)
@@ -1772,7 +1932,6 @@ systemctl --user disable --now trading-bot.timer""",
     )
 
     st.code(selected_log.read_text(encoding="utf-8")[-8000:], language="text")
-
 
 def render_telegram() -> None:
     st.header("Telegram Alerts")

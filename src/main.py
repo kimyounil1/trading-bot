@@ -245,6 +245,10 @@ def main() -> None:
 
             if orders_submitted >= settings.max_orders_per_run:
                 print("  SKIP_ORDER: max orders per run reached")
+                buy_summary_rows.append(
+                    f"{ticker}: SKIP_ORDER max orders per run reached, "
+                    f"ai_score={ai_score}"
+                )
                 continue
 
             if not can_submit_orders:
@@ -252,6 +256,10 @@ def main() -> None:
                 print(
                     f"  {label}: would BUY {ticker} "
                     f"notional=${order_amount:.2f}"
+                )
+                buy_summary_rows.append(
+                    f"{ticker}: {label} would BUY ${order_amount:.2f}, "
+                    f"ai_score={ai_score}"
                 )
                 orders_submitted += 1
                 continue
@@ -305,6 +313,13 @@ def main() -> None:
                 filled_avg_price=checked_order["filled_avg_price"],
             )
 
+            buy_summary_rows.append(
+                f"{ticker}: BUY_SUBMITTED status={checked_order['status']}, "
+                f"filled_qty={checked_order['filled_qty']}, "
+                f"filled_avg_price={checked_order['filled_avg_price']}, "
+                f"ai_score={ai_score}"
+            )
+
             positions_count += 1
             cash -= order_amount
 
@@ -314,8 +329,8 @@ def main() -> None:
             notify_error(f"{ticker} bot error", exc)
 
 
-    exit_summary = "\n".join(exit_summary_rows) if exit_summary_rows else "No open positions."
-    buy_summary = "\n".join(buy_summary_rows) if buy_summary_rows else "No buy checks."
+    exit_summary = compact_exit_summary(exit_summary_rows, limit=20)
+    buy_summary = compact_buy_summary(buy_summary_rows, limit=10)
 
     try:
         notify_run_summary(
@@ -329,6 +344,68 @@ def main() -> None:
         )
     except Exception as exc:
         print(f"TELEGRAM_SUMMARY_ERROR - {exc}")
+
+
+
+def compact_buy_summary(rows: list[str], limit: int = 10) -> str:
+    if not rows:
+        return "No buy checks."
+
+    priority_rows = []
+    blocked_count = 0
+    skipped_count = 0
+    not_allowed_count = 0
+    error_rows = []
+
+    for row in rows:
+        lower = row.lower()
+
+        if "error" in lower:
+            error_rows.append(row)
+        elif "allowed=true" in lower:
+            priority_rows.append(row)
+        elif "skip_order" in lower or "max orders" in lower:
+            skipped_count += 1
+        elif "allowed=false" in lower:
+            not_allowed_count += 1
+        else:
+            blocked_count += 1
+
+    selected = []
+
+    if error_rows:
+        selected.extend(error_rows[:limit])
+
+    remaining = max(0, limit - len(selected))
+    selected.extend(priority_rows[:remaining])
+
+    summary_lines = selected[:limit]
+
+    hidden_allowed = max(0, len(priority_rows) - max(0, limit - len(error_rows)))
+    hidden_total = hidden_allowed + blocked_count + skipped_count + not_allowed_count
+
+    summary_lines.append("")
+    summary_lines.append(
+        f"Summary: allowed_candidates={len(priority_rows)}, "
+        f"errors={len(error_rows)}, "
+        f"not_allowed={not_allowed_count}, "
+        f"skipped_or_blocked={skipped_count + blocked_count}, "
+        f"hidden={hidden_total}"
+    )
+
+    return "\n".join(summary_lines)
+
+
+def compact_exit_summary(rows: list[str], limit: int = 20) -> str:
+    if not rows:
+        return "No open positions."
+
+    if len(rows) <= limit:
+        return "\n".join(rows)
+
+    shown = rows[:limit]
+    shown.append(f"... hidden_exit_rows={len(rows) - limit}")
+    return "\n".join(shown)
 
 
 
