@@ -1,0 +1,9 @@
+{
+  "enabled": false,
+  "mode": "dry-run",
+  "timezone": "America/New_York",
+  "schedule_note": "Weekdays after US market open. Recommended: 10:00 ET.",
+  "systemd_on_calendar": "Mon..Fri 10:00",
+  "service_name": "trading-bot.service",
+  "timer_name": "trading-bot.timer"
+}

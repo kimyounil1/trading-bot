@@ -1,0 +1,6 @@
+{
+  "telegram_enabled": true,
+  "notify_run_summary": true,
+  "notify_orders": true,
+  "notify_errors": true
+}
