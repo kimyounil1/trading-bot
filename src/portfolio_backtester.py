@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.strategy import add_indicators
+from src.strategy import add_indicators, build_market_regime_frame
 from src.features import FEATURE_COLUMNS, build_features
 from src.ml_model import load_ai_score_model
 
@@ -27,6 +27,7 @@ def _prepare_ticker_frame(
     rsi_buy_limit: float = 70,
     use_ai_score: bool = False,
     ai_score_buy_threshold: float = 0.55,
+    ai_model_bundle=None,
 ) -> pd.DataFrame:
     raw_df = df.copy()
     df = add_indicators(df, ma_fast=ma_fast, ma_slow=ma_slow).copy()
@@ -37,19 +38,15 @@ def _prepare_ticker_frame(
 
     if use_ai_score:
         try:
-            bundle = load_ai_score_model()
-            model = bundle["model"]
-            feature_columns = bundle["feature_columns"]
-
+            if ai_model_bundle is None:
+                raise ValueError("AI score model was not loaded")
             feature_df = build_features(
                 raw_df,
-                prediction_horizon=bundle.get("prediction_horizon", 5),
-                target_return_threshold=bundle.get("target_return_threshold", 0.0),
+                prediction_horizon=ai_model_bundle.prediction_horizon,
+                target_return_threshold=ai_model_bundle.target_return_threshold,
             )
 
-            feature_df["ai_score"] = model.predict_proba(
-                feature_df[feature_columns]
-            )[:, 1]
+            feature_df["ai_score"] = ai_model_bundle.predict_proba(raw_df).values
 
             score_df = feature_df[["date", "ai_score"]].copy()
             score_df["date"] = pd.to_datetime(score_df["date"])
@@ -91,8 +88,26 @@ def _prepare_ticker_frame(
         ]
     ]
 
+
+def _apply_market_regime_filter(
+    market_df: pd.DataFrame,
+    benchmark_df: pd.DataFrame,
+    market_regime_ma_fast: int,
+    market_regime_ma_slow: int,
+) -> pd.DataFrame:
+    regime_df = build_market_regime_frame(
+        benchmark_df,
+        ma_fast=market_regime_ma_fast,
+        ma_slow=market_regime_ma_slow,
+    )
+    filtered_df = market_df.merge(regime_df, on="date", how="left")
+    filtered_df["market_regime_bullish"] = filtered_df["market_regime_bullish"] == True
+    filtered_df["buy_signal"] = filtered_df["buy_signal"] & filtered_df["market_regime_bullish"]
+    return filtered_df
+
 def run_portfolio_backtest(
     ticker_data: dict[str, pd.DataFrame],
+    benchmark_df: pd.DataFrame | None = None,
     initial_cash: float = 10000.0,
     max_positions: int = 3,
     target_position_pct: float = 0.30,
@@ -102,7 +117,17 @@ def run_portfolio_backtest(
     rsi_buy_limit: float = 70,
     use_ai_score: bool = False,
     ai_score_buy_threshold: float = 0.55,
+    market_regime_filter_enabled: bool = False,
+    market_regime_ma_fast: int = 50,
+    market_regime_ma_slow: int = 200,
 ) -> tuple[PortfolioBacktestResult, pd.DataFrame, pd.DataFrame]:
+    ai_model_bundle = None
+    if use_ai_score:
+        try:
+            ai_model_bundle = load_ai_score_model()
+        except Exception:
+            ai_model_bundle = None
+
     prepared_frames = [
         _prepare_ticker_frame(
             ticker,
@@ -112,6 +137,7 @@ def run_portfolio_backtest(
             rsi_buy_limit=rsi_buy_limit,
             use_ai_score=use_ai_score,
             ai_score_buy_threshold=ai_score_buy_threshold,
+            ai_model_bundle=ai_model_bundle,
         )
         for ticker, df in ticker_data.items()
     ]
@@ -119,6 +145,15 @@ def run_portfolio_backtest(
     market_df = pd.concat(prepared_frames, ignore_index=True)
     market_df["date"] = pd.to_datetime(market_df["date"])
     market_df = market_df.sort_values(["date", "ticker"]).reset_index(drop=True)
+    if market_regime_filter_enabled:
+        if benchmark_df is None:
+            raise ValueError("benchmark_df is required when market_regime_filter_enabled=True")
+        market_df = _apply_market_regime_filter(
+            market_df,
+            benchmark_df,
+            market_regime_ma_fast=market_regime_ma_fast,
+            market_regime_ma_slow=market_regime_ma_slow,
+        )
 
     all_dates = sorted(market_df["date"].unique())
 

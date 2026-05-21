@@ -1,25 +1,33 @@
+import json
+from dataclasses import asdict
 from pathlib import Path
 
-from src.settings import load_settings
-from src.data_loader import load_price_data_batch
+from src.data_loader import load_cached_price_data_batch
 from src.portfolio_backtester import (
+    PortfolioBacktestResult,
     run_portfolio_backtest,
     save_portfolio_backtest_outputs,
 )
+from src.qlib_adapter import export_qlib_ready_data
+from src.snapshot_utils import build_snapshot_payload, save_snapshot_payload
+from src.settings import load_settings
 
 
-def pct(value: float) -> str:
-    return f"{value * 100:.2f}%"
+def _serialize_result(result: PortfolioBacktestResult) -> dict:
+    return asdict(result)
 
 
 def main() -> None:
     settings = load_settings()
-    print(f"Loading {len(settings.tickers)} tickers...")
+    period = "2y"
+    output_dir = Path("logs/baselines/current_strategy")
+
+    print(f"Loading cached data for {len(settings.tickers)} tickers...")
     tickers_to_load = list(settings.tickers)
     if settings.market_regime_filter_enabled:
         tickers_to_load.append(settings.market_regime_ticker)
         tickers_to_load = list(dict.fromkeys(tickers_to_load))
-    loaded_data = load_price_data_batch(tickers_to_load, period="2y")
+    loaded_data = load_cached_price_data_batch(tickers_to_load, period=period)
     ticker_data = {ticker: loaded_data[ticker] for ticker in settings.tickers}
     benchmark_df = (
         loaded_data[settings.market_regime_ticker]
@@ -44,7 +52,6 @@ def main() -> None:
         market_regime_ma_slow=settings.market_regime_ma_slow,
     )
 
-    output_dir = Path("logs/portfolio_backtest")
     save_portfolio_backtest_outputs(
         output_dir=output_dir,
         result=result,
@@ -52,16 +59,27 @@ def main() -> None:
         trades_df=trades_df,
     )
 
-    print("-" * 80)
-    print("Portfolio backtest result")
-    print(f"strategy_return={pct(result.total_return)}")
-    print(f"equal_weight_buy_hold={pct(result.benchmark_return)}")
-    print(f"max_drawdown={pct(result.max_drawdown)}")
-    print(f"trades={result.trades}")
-    print(f"win_rate={pct(result.win_rate)}")
-    print(f"final_equity=${result.final_equity:.2f}")
-    print("-" * 80)
-    print(f"Saved outputs to {output_dir}")
+    qlib_paths = export_qlib_ready_data(
+        ticker_data=ticker_data,
+        output_dir=output_dir / "qlib_ready",
+    )
+
+    metadata = build_snapshot_payload(
+        period=period,
+        tickers=settings.tickers,
+        settings=settings,
+        result=_serialize_result(result),
+        equity_rows=len(equity_df),
+        trade_rows=len(trades_df),
+        extra_fields={"qlib_ready_files": [str(path) for path in qlib_paths]},
+    )
+
+    metadata_path = save_snapshot_payload(
+        metadata,
+        output_dir / "baseline_snapshot.json",
+    )
+
+    print(f"Saved baseline snapshot to {metadata_path}")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from src.settings import load_settings
-from src.data_loader import load_price_data
+from src.data_loader import load_price_data_batch
 from src.portfolio_backtester import (
     run_portfolio_backtest,
     save_portfolio_backtest_outputs,
@@ -15,15 +15,23 @@ def pct(value: float) -> str:
 def main() -> None:
     settings = load_settings()
 
-    ticker_data = {}
-
-    for ticker in settings.tickers:
-        print(f"Loading {ticker}...")
-        ticker_data[ticker] = load_price_data(ticker, period="2y")
+    print(f"Loading {len(settings.tickers)} tickers...")
+    tickers_to_load = list(settings.tickers)
+    if settings.market_regime_filter_enabled:
+        tickers_to_load.append(settings.market_regime_ticker)
+        tickers_to_load = list(dict.fromkeys(tickers_to_load))
+    loaded_data = load_price_data_batch(tickers_to_load, period="2y")
+    ticker_data = {ticker: loaded_data[ticker] for ticker in settings.tickers}
+    benchmark_df = (
+        loaded_data[settings.market_regime_ticker]
+        if settings.market_regime_filter_enabled
+        else None
+    )
 
     print("Running baseline backtest...")
     baseline_result, baseline_equity, baseline_trades = run_portfolio_backtest(
         ticker_data=ticker_data,
+        benchmark_df=benchmark_df,
         initial_cash=10000.0,
         max_positions=settings.max_total_positions,
         target_position_pct=settings.max_position_pct,
@@ -33,11 +41,15 @@ def main() -> None:
         rsi_buy_limit=settings.rsi_buy_limit,
         use_ai_score=False,
         ai_score_buy_threshold=settings.ai_score_buy_threshold,
+        market_regime_filter_enabled=settings.market_regime_filter_enabled,
+        market_regime_ma_fast=settings.market_regime_ma_fast,
+        market_regime_ma_slow=settings.market_regime_ma_slow,
     )
 
     print("Running AI-filtered backtest...")
     ai_result, ai_equity, ai_trades = run_portfolio_backtest(
         ticker_data=ticker_data,
+        benchmark_df=benchmark_df,
         initial_cash=10000.0,
         max_positions=settings.max_total_positions,
         target_position_pct=settings.max_position_pct,
@@ -47,6 +59,9 @@ def main() -> None:
         rsi_buy_limit=settings.rsi_buy_limit,
         use_ai_score=True,
         ai_score_buy_threshold=settings.ai_score_buy_threshold,
+        market_regime_filter_enabled=settings.market_regime_filter_enabled,
+        market_regime_ma_fast=settings.market_regime_ma_fast,
+        market_regime_ma_slow=settings.market_regime_ma_slow,
     )
 
     output_dir = Path("logs/ai_backtest")

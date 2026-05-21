@@ -21,9 +21,16 @@ class StrategySettings:
 
     max_test_order_amount: float
     max_orders_per_run: int
+    max_daily_order_amount: float
+    buy_cooldown_days: int
 
     use_ai_score: bool
     ai_score_buy_threshold: float
+
+    market_regime_filter_enabled: bool
+    market_regime_ticker: str
+    market_regime_ma_fast: int
+    market_regime_ma_slow: int
 
 
 DEFAULT_SETTINGS = StrategySettings(
@@ -40,10 +47,69 @@ DEFAULT_SETTINGS = StrategySettings(
 
     max_test_order_amount=10.0,
     max_orders_per_run=1,
+    max_daily_order_amount=1000.0,
+    buy_cooldown_days=1,
 
     use_ai_score=False,
     ai_score_buy_threshold=0.55,
+
+    market_regime_filter_enabled=False,
+    market_regime_ticker="SPY",
+    market_regime_ma_fast=50,
+    market_regime_ma_slow=200,
 )
+
+
+def validate_settings(settings: StrategySettings) -> StrategySettings:
+    if not isinstance(settings.tickers, list) or not settings.tickers:
+        raise ValueError("settings.tickers must be a non-empty list")
+
+    normalized_tickers = []
+    for ticker in settings.tickers:
+        if not isinstance(ticker, str) or not ticker.strip():
+            raise ValueError("settings.tickers must contain non-empty strings")
+        normalized_tickers.append(ticker.strip().upper())
+
+    if len(set(normalized_tickers)) != len(normalized_tickers):
+        raise ValueError("settings.tickers must not contain duplicates")
+
+    if settings.ma_fast <= 0 or settings.ma_slow <= 0:
+        raise ValueError("ma_fast and ma_slow must be positive")
+    if settings.ma_fast >= settings.ma_slow:
+        raise ValueError("ma_fast must be smaller than ma_slow")
+    if not 0 <= settings.rsi_buy_limit <= 100:
+        raise ValueError("rsi_buy_limit must be between 0 and 100")
+
+    if not 0 < settings.max_position_pct <= 1:
+        raise ValueError("max_position_pct must be between 0 and 1")
+    if settings.max_total_positions <= 0:
+        raise ValueError("max_total_positions must be positive")
+    if not 0 <= settings.stop_loss_pct < 1:
+        raise ValueError("stop_loss_pct must be between 0 and 1")
+    if settings.take_profit_pct < 0:
+        raise ValueError("take_profit_pct must be non-negative")
+
+    if settings.max_test_order_amount <= 0:
+        raise ValueError("max_test_order_amount must be positive")
+    if settings.max_orders_per_run <= 0:
+        raise ValueError("max_orders_per_run must be positive")
+    if settings.max_daily_order_amount < 0:
+        raise ValueError("max_daily_order_amount must be non-negative")
+    if settings.buy_cooldown_days < 0:
+        raise ValueError("buy_cooldown_days must be non-negative")
+
+    if not 0 <= settings.ai_score_buy_threshold <= 1:
+        raise ValueError("ai_score_buy_threshold must be between 0 and 1")
+    if not isinstance(settings.market_regime_ticker, str) or not settings.market_regime_ticker.strip():
+        raise ValueError("market_regime_ticker must be a non-empty string")
+    if settings.market_regime_ma_fast <= 0 or settings.market_regime_ma_slow <= 0:
+        raise ValueError("market_regime_ma_fast and market_regime_ma_slow must be positive")
+    if settings.market_regime_ma_fast >= settings.market_regime_ma_slow:
+        raise ValueError("market_regime_ma_fast must be smaller than market_regime_ma_slow")
+
+    settings.tickers = normalized_tickers
+    settings.market_regime_ticker = settings.market_regime_ticker.strip().upper()
+    return settings
 
 
 def save_settings(settings: StrategySettings = DEFAULT_SETTINGS) -> None:
@@ -63,7 +129,7 @@ def load_settings() -> StrategySettings:
     merged = asdict(DEFAULT_SETTINGS)
     merged.update(raw)
 
-    return StrategySettings(**merged)
+    return validate_settings(StrategySettings(**merged))
 
 
 def print_settings() -> None:

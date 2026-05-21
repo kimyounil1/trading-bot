@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from pathlib import Path
 
 import joblib
@@ -8,15 +9,51 @@ from sklearn.model_selection import TimeSeriesSplit
 
 from src.features import FEATURE_COLUMNS, build_features
 
-
 MODEL_PATH = Path("models/ai_score_model.joblib")
 
+class BaseModel(ABC):
+    """모든 모델의 공통 인터페이스"""
+    @abstractmethod
+    def predict_proba(self, df: pd.DataFrame) -> pd.Series:
+        pass
+
+    @abstractmethod
+    def predict(self, df: pd.DataFrame) -> pd.Series:
+        pass
+
+class SklearnModelWrapper(BaseModel):
+    """현재 Sklearn 모델을 위한 Wrapper"""
+    def __init__(self, model, feature_columns: list[str], prediction_horizon: int, target_return_threshold: float):
+        self.model = model
+        self.feature_columns = feature_columns
+        self.prediction_horizon = prediction_horizon
+        self.target_return_threshold = target_return_threshold
+
+    def _prepare_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """입력 DataFrame으로부터 피처를 생성합니다."""
+        return build_features(
+            df, 
+            prediction_horizon=self.prediction_horizon, 
+            target_return_threshold=self.target_return_threshold
+        )
+
+    def predict_proba(self, df: pd.DataFrame) -> pd.Series:
+        feature_df = self._prepare_features(df)
+        X = feature_df[self.feature_columns]
+        proba = self.model.predict_proba(X)
+        return pd.Series(proba[:, 1], index=feature_df.index)
+
+    def predict(self, df: pd.DataFrame) -> pd.Series:
+        feature_df = self._prepare_features(df)
+        X = feature_df[self.feature_columns]
+        pred = self.model.predict(X)
+        return pd.Series(pred, index=feature_df.index)
 
 def train_ai_score_model(
     training_data: dict[str, pd.DataFrame],
     prediction_horizon: int = 5,
     target_return_threshold: float = 0.0,
-) -> tuple[RandomForestClassifier, pd.DataFrame]:
+) -> tuple[BaseModel, pd.DataFrame]:
     frames = []
 
     for ticker, df in training_data.items():
@@ -96,32 +133,31 @@ def train_ai_score_model(
     )
 
     metrics_df = pd.DataFrame(rows)
-    return model, metrics_df
+    wrapper = SklearnModelWrapper(model, FEATURE_COLUMNS, prediction_horizon, target_return_threshold)
+    return wrapper, metrics_df
 
 
-def load_ai_score_model():
+def load_ai_score_model() -> BaseModel:
     if not MODEL_PATH.exists():
         raise FileNotFoundError(
             f"Model not found: {MODEL_PATH}. Run python -m src.train_ai_model first."
         )
+    
+    bundle = joblib.load(MODEL_PATH)
+    return SklearnModelWrapper(
+        bundle["model"], 
+        bundle["feature_columns"], 
+        bundle["prediction_horizon"], 
+        bundle["target_return_threshold"]
+    )
 
-    return joblib.load(MODEL_PATH)
+
+def predict_ai_score_from_bundle(df: pd.DataFrame, model: BaseModel) -> float:
+    """BaseModel 인터페이스를 사용하는 함수입니다."""
+    proba_series = model.predict_proba(df)
+    return float(proba_series.iloc[-1])
 
 
 def predict_ai_score(df: pd.DataFrame) -> float:
-    bundle = load_ai_score_model()
-    model = bundle["model"]
-    feature_columns = bundle["feature_columns"]
-    prediction_horizon = bundle["prediction_horizon"]
-    target_return_threshold = bundle["target_return_threshold"]
-
-    feature_df = build_features(
-        df,
-        prediction_horizon=prediction_horizon,
-        target_return_threshold=target_return_threshold,
-    )
-
-    latest = feature_df.iloc[-1]
-    X_latest = latest[feature_columns].to_frame().T
-
-    return float(model.predict_proba(X_latest)[0, 1])
+    model = load_ai_score_model()
+    return predict_ai_score_from_bundle(df, model)

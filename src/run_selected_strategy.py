@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from src.config import TICKERS
-from src.data_loader import load_price_data
+from src.settings import load_settings
+from src.data_loader import load_price_data_batch
 from src.portfolio_backtester import (
     run_portfolio_backtest,
     save_portfolio_backtest_outputs,
@@ -13,6 +13,7 @@ def pct(value: float) -> str:
 
 
 def main() -> None:
+    settings = load_settings()
     # 후보 B: 표본/안정성 우선
     params = {
         "ma_fast": 10,
@@ -23,15 +24,26 @@ def main() -> None:
         "transaction_cost_pct": 0.001,
     }
 
-    ticker_data = {}
-
-    for ticker in TICKERS:
-        print(f"Loading {ticker}...")
-        ticker_data[ticker] = load_price_data(ticker, period="2y")
+    print(f"Loading {len(settings.tickers)} tickers...")
+    tickers_to_load = list(settings.tickers)
+    if settings.market_regime_filter_enabled:
+        tickers_to_load.append(settings.market_regime_ticker)
+        tickers_to_load = list(dict.fromkeys(tickers_to_load))
+    loaded_data = load_price_data_batch(tickers_to_load, period="2y")
+    ticker_data = {ticker: loaded_data[ticker] for ticker in settings.tickers}
+    benchmark_df = (
+        loaded_data[settings.market_regime_ticker]
+        if settings.market_regime_filter_enabled
+        else None
+    )
 
     result, equity_df, trades_df = run_portfolio_backtest(
         ticker_data=ticker_data,
+        benchmark_df=benchmark_df,
         initial_cash=10000.0,
+        market_regime_filter_enabled=settings.market_regime_filter_enabled,
+        market_regime_ma_fast=settings.market_regime_ma_fast,
+        market_regime_ma_slow=settings.market_regime_ma_slow,
         **params,
     )
 

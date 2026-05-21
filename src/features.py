@@ -20,12 +20,28 @@ FEATURE_COLUMNS = [
     "atr_pct",
 ]
 
+REQUIRED_PRICE_COLUMNS = {"date", "high", "low", "close", "volume"}
+MAX_FEATURE_LOOKBACK = 200
+
 
 def build_features(
     df: pd.DataFrame,
     prediction_horizon: int = 5,
     target_return_threshold: float = 0.0,
 ) -> pd.DataFrame:
+    if prediction_horizon <= 0:
+        raise ValueError("prediction_horizon must be positive")
+
+    missing = REQUIRED_PRICE_COLUMNS - set(df.columns)
+    if missing:
+        raise ValueError(f"Missing required price columns: {sorted(missing)}")
+
+    minimum_rows = MAX_FEATURE_LOOKBACK + prediction_horizon
+    if len(df) < minimum_rows:
+        raise ValueError(
+            f"Not enough rows to build features: need at least {minimum_rows}, got {len(df)}"
+        )
+
     df = df.copy()
     df = df.sort_values("date").reset_index(drop=True)
 
@@ -64,4 +80,8 @@ def build_features(
     df["future_return"] = df["close"].shift(-prediction_horizon) / df["close"] - 1.0
     df["target"] = (df["future_return"] > target_return_threshold).astype(int)
 
-    return df.dropna().reset_index(drop=True)
+    feature_df = df.dropna().reset_index(drop=True)
+    if feature_df.empty:
+        raise ValueError("Feature frame is empty after indicator construction")
+
+    return feature_df

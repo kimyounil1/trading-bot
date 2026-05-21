@@ -1,10 +1,16 @@
 import argparse
 
 from src.settings import load_settings
-from src.data_loader import load_price_data
-from src.strategy import add_indicators, generate_signal
+from src.data_loader import load_price_data_batch
+from src.strategy import add_indicators, generate_signal, is_bullish_market_regime
 from src.logger import log_signal, log_order, log_order_status
-from src.risk_manager import check_buy_allowed, check_exit_allowed
+from src.risk_manager import (
+    apply_buy_safety_limits,
+    check_buy_allowed,
+    check_exit_allowed,
+    get_recent_buy_symbols,
+    get_today_buy_notional,
+)
 from src.alpaca_client import (
     get_account_summary,
     get_open_symbols,
@@ -15,7 +21,7 @@ from src.alpaca_client import (
 )
 from src.market_clock import get_market_clock
 from src.notifier import notify_order, notify_error, notify_run_summary
-from src.ml_model import predict_ai_score
+from src.ml_model import load_ai_score_model, predict_ai_score_from_bundle
 
 
 def parse_args() -> argparse.Namespace:
@@ -30,20 +36,41 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def get_signal_for_ticker(ticker: str, settings) -> tuple[str, object, float | None]:
-    raw_df = load_price_data(ticker)
+def get_signal_for_ticker(
+    ticker: str,
+    raw_df,
+    settings,
+    ai_model_bundle=None,
+    market_regime_bullish: bool = True,
+) -> tuple[str, object, float | None]:
+    if raw_df.empty:
+        raise ValueError(f"No price data available for {ticker}")
+
     df = add_indicators(
         raw_df,
         ma_fast=settings.ma_fast,
         ma_slow=settings.ma_slow,
     )
+    if df.empty:
+        raise ValueError(
+            f"Not enough price history to generate signal for {ticker} "
+            f"(rows={len(raw_df)}, ma_slow={settings.ma_slow})"
+        )
     signal = generate_signal(df, rsi_buy_limit=settings.rsi_buy_limit)
+    if (
+        signal == "BUY"
+        and getattr(settings, "market_regime_filter_enabled", False)
+        and not market_regime_bullish
+    ):
+        signal = "HOLD"
     latest = df.iloc[-1]
 
     ai_score = None
     if getattr(settings, "use_ai_score", False):
         try:
-            ai_score = predict_ai_score(raw_df)
+            if ai_model_bundle is None:
+                raise ValueError("AI score model was not loaded")
+            ai_score = predict_ai_score_from_bundle(raw_df, ai_model_bundle)
         except Exception:
             ai_score = None
 
@@ -54,21 +81,48 @@ def main() -> None:
     args = parse_args()
     execute_orders = args.execute
     settings = load_settings()
+    ai_model_bundle = None
+    if getattr(settings, "use_ai_score", False):
+        try:
+            ai_model_bundle = load_ai_score_model()
+        except Exception:
+            ai_model_bundle = None
 
     market_clock = get_market_clock()
     account = get_account_summary()
     open_symbols = get_open_symbols()
     positions = get_positions_summary()
+    tickers_to_load = list(dict.fromkeys([*settings.tickers, *open_symbols]))
+    if getattr(settings, "market_regime_filter_enabled", False):
+        tickers_to_load.append(settings.market_regime_ticker)
+        tickers_to_load = list(dict.fromkeys(tickers_to_load))
+    ticker_data = load_price_data_batch(tickers_to_load, period="1y")
+    market_regime_bullish = True
+    if getattr(settings, "market_regime_filter_enabled", False):
+        market_regime_bullish = is_bullish_market_regime(
+            ticker_data[settings.market_regime_ticker],
+            ma_fast=settings.market_regime_ma_fast,
+            ma_slow=settings.market_regime_ma_slow,
+        )
 
     cash = account["cash"]
     positions_count = account["positions_count"]
     orders_submitted = 0
+    submitted_notional_today = get_today_buy_notional()
+    recent_buy_symbols = get_recent_buy_symbols(
+        int(getattr(settings, "buy_cooldown_days", 0))
+    )
     exit_summary_rows = []
     buy_summary_rows = []
 
     print("Account loaded from Alpaca paper.")
     print(f"cash={cash:.2f}, positions_count={positions_count}")
     print(f"execute_orders={execute_orders}")
+    if getattr(settings, "market_regime_filter_enabled", False):
+        print(
+            f"market_regime_ticker={settings.market_regime_ticker}, "
+            f"market_regime_bullish={market_regime_bullish}"
+        )
     print(
         f"market_is_open={market_clock.is_open}, "
         f"market_time={market_clock.timestamp}"
@@ -90,7 +144,13 @@ def main() -> None:
             ticker = position["symbol"]
 
             try:
-                signal, latest, ai_score = get_signal_for_ticker(ticker, settings)
+                signal, latest, ai_score = get_signal_for_ticker(
+                    ticker,
+                    ticker_data[ticker],
+                    settings,
+                    ai_model_bundle=ai_model_bundle,
+                    market_regime_bullish=market_regime_bullish,
+                )
                 unrealized_plpc = float(position["unrealized_plpc"])
 
                 exit_decision = check_exit_allowed(
@@ -181,7 +241,13 @@ def main() -> None:
     # 2) 신규 매수 후보 확인
     for ticker in settings.tickers:
         try:
-            signal, latest, ai_score = get_signal_for_ticker(ticker, settings)
+            signal, latest, ai_score = get_signal_for_ticker(
+                ticker,
+                ticker_data[ticker],
+                settings,
+                ai_model_bundle=ai_model_bundle,
+                market_regime_bullish=market_regime_bullish,
+            )
 
             if ticker in open_symbols:
                 risk_allowed = False
@@ -213,6 +279,17 @@ def main() -> None:
                 target_amount = 0.0
 
             order_amount = min(target_amount, settings.max_test_order_amount)
+
+            if risk_allowed:
+                safety = apply_buy_safety_limits(
+                    ticker=ticker,
+                    order_amount=order_amount,
+                    submitted_notional_today=submitted_notional_today,
+                    recent_buy_symbols=recent_buy_symbols,
+                )
+                risk_allowed = safety.allowed
+                risk_reason = safety.reason if not safety.allowed else risk_reason
+                order_amount = safety.target_amount
 
             log_signal(
                 ticker=ticker,
@@ -262,6 +339,7 @@ def main() -> None:
                     f"ai_score={ai_score}"
                 )
                 orders_submitted += 1
+                submitted_notional_today += order_amount
                 continue
 
             order = submit_market_buy_notional_order(
@@ -269,6 +347,7 @@ def main() -> None:
                 notional=order_amount,
             )
             orders_submitted += 1
+            submitted_notional_today += order_amount
 
             log_order(
                 ticker=ticker,
