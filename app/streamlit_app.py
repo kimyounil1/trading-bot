@@ -35,11 +35,8 @@ from src.notification_settings import (
     save_notification_config,
 )
 from src.logger import log_order, log_order_status
-from src.data_loader import load_price_data
-from src.strategy import add_indicators, generate_signal
-from src.risk_manager import check_buy_allowed, check_exit_allowed
-from src.ml_model import predict_ai_score
-from src.candidate_cache import load_latest_candidate_cache
+from src.data_loader import load_price_data_batch
+from src.candidate_cache import load_latest_candidate_cache_full
 from src.portfolio_backtester import (
     run_portfolio_backtest,
     save_portfolio_backtest_outputs,
@@ -47,7 +44,7 @@ from src.portfolio_backtester import (
 
 
 st.set_page_config(
-    page_title="Trading Bot CMS",
+    page_title="트레이딩 봇 CMS",
     page_icon="📈",
     layout="wide",
 )
@@ -116,18 +113,18 @@ def save_config_history(old_data: dict, new_data: dict) -> Path:
     return output_path
 
 def sidebar_settings_editor() -> None:
-    st.sidebar.header("Strategy Settings")
+    st.sidebar.header("전략 설정")
 
     settings = load_settings()
 
     tickers_text = st.sidebar.text_input(
-        "Tickers",
+        "티커 목록",
         value=", ".join(settings.tickers),
-        help="Comma-separated tickers",
+        help="쉼표로 구분해서 입력하세요.",
     )
 
     ma_fast = st.sidebar.number_input(
-        "MA Fast",
+        "단기 이동평균",
         min_value=2,
         max_value=250,
         value=int(settings.ma_fast),
@@ -135,7 +132,7 @@ def sidebar_settings_editor() -> None:
     )
 
     ma_slow = st.sidebar.number_input(
-        "MA Slow",
+        "장기 이동평균",
         min_value=5,
         max_value=300,
         value=int(settings.ma_slow),
@@ -143,7 +140,7 @@ def sidebar_settings_editor() -> None:
     )
 
     rsi_buy_limit = st.sidebar.number_input(
-        "RSI Buy Limit",
+        "RSI 매수 상한",
         min_value=1.0,
         max_value=100.0,
         value=float(settings.rsi_buy_limit),
@@ -151,7 +148,7 @@ def sidebar_settings_editor() -> None:
     )
 
     max_position_pct = st.sidebar.number_input(
-        "Max Position %",
+        "포지션 비중 상한",
         min_value=0.01,
         max_value=1.0,
         value=float(settings.max_position_pct),
@@ -159,7 +156,7 @@ def sidebar_settings_editor() -> None:
     )
 
     max_total_positions = st.sidebar.number_input(
-        "Max Total Positions",
+        "최대 보유 종목 수",
         min_value=1,
         max_value=20,
         value=int(settings.max_total_positions),
@@ -167,7 +164,7 @@ def sidebar_settings_editor() -> None:
     )
 
     stop_loss_pct = st.sidebar.number_input(
-        "Stop Loss %",
+        "손절 기준",
         min_value=0.01,
         max_value=1.0,
         value=float(settings.stop_loss_pct),
@@ -175,7 +172,7 @@ def sidebar_settings_editor() -> None:
     )
 
     take_profit_pct = st.sidebar.number_input(
-        "Take Profit %",
+        "익절 기준",
         min_value=0.01,
         max_value=5.0,
         value=float(settings.take_profit_pct),
@@ -183,7 +180,7 @@ def sidebar_settings_editor() -> None:
     )
 
     max_test_order_amount = st.sidebar.number_input(
-        "Max Test Order Amount",
+        "테스트 주문 금액 상한",
         min_value=1.0,
         max_value=100000.0,
         value=float(settings.max_test_order_amount),
@@ -191,21 +188,37 @@ def sidebar_settings_editor() -> None:
     )
 
     max_orders_per_run = st.sidebar.number_input(
-        "Max Orders Per Run",
+        "실행당 최대 주문 수",
         min_value=1,
         max_value=20,
         value=int(settings.max_orders_per_run),
         step=1,
     )
 
+    max_daily_order_amount = st.sidebar.number_input(
+        "일일 주문 금액 상한",
+        min_value=1.0,
+        max_value=1000000.0,
+        value=float(getattr(settings, "max_daily_order_amount", 1000.0)),
+        step=100.0,
+    )
+
+    buy_cooldown_days = st.sidebar.number_input(
+        "재매수 cooldown 일수",
+        min_value=0,
+        max_value=30,
+        value=int(getattr(settings, "buy_cooldown_days", 1)),
+        step=1,
+    )
+
     use_ai_score = st.sidebar.checkbox(
-        "Use AI Score Filter",
+        "AI 점수 필터 사용",
         value=bool(getattr(settings, "use_ai_score", False)),
         help="아직 주문 조건에는 적용하지 않고, 다음 단계에서 백테스트 후 적용합니다.",
     )
 
     ai_score_buy_threshold = st.sidebar.number_input(
-        "AI Score Buy Threshold",
+        "AI 매수 점수 기준",
         min_value=0.0,
         max_value=1.0,
         value=float(getattr(settings, "ai_score_buy_threshold", 0.55)),
@@ -213,10 +226,10 @@ def sidebar_settings_editor() -> None:
     )
 
     st.sidebar.warning(
-        "이 화면은 설정 파일만 수정합니다. 주문 실행은 아직 CLI에서만 하세요."
+        "이 화면은 설정 파일만 수정합니다. 주문 실행은 Paper 실행 화면에서 별도 확인 후 진행하세요."
     )
 
-    if st.sidebar.button("Save Settings"):
+    if st.sidebar.button("설정 저장"):
         tickers = [
             ticker.strip().upper()
             for ticker in tickers_text.split(",")
@@ -224,11 +237,11 @@ def sidebar_settings_editor() -> None:
         ]
 
         if ma_fast >= ma_slow:
-            st.sidebar.error("MA Fast must be smaller than MA Slow.")
+            st.sidebar.error("단기 이동평균은 장기 이동평균보다 작아야 합니다.")
             return
 
         if not tickers:
-            st.sidebar.error("At least one ticker is required.")
+            st.sidebar.error("최소 1개 이상의 티커가 필요합니다.")
             return
 
         data = {
@@ -242,6 +255,8 @@ def sidebar_settings_editor() -> None:
             "take_profit_pct": float(take_profit_pct),
             "max_test_order_amount": float(max_test_order_amount),
             "max_orders_per_run": int(max_orders_per_run),
+            "max_daily_order_amount": float(max_daily_order_amount),
+            "buy_cooldown_days": int(buy_cooldown_days),
             "use_ai_score": bool(use_ai_score),
             "ai_score_buy_threshold": float(ai_score_buy_threshold),
         }
@@ -257,12 +272,12 @@ def sidebar_settings_editor() -> None:
         history_path = save_config_history(old_data, data)
 
         st.sidebar.success(
-            f"Settings saved. History: {history_path.relative_to(ROOT_DIR)}"
+            f"설정을 저장했습니다. 변경 이력: {history_path.relative_to(ROOT_DIR)}"
         )
 
 
 def render_overview() -> None:
-    st.title("Trading Bot CMS")
+    st.title("트레이딩 봇 CMS")
 
     clock = get_market_clock()
     account = get_account_summary()
@@ -271,35 +286,35 @@ def render_overview() -> None:
 
     col1, col2, col3, col4 = st.columns(4)
 
-    col1.metric("Market Open", str(clock.is_open))
-    col2.metric("Cash", money(account["cash"]))
-    col3.metric("Portfolio Value", money(account["portfolio_value"]))
-    col4.metric("Positions", account["positions_count"])
+    col1.metric("시장 개장", str(clock.is_open))
+    col2.metric("현금", money(account["cash"]))
+    col3.metric("포트폴리오 가치", money(account["portfolio_value"]))
+    col4.metric("보유 포지션", account["positions_count"])
 
     st.caption(
-        f"Market time: {clock.timestamp} | "
-        f"Next open: {clock.next_open} | "
-        f"Next close: {clock.next_close}"
+        f"시장 시간: {clock.timestamp} | "
+        f"다음 개장: {clock.next_open} | "
+        f"다음 폐장: {clock.next_close}"
     )
 
     st.divider()
 
-    st.subheader("Current Strategy")
+    st.subheader("현재 전략")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("MA Fast", settings.ma_fast)
-    c2.metric("MA Slow", settings.ma_slow)
-    c3.metric("RSI Buy Limit", settings.rsi_buy_limit)
-    c4.metric("Max Positions", settings.max_total_positions)
+    c1.metric("단기 MA", settings.ma_fast)
+    c2.metric("장기 MA", settings.ma_slow)
+    c3.metric("RSI 매수 상한", settings.rsi_buy_limit)
+    c4.metric("최대 보유 종목", settings.max_total_positions)
 
     c5, c6, c7, c8 = st.columns(4)
-    c5.metric("Position %", pct(settings.max_position_pct))
-    c6.metric("Stop Loss", pct(settings.stop_loss_pct))
-    c7.metric("Take Profit", pct(settings.take_profit_pct))
-    c8.metric("Test Order Cap", money(settings.max_test_order_amount))
+    c5.metric("포지션 비중", pct(settings.max_position_pct))
+    c6.metric("손절", pct(settings.stop_loss_pct))
+    c7.metric("익절", pct(settings.take_profit_pct))
+    c8.metric("주문 금액 상한", money(settings.max_test_order_amount))
 
-    st.write("Tickers:", ", ".join(settings.tickers))
+    st.write("티커:", ", ".join(settings.tickers))
     st.write(
-        "AI Score:",
+        "AI 점수:",
         {
             "use_ai_score": getattr(settings, "use_ai_score", False),
             "ai_score_buy_threshold": getattr(settings, "ai_score_buy_threshold", None),
@@ -308,11 +323,11 @@ def render_overview() -> None:
 
     st.divider()
 
-    st.subheader("Open Positions")
+    st.subheader("보유 포지션")
     if positions:
         st.dataframe(pd.DataFrame(positions), use_container_width=True)
     else:
-        st.info("No open positions.")
+        st.info("현재 보유 포지션이 없습니다.")
 
 
 
@@ -411,25 +426,25 @@ def load_equity_for_run(run_path: str) -> pd.DataFrame:
 
 
 def render_backtest_compare() -> None:
-    st.header("Backtest Compare")
+    st.header("백테스트 비교")
 
     history_df = load_backtest_run_summaries()
 
     if history_df.empty:
-        st.info("No backtest history found yet.")
+        st.info("아직 백테스트 이력이 없습니다.")
         return
 
     run_options = history_df["run_id"].tolist()
 
     selected_runs = st.multiselect(
-        "Select runs to compare",
+        "비교할 실행 이력",
         options=run_options,
         default=run_options[: min(3, len(run_options))],
         max_selections=10,
     )
 
     if not selected_runs:
-        st.warning("Select at least one run.")
+        st.warning("최소 1개 이상의 실행 이력을 선택하세요.")
         return
 
     selected_df = history_df[history_df["run_id"].isin(selected_runs)].copy()
@@ -453,13 +468,13 @@ def render_backtest_compare() -> None:
 
     available_cols = [col for col in metric_cols if col in selected_df.columns]
 
-    st.subheader("Comparison Table")
+    st.subheader("비교 테이블")
     st.dataframe(selected_df[available_cols], use_container_width=True)
 
-    st.subheader("Return / Risk Metrics")
+    st.subheader("수익률 / 리스크 지표")
 
     chart_metric = st.selectbox(
-        "Metric",
+        "지표",
         ["total_return", "benchmark_return", "excess_return", "max_drawdown", "win_rate"],
     )
 
@@ -470,7 +485,7 @@ def render_backtest_compare() -> None:
     )
     st.bar_chart(metric_chart_df)
 
-    st.subheader("Equity Curve Comparison")
+    st.subheader("자산 곡선 비교")
 
     equity_series = []
 
@@ -492,28 +507,28 @@ def render_backtest_compare() -> None:
         equity_series.append(tmp)
 
     if not equity_series:
-        st.info("No equity curves found for selected runs.")
+        st.info("선택한 실행 이력에서 자산 곡선을 찾지 못했습니다.")
         return
 
     combined_equity = pd.concat(equity_series, axis=1).sort_index()
     st.line_chart(combined_equity)
 
-    st.subheader("Normalized Equity Curve")
+    st.subheader("정규화 자산 곡선")
 
     normalized = combined_equity / combined_equity.iloc[0]
     st.line_chart(normalized)
 
     st.caption(
-        "Normalized Equity Curve는 각 run의 시작값을 1.0으로 맞춘 비교 차트입니다."
+        "정규화 자산 곡선은 각 실행 이력의 시작값을 1.0으로 맞춘 비교 차트입니다."
     )
 
 def render_backtest_history() -> None:
-    st.header("Backtest History")
+    st.header("백테스트 이력")
 
     history_df = load_backtest_run_summaries()
 
     if history_df.empty:
-        st.info("No backtest history found yet.")
+        st.info("아직 백테스트 이력이 없습니다.")
         return
 
     display_cols = [
@@ -536,11 +551,11 @@ def render_backtest_history() -> None:
 
     available_cols = [col for col in display_cols if col in history_df.columns]
 
-    st.subheader("Runs")
+    st.subheader("실행 목록")
     st.dataframe(history_df[available_cols], use_container_width=True)
 
     selected_run = st.selectbox(
-        "Select run",
+        "실행 이력 선택",
         history_df["run_id"].tolist(),
     )
 
@@ -552,7 +567,7 @@ def render_backtest_history() -> None:
     trades_path = run_dir / "portfolio_trades.csv"
     config_path = run_dir / "run_config.json"
 
-    st.subheader("Selected Run Summary")
+    st.subheader("선택한 실행 요약")
     summary_df = pd.read_csv(summary_path)
     st.dataframe(summary_df, use_container_width=True)
 
@@ -560,55 +575,55 @@ def render_backtest_history() -> None:
         equity_df = pd.read_csv(equity_path)
 
         if not equity_df.empty and {"date", "equity", "benchmark_equity"}.issubset(equity_df.columns):
-            st.subheader("Equity Curve")
+            st.subheader("자산 곡선")
             chart_df = equity_df.set_index("date")[["equity", "benchmark_equity"]]
             st.line_chart(chart_df)
 
-            st.subheader("Recent Equity Rows")
+            st.subheader("최근 자산 데이터")
             st.dataframe(equity_df.tail(50), use_container_width=True)
 
     if trades_path.exists():
         trades_df = pd.read_csv(trades_path)
 
-        st.subheader("Trades")
+        st.subheader("거래 내역")
         if trades_df.empty:
-            st.info("No closed trades.")
+            st.info("종료된 거래가 없습니다.")
         else:
             st.dataframe(trades_df, use_container_width=True)
 
     if config_path.exists():
-        st.subheader("Run Config")
+        st.subheader("실행 설정")
         st.json(json.loads(config_path.read_text(encoding="utf-8")))
 
 def render_config_history() -> None:
-    st.header("Config History")
+    st.header("설정 변경 이력")
 
     history_dir = ROOT_DIR / "logs/config_history"
 
     if not history_dir.exists():
-        st.info("No config history found.")
+        st.info("설정 변경 이력이 없습니다.")
         return
 
     files = sorted(history_dir.glob("config_change_*.json"), reverse=True)
 
     if not files:
-        st.info("No config history files found.")
+        st.info("설정 변경 이력 파일이 없습니다.")
         return
 
     selected = st.selectbox(
-        "Select history file",
+        "이력 파일 선택",
         files,
         format_func=lambda path: path.name,
     )
 
     payload = json.loads(selected.read_text(encoding="utf-8"))
 
-    st.subheader("Changed Fields")
+    st.subheader("변경된 항목")
 
     changed = payload.get("changed", {})
 
     if not changed:
-        st.info("No changes detected.")
+        st.info("변경된 항목이 없습니다.")
     else:
         rows = []
 
@@ -623,30 +638,30 @@ def render_config_history() -> None:
 
         st.dataframe(pd.DataFrame(rows), use_container_width=True)
 
-    with st.expander("Old Config"):
+    with st.expander("이전 설정"):
         st.json(payload.get("old_config", {}))
 
-    with st.expander("New Config"):
+    with st.expander("새 설정"):
         st.json(payload.get("new_config", {}))
 
 def render_logs() -> None:
-    st.header("Logs")
+    st.header("로그")
 
     signals_df = read_csv_if_exists(LOG_PATH)
     orders_df = read_csv_if_exists(ORDER_LOG_PATH)
 
-    st.subheader("Recent Signals")
+    st.subheader("최근 신호")
     if signals_df.empty:
-        st.info("No signal logs found.")
+        st.info("신호 로그가 없습니다.")
     else:
         st.dataframe(signals_df.tail(50), use_container_width=True)
 
-    st.subheader("Recent Orders")
+    st.subheader("최근 주문")
 
     col1, col2 = st.columns([1, 3])
-    refresh_clicked = col1.button("Refresh Recent Order Status", type="primary")
+    refresh_clicked = col1.button("최근 주문 상태 갱신", type="primary")
     refresh_limit = col2.number_input(
-        "Refresh last N unique orders",
+        "최근 N개 고유 주문 갱신",
         min_value=1,
         max_value=50,
         value=10,
@@ -657,20 +672,20 @@ def render_logs() -> None:
         refreshed_df = refresh_recent_order_statuses(limit=int(refresh_limit))
 
         if refreshed_df.empty:
-            st.warning("No order IDs found to refresh.")
+            st.warning("갱신할 주문 ID가 없습니다.")
         else:
-            st.success("Order statuses refreshed.")
+            st.success("주문 상태를 갱신했습니다.")
             st.dataframe(refreshed_df, use_container_width=True)
 
     orders_df = read_csv_if_exists(ORDER_LOG_PATH)
 
     if orders_df.empty:
-        st.info("No order logs found.")
+        st.info("주문 로그가 없습니다.")
     else:
         st.dataframe(orders_df.tail(50), use_container_width=True)
 
 def render_backtest_outputs() -> None:
-    st.header("Backtest Outputs")
+    st.header("백테스트 결과")
 
     portfolio_summary = read_csv_if_exists(
         "logs/portfolio_backtest/portfolio_summary.csv"
@@ -682,21 +697,21 @@ def render_backtest_outputs() -> None:
         "logs/optimization/grid_search_results.csv"
     )
 
-    st.subheader("Selected Strategy Summary")
+    st.subheader("선택 전략 요약")
     if selected_summary.empty:
-        st.info("No selected strategy summary found.")
+        st.info("선택 전략 요약이 없습니다.")
     else:
         st.dataframe(selected_summary, use_container_width=True)
 
-    st.subheader("Portfolio Backtest Summary")
+    st.subheader("포트폴리오 백테스트 요약")
     if portfolio_summary.empty:
-        st.info("No portfolio backtest summary found.")
+        st.info("포트폴리오 백테스트 요약이 없습니다.")
     else:
         st.dataframe(portfolio_summary, use_container_width=True)
 
-    st.subheader("Optimization Top 20")
+    st.subheader("최적화 상위 20개")
     if optimization.empty:
-        st.info("No optimization results found.")
+        st.info("최적화 결과가 없습니다.")
     else:
         st.dataframe(optimization.head(20), use_container_width=True)
 
@@ -732,6 +747,8 @@ def save_backtest_run_history(
                 "rsi_buy_limit": settings.rsi_buy_limit,
                 "max_positions": settings.max_total_positions,
                 "target_position_pct": settings.max_position_pct,
+                "max_daily_order_amount": settings.max_daily_order_amount,
+                "buy_cooldown_days": settings.buy_cooldown_days,
                 "tickers": ",".join(settings.tickers),
             }
         ]
@@ -754,6 +771,8 @@ def save_backtest_run_history(
         "take_profit_pct": settings.take_profit_pct,
         "max_test_order_amount": settings.max_test_order_amount,
         "max_orders_per_run": settings.max_orders_per_run,
+        "max_daily_order_amount": settings.max_daily_order_amount,
+        "buy_cooldown_days": settings.buy_cooldown_days,
     }
 
     (output_dir / "run_config.json").write_text(
@@ -796,17 +815,14 @@ def load_backtest_run_summaries() -> pd.DataFrame:
 def run_cms_backtest(period: str = "2y") -> tuple[object, pd.DataFrame, pd.DataFrame]:
     settings = load_settings()
 
-    ticker_data = {}
-
     progress = st.progress(0)
     status = st.empty()
 
-    for index, ticker in enumerate(settings.tickers, start=1):
-        status.write(f"Loading {ticker}...")
-        ticker_data[ticker] = load_price_data(ticker, period=period)
-        progress.progress(index / len(settings.tickers))
+    status.write(f"{len(settings.tickers)}개 티커 데이터를 불러오는 중입니다...")
+    ticker_data = load_price_data_batch(settings.tickers, period=period)
+    progress.progress(0.6)
 
-    status.write("Running portfolio backtest...")
+    status.write("포트폴리오 백테스트를 실행하는 중입니다...")
 
     result, equity_df, trades_df = run_portfolio_backtest(
         ticker_data=ticker_data,
@@ -836,13 +852,13 @@ def run_cms_backtest(period: str = "2y") -> tuple[object, pd.DataFrame, pd.DataF
     )
 
     progress.progress(1.0)
-    status.write(f"Backtest complete. Saved history: {history_dir.relative_to(ROOT_DIR)}")
+    status.write(f"백테스트 완료. 이력 저장: {history_dir.relative_to(ROOT_DIR)}")
 
     return result, equity_df, trades_df
 
 
 def render_run_backtest() -> None:
-    st.header("Run Backtest")
+    st.header("백테스트 실행")
 
     settings = load_settings()
 
@@ -859,7 +875,7 @@ target_position_pct={settings.max_position_pct}
     )
 
     period = st.selectbox(
-        "Backtest Period",
+        "백테스트 기간",
         ["1y", "2y", "5y"],
         index=1,
     )
@@ -868,37 +884,37 @@ target_position_pct={settings.max_position_pct}
         "이 버튼은 주문을 실행하지 않습니다. 과거 데이터 백테스트만 실행합니다."
     )
 
-    if st.button("Run Portfolio Backtest", type="primary"):
+    if st.button("포트폴리오 백테스트 실행", type="primary"):
         try:
             result, equity_df, trades_df = run_cms_backtest(period=period)
 
-            st.success("Backtest finished.")
+            st.success("백테스트가 완료되었습니다.")
 
             col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Strategy Return", pct(result.total_return))
-            col2.metric("Benchmark Return", pct(result.benchmark_return))
-            col3.metric("Max Drawdown", pct(result.max_drawdown))
-            col4.metric("Final Equity", money(result.final_equity))
+            col1.metric("전략 수익률", pct(result.total_return))
+            col2.metric("벤치마크 수익률", pct(result.benchmark_return))
+            col3.metric("최대 낙폭", pct(result.max_drawdown))
+            col4.metric("최종 자산", money(result.final_equity))
 
             col5, col6 = st.columns(2)
-            col5.metric("Trades", result.trades)
-            col6.metric("Win Rate", pct(result.win_rate))
+            col5.metric("거래 수", result.trades)
+            col6.metric("승률", pct(result.win_rate))
 
             chart_df = equity_df.set_index("date")[["equity", "benchmark_equity"]]
-            st.subheader("Equity Curve")
+            st.subheader("자산 곡선")
             st.line_chart(chart_df)
 
-            st.subheader("Trades")
+            st.subheader("거래 내역")
             if trades_df.empty:
-                st.info("No closed trades.")
+                st.info("종료된 거래가 없습니다.")
             else:
                 st.dataframe(trades_df, use_container_width=True)
 
-            st.subheader("Equity Table")
+            st.subheader("자산 테이블")
             st.dataframe(equity_df.tail(50), use_container_width=True)
 
         except Exception as exc:
-            st.error(f"Backtest failed: {exc}")
+            st.error(f"백테스트 실패: {exc}")
 
 
 
@@ -929,177 +945,189 @@ def save_dry_run_snapshot(exit_df: pd.DataFrame, buy_df: pd.DataFrame) -> Path:
     combined.to_csv(output_path, index=False)
     return output_path
 
-def get_signal_for_cms(ticker: str, settings) -> tuple[str, pd.Series, float | None]:
-    raw_df = load_price_data(ticker)
 
-    df = add_indicators(
-        raw_df,
-        ma_fast=settings.ma_fast,
-        ma_slow=settings.ma_slow,
+def render_buy_candidate_tabs(buy_df: pd.DataFrame) -> None:
+    if buy_df.empty:
+        st.info("매수 후보가 없습니다.")
+        return
+
+    error_mask = (
+        buy_df["error"].notna()
+        if "error" in buy_df.columns
+        else pd.Series(False, index=buy_df.index)
     )
-    signal = generate_signal(df, rsi_buy_limit=settings.rsi_buy_limit)
-    latest = df.iloc[-1]
+    executable_mask = (
+        buy_df["execution_label"].astype(str).eq("WOULD_SUBMIT_IF_EXECUTED")
+        if "execution_label" in buy_df.columns
+        else pd.Series(False, index=buy_df.index)
+    )
 
-    ai_score = None
+    executable_df = buy_df[executable_mask & ~error_mask].copy()
+    error_df = buy_df[error_mask].copy()
+    blocked_df = buy_df[~executable_mask & ~error_mask].copy()
 
-    try:
-        ai_score = predict_ai_score(raw_df)
-    except Exception:
-        ai_score = None
+    tabs = st.tabs(
+        [
+            f"실행 가능 ({len(executable_df)})",
+            f"차단/대기 ({len(blocked_df)})",
+            f"오류 ({len(error_df)})",
+            f"전체 ({len(buy_df)})",
+        ]
+    )
 
-    return signal, latest, ai_score
+    sort_cols = [
+        col
+        for col in ["would_submit_if_execute", "risk_allowed", "ai_score"]
+        if col in buy_df.columns
+    ]
+
+    def display(df: pd.DataFrame) -> None:
+        if df.empty:
+            st.info("표시할 항목이 없습니다.")
+            return
+
+        if sort_cols:
+            df = df.sort_values(
+                sort_cols,
+                ascending=[False for _ in sort_cols],
+            )
+
+        st.dataframe(df, use_container_width=True)
+
+    with tabs[0]:
+        display(executable_df)
+    with tabs[1]:
+        display(blocked_df)
+    with tabs[2]:
+        display(error_df)
+    with tabs[3]:
+        display(buy_df)
+
+
+def render_cache_quality(quality_df: pd.DataFrame, errors_df: pd.DataFrame) -> None:
+    st.subheader("데이터 품질")
+
+    if quality_df.empty:
+        st.info("데이터 품질 리포트가 없습니다. 후보 캐시를 다시 생성하세요.")
+        return
+
+    status_counts = quality_df["data_status"].value_counts(dropna=False).to_dict()
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("정상", int(status_counts.get("OK", 0)))
+    c2.metric("주의", int(status_counts.get("WARN", 0)))
+    c3.metric("오류", int(status_counts.get("ERROR", 0)))
+    c4.metric("전체", len(quality_df))
+
+    tabs = st.tabs(
+        [
+            f"주의/오류 ({len(errors_df)})",
+            f"전체 품질 ({len(quality_df)})",
+        ]
+    )
+
+    with tabs[0]:
+        if errors_df.empty:
+            st.success("데이터 품질 경고나 오류가 없습니다.")
+        else:
+            st.dataframe(errors_df, use_container_width=True)
+
+    with tabs[1]:
+        display_df = quality_df.copy()
+        if "data_status" in display_df.columns:
+            status_order = {"ERROR": 0, "WARN": 1, "OK": 2}
+            display_df["_status_order"] = (
+                display_df["data_status"].map(status_order).fillna(9)
+            )
+            display_df = display_df.sort_values(["_status_order", "ticker"])
+            display_df = display_df.drop(columns=["_status_order"])
+
+        st.dataframe(display_df, use_container_width=True)
 
 
 def render_dry_run() -> None:
-    st.header("Dry-run")
+    st.header("Dry-run 점검")
 
     st.warning(
-        "이 페이지는 주문을 실행하지 않습니다. 현재 설정 기준의 예상 매수/청산 판단만 보여줍니다."
+        "이 페이지는 주문을 실행하지 않습니다. 최신 후보 캐시 기준의 예상 매수/청산 판단만 보여줍니다."
     )
 
-    settings = load_settings()
-    clock = get_market_clock()
-    account = get_account_summary()
-    positions = get_positions_summary()
-    open_symbols = {position["symbol"] for position in positions}
+    try:
+        meta, exit_df, buy_df, quality_df, errors_df = load_latest_candidate_cache_full()
+    except Exception as exc:
+        st.error(f"후보 캐시를 찾을 수 없습니다: {exc}")
+        st.info("`python -m src.generate_candidate_cache`를 실행하거나 아래 버튼으로 캐시를 갱신하세요.")
+        if st.button("후보 캐시 지금 갱신"):
+            with st.spinner("후보 캐시를 갱신하는 중입니다..."):
+                proc = subprocess.run(
+                    [str(ROOT_DIR / ".venv/bin/python"), "-m", "src.generate_candidate_cache"],
+                    cwd=str(ROOT_DIR),
+                    capture_output=True,
+                    text=True,
+                    timeout=1800,
+                )
 
-    st.subheader("Execution Safety")
+            if proc.returncode == 0:
+                st.success("후보 캐시를 갱신했습니다. 페이지를 새로고침하세요.")
+                st.code(proc.stdout[-4000:], language="text")
+            else:
+                st.error("후보 캐시 갱신에 실패했습니다.")
+                st.code((proc.stderr or proc.stdout)[-8000:], language="text")
+        return
+
+    generated_at = str(meta.get("generated_at"))
+    generated_dt = pd.to_datetime(generated_at)
+    cache_age_minutes = (pd.Timestamp.now() - generated_dt).total_seconds() / 60
+
+    st.subheader("실행 안전 점검")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Market Open", str(clock.is_open))
-    c2.metric("Cash", money(account["cash"]))
-    c3.metric("Positions", account["positions_count"])
-    c4.metric("Max Orders / Run", settings.max_orders_per_run)
+    c1.metric("캐시 기준 시장 개장", str(meta.get("market_is_open")))
+    c2.metric("현금", money(float(meta.get("cash", 0.0))))
+    c3.metric("포지션", meta.get("positions_count"))
+    c4.metric("실행당 최대 주문", meta.get("max_orders_per_run"))
+
+    c5, c6, c7 = st.columns(3)
+    c5.metric("오늘 매수 금액", money(float(meta.get("today_buy_notional") or 0.0)))
+    c6.metric("일일 주문 상한", money(float(meta.get("max_daily_order_amount") or 0.0)))
+    c7.metric("재매수 cooldown", f"{meta.get('buy_cooldown_days') or 0}일")
 
     st.caption(
-        f"Market time: {clock.timestamp} | "
-        f"Next open: {clock.next_open} | "
-        f"Next close: {clock.next_close}"
+        f"캐시 생성: {generated_at} | "
+        f"경과: {cache_age_minutes:.1f}분 | "
+        f"감시 종목: {meta.get('watchlist_size')} | "
+        f"시장 시간: {meta.get('market_timestamp')}"
     )
 
+    if st.button("후보 캐시 지금 갱신"):
+        with st.spinner("후보 캐시를 갱신하는 중입니다..."):
+            proc = subprocess.run(
+                [str(ROOT_DIR / ".venv/bin/python"), "-m", "src.generate_candidate_cache"],
+                cwd=str(ROOT_DIR),
+                capture_output=True,
+                text=True,
+                timeout=1800,
+            )
+
+        if proc.returncode == 0:
+            st.success("후보 캐시를 갱신했습니다. 페이지를 새로고침하세요.")
+            st.code(proc.stdout[-4000:], language="text")
+        else:
+            st.error("후보 캐시 갱신에 실패했습니다.")
+            st.code((proc.stderr or proc.stdout)[-8000:], language="text")
+
     st.divider()
 
-    st.subheader("Open Position Exit Check")
+    st.subheader("보유 포지션 청산 점검")
 
-    exit_rows = []
-
-    for position in positions:
-        ticker = position["symbol"]
-
-        try:
-            signal, latest, ai_score = get_signal_for_cms(ticker, settings)
-            unrealized_plpc = float(position["unrealized_plpc"])
-
-            exit_decision = check_exit_allowed(
-                signal=signal,
-                unrealized_plpc=unrealized_plpc,
-            )
-
-            exit_rows.append(
-                {
-                    "ticker": ticker,
-                    "qty": position["qty"],
-                    "market_value": position["market_value"],
-                    "unrealized_pl": position["unrealized_pl"],
-                    "unrealized_plpc": unrealized_plpc,
-                    "signal": signal,
-                    "ai_score": ai_score,
-                    "should_exit": exit_decision.should_exit,
-                    "exit_reason": exit_decision.reason,
-                    "close": float(latest["close"]),
-                    "rsi": float(latest["rsi"]),
-                    "ma_fast": float(latest["ma_fast"]),
-                    "ma_slow": float(latest["ma_slow"]),
-                }
-            )
-
-        except Exception as exc:
-            exit_rows.append(
-                {
-                    "ticker": ticker,
-                    "error": str(exc),
-                }
-            )
-
-    if exit_rows:
-        exit_df = pd.DataFrame(exit_rows)
+    if not exit_df.empty:
         st.dataframe(exit_df, use_container_width=True)
     else:
-        st.info("No open positions.")
+        st.info("현재 보유 포지션이 없습니다.")
 
     st.divider()
 
-    st.subheader("Buy Candidate Check")
+    st.subheader("매수 후보 점검")
 
-    buy_rows = []
-    cash = account["cash"]
-    positions_count = account["positions_count"]
-    dry_run_orders_count = 0
-
-    for ticker in settings.tickers:
-        try:
-            signal, latest, ai_score = get_signal_for_cms(ticker, settings)
-
-            if ticker in open_symbols:
-                risk_allowed = False
-                reason = "already holding position"
-                target_amount = 0.0
-            else:
-                risk = check_buy_allowed(
-                    signal=signal,
-                    cash=cash,
-                    current_positions_count=positions_count,
-                )
-                risk_allowed = risk.allowed
-                reason = risk.reason
-                target_amount = risk.target_amount
-
-            order_amount = min(target_amount, settings.max_test_order_amount)
-
-            would_submit = False
-            execution_label = "NOT_ALLOWED"
-
-            if risk_allowed:
-                if dry_run_orders_count >= settings.max_orders_per_run:
-                    execution_label = "SKIP_MAX_ORDERS"
-                elif not clock.is_open:
-                    execution_label = "MARKET_CLOSED"
-                    would_submit = False
-                    dry_run_orders_count += 1
-                else:
-                    execution_label = "WOULD_SUBMIT_IF_EXECUTED"
-                    would_submit = True
-                    dry_run_orders_count += 1
-
-            buy_rows.append(
-                {
-                    "ticker": ticker,
-                    "signal": signal,
-                    "ai_score": ai_score,
-                    "ai_threshold": getattr(settings, "ai_score_buy_threshold", None),
-                    "use_ai_score": getattr(settings, "use_ai_score", False),
-                    "risk_allowed": risk_allowed,
-                    "reason": reason,
-                    "target_amount": target_amount,
-                    "order_amount": order_amount,
-                    "execution_label": execution_label,
-                    "would_submit_if_execute": would_submit,
-                    "close": float(latest["close"]),
-                    "rsi": float(latest["rsi"]),
-                    "ma_fast": float(latest["ma_fast"]),
-                    "ma_slow": float(latest["ma_slow"]),
-                }
-            )
-
-        except Exception as exc:
-            buy_rows.append(
-                {
-                    "ticker": ticker,
-                    "error": str(exc),
-                }
-            )
-
-    buy_df = pd.DataFrame(buy_rows)
-    st.dataframe(buy_df, use_container_width=True)
+    render_buy_candidate_tabs(buy_df)
 
     st.caption(
         "MARKET_CLOSED는 --execute를 눌러도 현재 장이 닫혀 실제 주문이 차단된다는 뜻입니다. "
@@ -1108,129 +1136,21 @@ def render_dry_run() -> None:
 
     st.divider()
 
-    if st.button("Save Dry-run Snapshot"):
-        exit_df_to_save = pd.DataFrame(exit_rows)
-        buy_df_to_save = pd.DataFrame(buy_rows)
-        output_path = save_dry_run_snapshot(exit_df_to_save, buy_df_to_save)
-        st.success(f"Saved dry-run snapshot: {output_path.relative_to(ROOT_DIR)}")
+    if st.button("Dry-run 스냅샷 저장"):
+        output_path = save_dry_run_snapshot(exit_df, buy_df)
+        st.success(f"Dry-run 스냅샷을 저장했습니다: {output_path.relative_to(ROOT_DIR)}")
+
+    st.divider()
+    render_cache_quality(quality_df, errors_df)
 
 
 
 def build_cms_dry_run_rows():
+    meta, exit_df, buy_df, _, _ = load_latest_candidate_cache_full()
     settings = load_settings()
-    clock = get_market_clock()
     account = get_account_summary()
-    positions = get_positions_summary()
-    open_symbols = {position["symbol"] for position in positions}
-
-    exit_rows = []
-    buy_rows = []
-
-    for position in positions:
-        ticker = position["symbol"]
-
-        try:
-            signal, latest, ai_score = get_signal_for_cms(ticker, settings)
-            unrealized_plpc = float(position["unrealized_plpc"])
-
-            exit_decision = check_exit_allowed(
-                signal=signal,
-                unrealized_plpc=unrealized_plpc,
-            )
-
-            exit_rows.append(
-                {
-                    "ticker": ticker,
-                    "qty": position["qty"],
-                    "market_value": position["market_value"],
-                    "unrealized_pl": position["unrealized_pl"],
-                    "unrealized_plpc": unrealized_plpc,
-                    "signal": signal,
-                    "ai_score": ai_score,
-                    "should_exit": exit_decision.should_exit,
-                    "exit_reason": exit_decision.reason,
-                    "close": float(latest["close"]),
-                    "rsi": float(latest["rsi"]),
-                    "ma_fast": float(latest["ma_fast"]),
-                    "ma_slow": float(latest["ma_slow"]),
-                }
-            )
-
-        except Exception as exc:
-            exit_rows.append(
-                {
-                    "ticker": ticker,
-                    "error": str(exc),
-                }
-            )
-
-    cash = account["cash"]
-    positions_count = account["positions_count"]
-    dry_run_orders_count = 0
-
-    for ticker in settings.tickers:
-        try:
-            signal, latest, ai_score = get_signal_for_cms(ticker, settings)
-
-            if ticker in open_symbols:
-                risk_allowed = False
-                reason = "already holding position"
-                target_amount = 0.0
-            else:
-                risk = check_buy_allowed(
-                    signal=signal,
-                    cash=cash,
-                    current_positions_count=positions_count,
-                )
-                risk_allowed = risk.allowed
-                reason = risk.reason
-                target_amount = risk.target_amount
-
-            order_amount = min(target_amount, settings.max_test_order_amount)
-
-            would_submit = False
-            execution_label = "NOT_ALLOWED"
-
-            if risk_allowed:
-                if dry_run_orders_count >= settings.max_orders_per_run:
-                    execution_label = "SKIP_MAX_ORDERS"
-                elif not clock.is_open:
-                    execution_label = "MARKET_CLOSED"
-                    dry_run_orders_count += 1
-                else:
-                    execution_label = "WOULD_SUBMIT_IF_EXECUTED"
-                    would_submit = True
-                    dry_run_orders_count += 1
-
-            buy_rows.append(
-                {
-                    "ticker": ticker,
-                    "signal": signal,
-                    "ai_score": ai_score,
-                    "ai_threshold": getattr(settings, "ai_score_buy_threshold", None),
-                    "use_ai_score": getattr(settings, "use_ai_score", False),
-                    "risk_allowed": risk_allowed,
-                    "reason": reason,
-                    "target_amount": target_amount,
-                    "order_amount": order_amount,
-                    "execution_label": execution_label,
-                    "would_submit_if_execute": would_submit,
-                    "close": float(latest["close"]),
-                    "rsi": float(latest["rsi"]),
-                    "ma_fast": float(latest["ma_fast"]),
-                    "ma_slow": float(latest["ma_slow"]),
-                }
-            )
-
-        except Exception as exc:
-            buy_rows.append(
-                {
-                    "ticker": ticker,
-                    "error": str(exc),
-                }
-            )
-
-    return account, clock, settings, pd.DataFrame(exit_rows), pd.DataFrame(buy_rows)
+    clock = get_market_clock()
+    return account, clock, settings, exit_df, buy_df
 
 
 
@@ -1273,6 +1193,8 @@ def save_execution_run_history(
             "take_profit_pct": settings.take_profit_pct,
             "max_test_order_amount": settings.max_test_order_amount,
             "max_orders_per_run": settings.max_orders_per_run,
+            "max_daily_order_amount": settings.max_daily_order_amount,
+            "buy_cooldown_days": settings.buy_cooldown_days,
         },
     }
 
@@ -1421,7 +1343,7 @@ def execute_cms_paper_actions(exit_df: pd.DataFrame, buy_df: pd.DataFrame, setti
 
 
 def render_paper_execution() -> None:
-    st.header("Paper Execution")
+    st.header("Paper 주문 실행")
 
     st.warning(
         "이 페이지는 캐시된 후보 결과를 사용합니다. "
@@ -1434,29 +1356,29 @@ def render_paper_execution() -> None:
     account = get_account_summary()
     settings = load_settings()
 
-    st.subheader("Safety Checks")
+    st.subheader("안전 점검")
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Execution Lock", "ENABLED" if lock_enabled else "LOCKED")
-    c2.metric("Market Open", str(clock.is_open))
+    c1.metric("실행 잠금", "ENABLED" if lock_enabled else "LOCKED")
+    c2.metric("시장 개장", str(clock.is_open))
     c3.metric("Alpaca Paper", str(ALPACA_PAPER))
-    c4.metric("Max Order Amount", money(settings.max_test_order_amount))
+    c4.metric("주문 금액 상한", money(settings.max_test_order_amount))
 
     st.caption(
-        f"Market time: {clock.timestamp} | "
-        f"Next open: {clock.next_open} | "
-        f"Next close: {clock.next_close}"
+        f"시장 시간: {clock.timestamp} | "
+        f"다음 개장: {clock.next_open} | "
+        f"다음 폐장: {clock.next_close}"
     )
 
     st.divider()
 
-    st.subheader("Cached Candidates")
+    st.subheader("캐시된 후보")
 
     try:
-        meta, exit_df, buy_df = load_latest_candidate_cache()
+        meta, exit_df, buy_df, quality_df, errors_df = load_latest_candidate_cache_full()
     except Exception as exc:
-        st.error(f"No candidate cache available: {exc}")
-        st.info("Run `python -m src.generate_candidate_cache` or enable candidate cache timer.")
+        st.error(f"후보 캐시를 찾을 수 없습니다: {exc}")
+        st.info("`python -m src.generate_candidate_cache`를 실행하거나 후보 캐시 timer를 활성화하세요.")
         return
 
     generated_at = str(meta.get("generated_at"))
@@ -1464,20 +1386,31 @@ def render_paper_execution() -> None:
     cache_age_minutes = (pd.Timestamp.now() - generated_dt).total_seconds() / 60
 
     c5, c6, c7, c8 = st.columns(4)
-    c5.metric("Cache Generated", generated_at)
-    c6.metric("Cache Age", f"{cache_age_minutes:.1f} min")
-    c7.metric("Watchlist Size", meta.get("watchlist_size"))
-    c8.metric("Cached Market Open", str(meta.get("market_is_open")))
+    c5.metric("캐시 생성 시각", generated_at)
+    c6.metric("캐시 경과", f"{cache_age_minutes:.1f}분")
+    c7.metric("감시 종목 수", meta.get("watchlist_size"))
+    c8.metric("캐시 기준 시장 개장", str(meta.get("market_is_open")))
+
+    c9, c10, c11 = st.columns(3)
+    c9.metric("오늘 매수 금액", money(float(meta.get("today_buy_notional") or 0.0)))
+    c10.metric("일일 주문 상한", money(float(meta.get("max_daily_order_amount") or 0.0)))
+    c11.metric("재매수 cooldown", f"{meta.get('buy_cooldown_days') or 0}일")
+
+    c12, c13, c14, c15 = st.columns(4)
+    c12.metric("가격 데이터 정상", meta.get("price_data_success_count", 0))
+    c13.metric("가격 데이터 주의", meta.get("price_data_warning_count", 0))
+    c14.metric("가격 데이터 오류", meta.get("price_data_error_count", 0))
+    c15.metric("캐시 생성 시간", f"{meta.get('cache_duration_seconds', 0)}초")
 
     cache_fresh = cache_age_minutes <= 15
 
     if cache_fresh:
-        st.success("Candidate cache is fresh.")
+        st.success("후보 캐시가 최신입니다.")
     else:
-        st.error("Candidate cache is stale. Execution is blocked until cache refreshes.")
+        st.error("후보 캐시가 오래되었습니다. 캐시를 갱신하기 전까지 실행이 차단됩니다.")
 
-    if st.button("Refresh Cache Now"):
-        with st.spinner("Refreshing candidate cache now..."):
+    if st.button("후보 캐시 지금 갱신"):
+        with st.spinner("후보 캐시를 갱신하는 중입니다..."):
             proc = subprocess.run(
                 [str(ROOT_DIR / ".venv/bin/python"), "-m", "src.generate_candidate_cache"],
                 cwd=str(ROOT_DIR),
@@ -1487,65 +1420,49 @@ def render_paper_execution() -> None:
             )
 
         if proc.returncode == 0:
-            st.success("Candidate cache refreshed. Reload this page.")
+            st.success("후보 캐시를 갱신했습니다. 페이지를 새로고침하세요.")
             st.code(proc.stdout[-4000:], language="text")
         else:
-            st.error("Candidate cache refresh failed.")
+            st.error("후보 캐시 갱신에 실패했습니다.")
             st.code((proc.stderr or proc.stdout)[-8000:], language="text")
 
     st.divider()
 
-    st.subheader("Exit Candidates")
+    st.subheader("청산 후보")
     if exit_df.empty:
-        st.info("No open positions to check.")
+        st.info("점검할 보유 포지션이 없습니다.")
     else:
         st.dataframe(exit_df, use_container_width=True)
 
-    st.subheader("Buy Candidates")
+    st.subheader("매수 후보")
 
-    if buy_df.empty:
-        st.info("No buy candidates.")
-    else:
-        sort_cols = []
-        if "would_submit_if_execute" in buy_df.columns:
-            sort_cols.append("would_submit_if_execute")
-        if "risk_allowed" in buy_df.columns:
-            sort_cols.append("risk_allowed")
-        if "ai_score" in buy_df.columns:
-            sort_cols.append("ai_score")
+    render_buy_candidate_tabs(buy_df)
 
-        if sort_cols:
-            display_df = buy_df.sort_values(
-                sort_cols,
-                ascending=[False for _ in sort_cols],
-            )
-        else:
-            display_df = buy_df
-
-        st.dataframe(display_df, use_container_width=True)
+    st.divider()
+    render_cache_quality(quality_df, errors_df)
 
     st.divider()
 
-    st.subheader("Final Confirmation")
+    st.subheader("최종 확인")
 
     allowed = lock_enabled and clock.is_open and ALPACA_PAPER and cache_fresh
 
     if not lock_enabled:
-        st.error("CMS execution lock is disabled.")
+        st.error("CMS 실행 잠금이 해제되어 있지 않습니다.")
 
     if not clock.is_open:
-        st.error("Market is closed. CMS paper execution is blocked.")
+        st.error("시장이 닫혀 있습니다. CMS paper 실행이 차단됩니다.")
 
     if not ALPACA_PAPER:
-        st.error("ALPACA_PAPER is False. CMS execution is blocked.")
+        st.error("ALPACA_PAPER가 False입니다. CMS 실행이 차단됩니다.")
 
     if not cache_fresh:
-        st.error("Candidate cache is stale. Refresh cache before executing.")
+        st.error("후보 캐시가 오래되었습니다. 실행 전에 캐시를 갱신하세요.")
 
     st.write("실행 가능 상태:", "YES" if allowed else "NO")
 
     confirmation = st.text_input(
-        f"Type `{required_phrase}` to enable the execution button",
+        f"실행 버튼을 활성화하려면 `{required_phrase}`를 입력하세요",
         type="password",
     )
 
@@ -1555,7 +1472,7 @@ def render_paper_execution() -> None:
         st.info("조건이 모두 충족되고 확인 문구가 일치해야 실행 버튼이 활성화됩니다.")
 
     execute_clicked = st.button(
-        "Execute Paper Actions",
+        "Paper 주문 실행",
         type="primary",
         disabled=not final_allowed,
     )
@@ -1573,21 +1490,21 @@ def render_paper_execution() -> None:
         )
 
         if result_df.empty:
-            st.warning(f"No paper actions were executed. History: {history_dir.relative_to(ROOT_DIR)}")
+            st.warning(f"실행된 paper 액션이 없습니다. 이력: {history_dir.relative_to(ROOT_DIR)}")
         else:
             st.success(
-                f"Paper actions submitted and checked. "
-                f"History: {history_dir.relative_to(ROOT_DIR)}"
+                f"Paper 액션을 제출하고 상태를 확인했습니다. "
+                f"이력: {history_dir.relative_to(ROOT_DIR)}"
             )
             st.dataframe(result_df, use_container_width=True)
 
 def render_execution_runs() -> None:
-    st.header("Execution Runs")
+    st.header("실행 이력")
 
     runs_dir = ROOT_DIR / "logs/execution_runs"
 
     if not runs_dir.exists():
-        st.info("No execution runs found yet.")
+        st.info("아직 실행 이력이 없습니다.")
         return
 
     run_dirs = sorted(
@@ -1596,11 +1513,11 @@ def render_execution_runs() -> None:
     )
 
     if not run_dirs:
-        st.info("No execution runs found yet.")
+        st.info("아직 실행 이력이 없습니다.")
         return
 
     selected_dir = st.selectbox(
-        "Select execution run",
+        "실행 이력 선택",
         run_dirs,
         format_func=lambda path: path.name,
     )
@@ -1611,44 +1528,44 @@ def render_execution_runs() -> None:
     exit_path = selected_dir / "exit_candidates.csv"
     buy_path = selected_dir / "buy_candidates.csv"
 
-    st.subheader("Run Context")
+    st.subheader("실행 컨텍스트")
     if context_path.exists():
         st.json(json.loads(context_path.read_text(encoding="utf-8")))
     else:
-        st.info("No run_context.json found.")
+        st.info("run_context.json 파일이 없습니다.")
 
-    st.subheader("Account Before")
+    st.subheader("실행 전 계좌")
     if account_path.exists():
         st.json(json.loads(account_path.read_text(encoding="utf-8")))
     else:
-        st.info("No account_before.json found.")
+        st.info("account_before.json 파일이 없습니다.")
 
-    st.subheader("Execution Result")
+    st.subheader("실행 결과")
     if result_path.exists():
         result_df = pd.read_csv(result_path)
         if result_df.empty:
-            st.info("No actions executed.")
+            st.info("실행된 액션이 없습니다.")
         else:
             st.dataframe(result_df, use_container_width=True)
     else:
-        st.info("No execution_result.csv found.")
+        st.info("execution_result.csv 파일이 없습니다.")
 
-    st.subheader("Exit Candidates")
+    st.subheader("청산 후보")
     if exit_path.exists():
         exit_df = pd.read_csv(exit_path)
         st.dataframe(exit_df, use_container_width=True)
     else:
-        st.info("No exit_candidates.csv found.")
+        st.info("exit_candidates.csv 파일이 없습니다.")
 
-    st.subheader("Buy Candidates")
+    st.subheader("매수 후보")
     if buy_path.exists():
         buy_df = pd.read_csv(buy_path)
         st.dataframe(buy_df, use_container_width=True)
     else:
-        st.info("No buy_candidates.csv found.")
+        st.info("buy_candidates.csv 파일이 없습니다.")
 
 def render_execution_lock() -> None:
-    st.header("Execution Lock")
+    st.header("실행 잠금")
 
     lock = load_execution_lock()
     required_phrase = get_required_phrase()
@@ -1656,41 +1573,41 @@ def render_execution_lock() -> None:
     enabled = bool(lock.get("cms_execution_enabled", False))
 
     if enabled:
-        st.success("CMS paper execution is currently ENABLED.")
+        st.success("현재 CMS paper 실행이 활성화되어 있습니다.")
     else:
-        st.warning("CMS paper execution is currently LOCKED.")
+        st.warning("현재 CMS paper 실행이 잠겨 있습니다.")
 
     st.write("이 잠금은 나중에 CMS에서 paper 주문/청산 버튼을 만들 때 사용할 안전장치입니다.")
     st.write("현재 단계에서는 잠금 상태만 관리하고, 실제 주문 버튼은 아직 추가하지 않습니다.")
 
     c1, c2 = st.columns(2)
-    c1.metric("cms_execution_enabled", str(enabled))
-    c2.metric("last_updated", str(lock.get("last_updated")))
+    c1.metric("CMS 실행 활성화", str(enabled))
+    c2.metric("마지막 수정", str(lock.get("last_updated")))
 
     st.divider()
 
-    st.subheader("Unlock CMS Execution")
+    st.subheader("CMS 실행 잠금 해제")
 
     st.info(
         f"잠금을 해제하려면 아래 문구를 정확히 입력하세요: `{required_phrase}`"
     )
 
-    phrase = st.text_input("Confirmation phrase", type="password")
+    phrase = st.text_input("확인 문구", type="password")
 
-    if st.button("Enable CMS Paper Execution"):
+    if st.button("CMS Paper 실행 활성화"):
         if phrase == required_phrase:
             save_execution_lock(True)
-            st.success("CMS paper execution enabled. Refresh page to confirm.")
+            st.success("CMS paper 실행을 활성화했습니다. 페이지를 새로고침해서 확인하세요.")
         else:
-            st.error("Confirmation phrase does not match.")
+            st.error("확인 문구가 일치하지 않습니다.")
 
     st.divider()
 
-    st.subheader("Lock CMS Execution")
+    st.subheader("CMS 실행 잠금")
 
-    if st.button("Disable CMS Paper Execution"):
+    if st.button("CMS Paper 실행 비활성화"):
         save_execution_lock(False)
-        st.success("CMS paper execution disabled. Refresh page to confirm.")
+        st.success("CMS paper 실행을 비활성화했습니다. 페이지를 새로고침해서 확인하세요.")
 
 
 SCHEDULER_CONFIG_PATH = ROOT_DIR / "config/scheduler_config.json"
@@ -1738,7 +1655,7 @@ def get_recent_bot_run_logs(limit: int = 10) -> list[Path]:
 
 
 def render_scheduler() -> None:
-    st.header("Scheduler")
+    st.header("스케줄러")
 
     st.warning(
         "자동 execute는 실제 Alpaca paper 주문/청산을 실행합니다. "
@@ -1747,18 +1664,18 @@ def render_scheduler() -> None:
 
     config = load_scheduler_config()
 
-    st.subheader("Scheduler Config")
+    st.subheader("스케줄러 설정")
 
-    enabled = st.checkbox("Enabled in config", value=bool(config.get("enabled", False)))
+    enabled = st.checkbox("설정에서 활성화", value=bool(config.get("enabled", False)))
 
     mode = st.selectbox(
-        "Mode",
+        "실행 모드",
         ["dry-run", "execute"],
         index=0 if config.get("mode", "dry-run") == "dry-run" else 1,
     )
 
     timezone = st.text_input(
-        "Timezone",
+        "타임존",
         value=str(config.get("timezone", "America/New_York")),
     )
 
@@ -1770,19 +1687,19 @@ def render_scheduler() -> None:
     default_time_2 = current_times[1] if len(current_times) > 1 else "Mon..Fri 15:30:00"
 
     on_calendar_1 = st.text_input(
-        "Run time 1",
+        "실행 시간 1",
         value=default_time_1,
-        help="Example: Mon..Fri 10:00:00, New York market time assumption",
+        help="예: Mon..Fri 10:00:00, 뉴욕 시장 시간 기준 가정",
     )
 
     on_calendar_2 = st.text_input(
-        "Run time 2",
+        "실행 시간 2",
         value=default_time_2,
-        help="Example: Mon..Fri 15:30:00",
+        help="예: Mon..Fri 15:30:00",
     )
 
     schedule_note = st.text_area(
-        "Schedule Note",
+        "스케줄 메모",
         value=str(config.get("schedule_note", "")),
     )
 
@@ -1792,7 +1709,7 @@ def render_scheduler() -> None:
         "실행 시 봇의 market_clock guard에 의존하세요. 지금 봇은 시장이 닫혀 있으면 execute도 차단합니다."
     )
 
-    if st.button("Save Scheduler Config"):
+    if st.button("스케줄러 설정 저장"):
         times = [
             item.strip()
             for item in [on_calendar_1, on_calendar_2]
@@ -1809,11 +1726,11 @@ def render_scheduler() -> None:
             "timer_name": "trading-bot.timer",
         }
         save_scheduler_config(new_config)
-        st.success("Scheduler config saved.")
+        st.success("스케줄러 설정을 저장했습니다.")
 
     st.divider()
 
-    st.subheader("Apply systemd Timer")
+    st.subheader("systemd Timer 적용")
 
     st.write(
         "아래 버튼은 config/scheduler_config.json 기준으로 user-level systemd timer 파일을 생성/갱신합니다."
@@ -1821,7 +1738,7 @@ def render_scheduler() -> None:
 
     col_apply, col_enable, col_disable = st.columns(3)
 
-    if col_apply.button("Apply Timer Files", type="primary"):
+    if col_apply.button("Timer 파일 적용", type="primary"):
         proc = subprocess.run(
             [str(ROOT_DIR / "scripts/install_user_timer.sh")],
             cwd=str(ROOT_DIR),
@@ -1830,13 +1747,13 @@ def render_scheduler() -> None:
             timeout=60,
         )
         if proc.returncode == 0:
-            st.success("Timer files applied.")
+            st.success("Timer 파일을 적용했습니다.")
             st.code(proc.stdout, language="text")
         else:
-            st.error("Failed to apply timer files.")
+            st.error("Timer 파일 적용에 실패했습니다.")
             st.code(proc.stderr, language="text")
 
-    if col_enable.button("Enable Timer"):
+    if col_enable.button("Timer 활성화"):
         proc = subprocess.run(
             ["systemctl", "--user", "enable", "--now", "trading-bot.timer"],
             cwd=str(ROOT_DIR),
@@ -1845,13 +1762,13 @@ def render_scheduler() -> None:
             timeout=60,
         )
         if proc.returncode == 0:
-            st.success("Timer enabled.")
+            st.success("Timer를 활성화했습니다.")
             st.code(proc.stdout or "enabled", language="text")
         else:
-            st.error("Failed to enable timer.")
+            st.error("Timer 활성화에 실패했습니다.")
             st.code(proc.stderr, language="text")
 
-    if col_disable.button("Disable Timer"):
+    if col_disable.button("Timer 비활성화"):
         proc = subprocess.run(
             ["systemctl", "--user", "disable", "--now", "trading-bot.timer"],
             cwd=str(ROOT_DIR),
@@ -1860,17 +1777,17 @@ def render_scheduler() -> None:
             timeout=60,
         )
         if proc.returncode == 0:
-            st.success("Timer disabled.")
+            st.success("Timer를 비활성화했습니다.")
             st.code(proc.stdout or "disabled", language="text")
         else:
-            st.error("Failed to disable timer.")
+            st.error("Timer 비활성화에 실패했습니다.")
             st.code(proc.stderr, language="text")
 
     st.divider()
 
-    st.subheader("Timer Status")
+    st.subheader("Timer 상태")
 
-    if st.button("Refresh Timer Status"):
+    if st.button("Timer 상태 새로고침"):
         proc = subprocess.run(
             ["systemctl", "--user", "list-timers", "trading-bot.timer"],
             cwd=str(ROOT_DIR),
@@ -1891,11 +1808,11 @@ def render_scheduler() -> None:
 
     st.divider()
 
-    st.subheader("Manual Bot Run")
+    st.subheader("수동 봇 실행")
 
     col1, col2 = st.columns(2)
 
-    if col1.button("Run Dry-run Now"):
+    if col1.button("Dry-run 지금 실행"):
         proc = subprocess.run(
             [str(ROOT_DIR / "scripts/run_bot_once.sh"), "dry-run"],
             cwd=str(ROOT_DIR),
@@ -1904,29 +1821,29 @@ def render_scheduler() -> None:
             timeout=120,
         )
         if proc.returncode == 0:
-            st.success("Dry-run completed. Check recent logs below.")
+            st.success("Dry-run이 완료되었습니다. 아래 최근 로그를 확인하세요.")
         else:
-            st.error("Dry-run failed.")
+            st.error("Dry-run에 실패했습니다.")
             st.code(proc.stderr)
 
-    if col2.button("Run Execute Now"):
+    if col2.button("Execute 지금 실행"):
         st.error(
-            "Execute from Scheduler page is intentionally disabled. "
-            "Use Paper Execution page with lock + confirmation."
+            "스케줄러 화면에서 execute 실행은 의도적으로 비활성화되어 있습니다. "
+            "Paper 주문 실행 화면에서 잠금과 확인 문구를 거쳐 실행하세요."
         )
 
     st.divider()
 
-    st.subheader("Recent Bot Run Logs")
+    st.subheader("최근 봇 실행 로그")
 
     logs = get_recent_bot_run_logs(limit=10)
 
     if not logs:
-        st.info("No bot run logs found.")
+        st.info("봇 실행 로그가 없습니다.")
         return
 
     selected_log = st.selectbox(
-        "Select log",
+        "로그 선택",
         logs,
         format_func=lambda path: path.name,
     )
@@ -1934,44 +1851,44 @@ def render_scheduler() -> None:
     st.code(selected_log.read_text(encoding="utf-8")[-8000:], language="text")
 
 def render_telegram() -> None:
-    st.header("Telegram Alerts")
+    st.header("Telegram 알림")
 
     configured = telegram_is_configured()
     config = load_notification_config()
 
     if configured:
-        st.success("Telegram is configured.")
+        st.success("Telegram 설정이 완료되어 있습니다.")
     else:
         st.warning(
-            "Telegram is not fully configured. Check TELEGRAM_BOT_TOKEN, "
-            "TELEGRAM_CHAT_ID, TELEGRAM_ENABLED in .env and notification settings below."
+            "Telegram 설정이 완료되지 않았습니다. .env의 TELEGRAM_BOT_TOKEN, "
+            "TELEGRAM_CHAT_ID, TELEGRAM_ENABLED와 아래 알림 설정을 확인하세요."
         )
 
     st.write("Telegram 알림은 실행 요약, 주문 체결 확인, 청산, 주요 에러에 사용됩니다.")
 
-    st.subheader("Notification Settings")
+    st.subheader("알림 설정")
 
     telegram_enabled_value = st.checkbox(
-        "Telegram Enabled",
+        "Telegram 활성화",
         value=bool(config.get("telegram_enabled", True)),
     )
 
     notify_run_summary_value = st.checkbox(
-        "Run Summary Alerts",
+        "실행 요약 알림",
         value=bool(config.get("notify_run_summary", True)),
     )
 
     notify_orders_value = st.checkbox(
-        "Order Alerts",
+        "주문 알림",
         value=bool(config.get("notify_orders", True)),
     )
 
     notify_errors_value = st.checkbox(
-        "Error Alerts",
+        "에러 알림",
         value=bool(config.get("notify_errors", True)),
     )
 
-    if st.button("Save Notification Settings"):
+    if st.button("알림 설정 저장"):
         save_notification_config(
             {
                 "telegram_enabled": telegram_enabled_value,
@@ -1980,31 +1897,31 @@ def render_telegram() -> None:
                 "notify_errors": notify_errors_value,
             }
         )
-        st.success("Notification settings saved.")
+        st.success("알림 설정을 저장했습니다.")
 
     st.divider()
 
-    st.subheader("Test Message")
+    st.subheader("테스트 메시지")
 
     test_message = st.text_area(
-        "Test message",
-        value="Trading bot Telegram test from CMS.",
+        "테스트 메시지",
+        value="CMS에서 보내는 트레이딩 봇 Telegram 테스트입니다.",
     )
 
-    if st.button("Send Telegram Test Message"):
+    if st.button("Telegram 테스트 메시지 보내기"):
         try:
             ok = notify_info(
-                title="CMS Telegram Test",
+                title="CMS Telegram 테스트",
                 body=test_message,
             )
 
             if ok:
-                st.success("Telegram message sent.")
+                st.success("Telegram 메시지를 보냈습니다.")
             else:
-                st.error("Telegram message was not sent. Check configuration.")
+                st.error("Telegram 메시지를 보내지 못했습니다. 설정을 확인하세요.")
 
         except Exception as exc:
-            st.error(f"Telegram send failed: {exc}")
+            st.error(f"Telegram 전송 실패: {exc}")
 
 
 
@@ -2023,10 +1940,7 @@ def run_project_command(command: list[str], timeout: int = 600) -> tuple[int, st
 def validate_selected_ai_threshold(threshold: float) -> tuple[object, object, pd.DataFrame, pd.DataFrame]:
     settings = load_settings()
 
-    ticker_data = {}
-
-    for ticker in settings.tickers:
-        ticker_data[ticker] = load_price_data(ticker, period="2y")
+    ticker_data = load_price_data_batch(settings.tickers, period="2y")
 
     baseline_result, baseline_equity, _ = run_portfolio_backtest(
         ticker_data=ticker_data,
@@ -2074,7 +1988,7 @@ def apply_ai_threshold_to_strategy(threshold: float, enable_ai: bool = True) -> 
     return history_path
 
 def render_ai_model() -> None:
-    st.header("AI Model")
+    st.header("AI 모델")
 
     settings = load_settings()
 
@@ -2082,24 +1996,24 @@ def render_ai_model() -> None:
     metrics_path = ROOT_DIR / "logs/ml/ai_model_metrics.csv"
     threshold_path = ROOT_DIR / "logs/ai_threshold/threshold_results.csv"
 
-    st.subheader("Current AI Settings")
+    st.subheader("현재 AI 설정")
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("Use AI Score", str(getattr(settings, "use_ai_score", False)))
-    c2.metric("AI Threshold", getattr(settings, "ai_score_buy_threshold", None))
-    c3.metric("Model Exists", str(model_path.exists()))
+    c1.metric("AI 점수 사용", str(getattr(settings, "use_ai_score", False)))
+    c2.metric("AI 기준값", getattr(settings, "ai_score_buy_threshold", None))
+    c3.metric("모델 파일 존재", str(model_path.exists()))
 
     if model_path.exists():
-        st.caption(f"Model path: {model_path.relative_to(ROOT_DIR)}")
+        st.caption(f"모델 경로: {model_path.relative_to(ROOT_DIR)}")
     else:
-        st.warning("AI model file not found. Run `python -m src.train_ai_model` first.")
+        st.warning("AI 모델 파일이 없습니다. 먼저 `python -m src.train_ai_model`을 실행하세요.")
 
     st.divider()
 
-    st.subheader("Model Training Metrics")
+    st.subheader("모델 학습 지표")
 
     if not metrics_path.exists():
-        st.info("No AI model metrics found. Run `python -m src.train_ai_model`.")
+        st.info("AI 모델 학습 지표가 없습니다. `python -m src.train_ai_model`을 실행하세요.")
     else:
         metrics_df = pd.read_csv(metrics_path)
         st.dataframe(metrics_df, use_container_width=True)
@@ -2115,10 +2029,10 @@ def render_ai_model() -> None:
 
     st.divider()
 
-    st.subheader("AI Threshold Optimization")
+    st.subheader("AI 기준값 최적화")
 
     if not threshold_path.exists():
-        st.info("No threshold optimization results found. Run `python -m src.optimize_ai_threshold`.")
+        st.info("기준값 최적화 결과가 없습니다. `python -m src.optimize_ai_threshold`를 실행하세요.")
     else:
         threshold_df = pd.read_csv(threshold_path)
         st.dataframe(threshold_df, use_container_width=True)
@@ -2128,14 +2042,14 @@ def render_ai_model() -> None:
         if not ai_only.empty:
             ai_only["label"] = ai_only["ai_threshold"].astype(str)
 
-            st.subheader("Return / MDD by Threshold")
+            st.subheader("기준값별 수익률 / 최대 낙폭")
 
             chart_df = ai_only.set_index("label")[
                 ["total_return", "max_drawdown", "win_rate"]
             ]
             st.bar_chart(chart_df)
 
-            st.subheader("Risk Adjusted Score")
+            st.subheader("리스크 조정 점수")
 
             if "risk_adjusted_score" in ai_only.columns:
                 score_df = ai_only.set_index("label")[["risk_adjusted_score"]]
@@ -2147,7 +2061,7 @@ def render_ai_model() -> None:
             ).iloc[0]
 
             st.success(
-                "Best threshold by risk_adjusted_score: "
+                "리스크 조정 점수 기준 최적 threshold: "
                 f"{best_row['ai_threshold']} | "
                 f"return={best_row['total_return'] * 100:.2f}% | "
                 f"mdd={best_row['max_drawdown'] * 100:.2f}% | "
@@ -2161,7 +2075,7 @@ def render_ai_model() -> None:
 
             st.divider()
 
-            st.subheader("Apply Threshold to Strategy")
+            st.subheader("전략에 기준값 적용")
 
             threshold_options = sorted(
                 ai_only["ai_threshold"].dropna().astype(float).unique().tolist()
@@ -2172,13 +2086,13 @@ def render_ai_model() -> None:
                 default_index = threshold_options.index(0.45)
 
             selected_threshold = st.selectbox(
-                "Select AI threshold",
+                "AI 기준값 선택",
                 threshold_options,
                 index=default_index,
             )
 
             enable_ai_filter = st.checkbox(
-                "Enable AI score filter in strategy",
+                "전략에서 AI 점수 필터 사용",
                 value=True,
             )
 
@@ -2187,19 +2101,19 @@ def render_ai_model() -> None:
                 "config/strategy_config.json의 AI 설정만 변경합니다."
             )
 
-            if st.button("Apply Selected AI Threshold", type="primary"):
+            if st.button("선택한 AI 기준값 적용", type="primary"):
                 history_path = apply_ai_threshold_to_strategy(
                     threshold=float(selected_threshold),
                     enable_ai=bool(enable_ai_filter),
                 )
 
                 st.success(
-                    f"Applied AI threshold={selected_threshold}. "
-                    f"History: {history_path.relative_to(ROOT_DIR)}"
+                    f"AI 기준값={selected_threshold}을 적용했습니다. "
+                    f"이력: {history_path.relative_to(ROOT_DIR)}"
                 )
 
-            if st.button("Validate Selected Threshold"):
-                with st.spinner("Running baseline vs AI-filtered validation..."):
+            if st.button("선택한 기준값 검증"):
+                with st.spinner("Baseline과 AI 필터 전략을 비교 검증하는 중입니다..."):
                     try:
                         baseline_result, ai_result, baseline_equity, ai_equity = (
                             validate_selected_ai_threshold(float(selected_threshold))
@@ -2230,7 +2144,7 @@ def render_ai_model() -> None:
                             ]
                         )
 
-                        st.subheader("Validation Result")
+                        st.subheader("검증 결과")
                         st.dataframe(comparison_df, use_container_width=True)
 
                         chart_df = pd.DataFrame(
@@ -2242,15 +2156,15 @@ def render_ai_model() -> None:
                             }
                         ).set_index("date")
 
-                        st.subheader("Validation Equity Curve")
+                        st.subheader("검증 자산 곡선")
                         st.line_chart(chart_df)
 
                     except Exception as exc:
-                        st.error(f"Validation failed: {exc}")
+                        st.error(f"검증 실패: {exc}")
 
     st.divider()
 
-    st.subheader("Run AI Jobs from CMS")
+    st.subheader("CMS에서 AI 작업 실행")
 
     st.warning(
         "이 작업들은 주문을 실행하지 않습니다. 다만 데이터 다운로드와 백테스트 때문에 시간이 걸릴 수 있습니다."
@@ -2258,8 +2172,8 @@ def render_ai_model() -> None:
 
     col1, col2, col3 = st.columns(3)
 
-    if col1.button("Train AI Model", type="primary"):
-        with st.spinner("Training AI model..."):
+    if col1.button("AI 모델 학습", type="primary"):
+        with st.spinner("AI 모델을 학습하는 중입니다..."):
             try:
                 code, stdout, stderr = run_project_command(
                     [str(ROOT_DIR / ".venv/bin/python"), "-m", "src.train_ai_model"],
@@ -2267,9 +2181,9 @@ def render_ai_model() -> None:
                 )
 
                 if code == 0:
-                    st.success("AI model training completed.")
+                    st.success("AI 모델 학습이 완료되었습니다.")
                 else:
-                    st.error("AI model training failed.")
+                    st.error("AI 모델 학습에 실패했습니다.")
 
                 if stdout:
                     st.subheader("stdout")
@@ -2280,10 +2194,10 @@ def render_ai_model() -> None:
                     st.code(stderr[-12000:], language="text")
 
             except Exception as exc:
-                st.error(f"AI model training failed: {exc}")
+                st.error(f"AI 모델 학습 실패: {exc}")
 
-    if col2.button("Optimize AI Threshold"):
-        with st.spinner("Optimizing AI threshold..."):
+    if col2.button("AI 기준값 최적화"):
+        with st.spinner("AI 기준값을 최적화하는 중입니다..."):
             try:
                 code, stdout, stderr = run_project_command(
                     [str(ROOT_DIR / ".venv/bin/python"), "-m", "src.optimize_ai_threshold"],
@@ -2291,9 +2205,9 @@ def render_ai_model() -> None:
                 )
 
                 if code == 0:
-                    st.success("AI threshold optimization completed.")
+                    st.success("AI 기준값 최적화가 완료되었습니다.")
                 else:
-                    st.error("AI threshold optimization failed.")
+                    st.error("AI 기준값 최적화에 실패했습니다.")
 
                 if stdout:
                     st.subheader("stdout")
@@ -2304,10 +2218,10 @@ def render_ai_model() -> None:
                     st.code(stderr[-12000:], language="text")
 
             except Exception as exc:
-                st.error(f"AI threshold optimization failed: {exc}")
+                st.error(f"AI 기준값 최적화 실패: {exc}")
 
-    if col3.button("Check AI Scores"):
-        with st.spinner("Checking AI scores..."):
+    if col3.button("AI 점수 확인"):
+        with st.spinner("AI 점수를 확인하는 중입니다..."):
             try:
                 code, stdout, stderr = run_project_command(
                     [str(ROOT_DIR / ".venv/bin/python"), "-m", "src.check_ai_score"],
@@ -2315,9 +2229,9 @@ def render_ai_model() -> None:
                 )
 
                 if code == 0:
-                    st.success("AI score check completed.")
+                    st.success("AI 점수 확인이 완료되었습니다.")
                 else:
-                    st.error("AI score check failed.")
+                    st.error("AI 점수 확인에 실패했습니다.")
 
                 if stdout:
                     st.subheader("stdout")
@@ -2328,13 +2242,13 @@ def render_ai_model() -> None:
                     st.code(stderr[-12000:], language="text")
 
             except Exception as exc:
-                st.error(f"AI score check failed: {exc}")
+                st.error(f"AI 점수 확인 실패: {exc}")
 
     st.info("작업 완료 후 페이지를 새로고침하면 최신 metrics/threshold 결과가 반영됩니다.")
 
     st.divider()
 
-    st.subheader("Commands")
+    st.subheader("명령어")
 
     st.code(
         """python -m src.train_ai_model
@@ -2348,37 +2262,52 @@ def main() -> None:
     sidebar_settings_editor()
 
     page = st.sidebar.radio(
-        "Page",
-        ["Overview", "Logs", "Backtests", "Run Backtest", "Backtest History", "Backtest Compare", "Dry-run", "Config History", "Execution Lock", "Paper Execution", "Execution Runs", "Scheduler", "Telegram", "AI Model"],
+        "페이지",
+        [
+            "개요",
+            "로그",
+            "백테스트 결과",
+            "백테스트 실행",
+            "백테스트 이력",
+            "백테스트 비교",
+            "Dry-run 점검",
+            "설정 변경 이력",
+            "실행 잠금",
+            "Paper 주문 실행",
+            "실행 이력",
+            "스케줄러",
+            "Telegram",
+            "AI 모델",
+        ],
     )
 
-    if page == "Overview":
+    if page == "개요":
         render_overview()
-    elif page == "Logs":
+    elif page == "로그":
         render_logs()
-    elif page == "Backtests":
+    elif page == "백테스트 결과":
         render_backtest_outputs()
-    elif page == "Run Backtest":
+    elif page == "백테스트 실행":
         render_run_backtest()
-    elif page == "Backtest History":
+    elif page == "백테스트 이력":
         render_backtest_history()
-    elif page == "Backtest Compare":
+    elif page == "백테스트 비교":
         render_backtest_compare()
-    elif page == "Dry-run":
+    elif page == "Dry-run 점검":
         render_dry_run()
-    elif page == "Config History":
+    elif page == "설정 변경 이력":
         render_config_history()
-    elif page == "Execution Lock":
+    elif page == "실행 잠금":
         render_execution_lock()
-    elif page == "Paper Execution":
+    elif page == "Paper 주문 실행":
         render_paper_execution()
-    elif page == "Execution Runs":
+    elif page == "실행 이력":
         render_execution_runs()
-    elif page == "Scheduler":
+    elif page == "스케줄러":
         render_scheduler()
     elif page == "Telegram":
         render_telegram()
-    elif page == "AI Model":
+    elif page == "AI 모델":
         render_ai_model()
 
 

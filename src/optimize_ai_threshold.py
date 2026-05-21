@@ -3,7 +3,7 @@ from pathlib import Path
 import pandas as pd
 
 from src.settings import load_settings
-from src.data_loader import load_price_data
+from src.data_loader import load_price_data_batch
 from src.portfolio_backtester import run_portfolio_backtest
 
 
@@ -14,11 +14,8 @@ def pct(value: float) -> str:
 def main() -> None:
     settings = load_settings()
 
-    ticker_data = {}
-
-    for ticker in settings.tickers:
-        print(f"Loading {ticker}...")
-        ticker_data[ticker] = load_price_data(ticker, period="2y")
+    print(f"Loading {len(settings.tickers)} tickers...")
+    ticker_data = load_price_data_batch(settings.tickers, period="2y")
 
     thresholds = [0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70]
 

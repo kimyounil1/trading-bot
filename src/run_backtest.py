@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.config import TICKERS
-from src.data_loader import load_price_data
+from src.settings import load_settings
+from src.data_loader import load_price_data_batch
 from src.backtester import run_backtest
 
 
@@ -12,14 +12,17 @@ def pct(value: float) -> str:
 
 
 def main() -> None:
+    settings = load_settings()
     output_dir = Path("logs/backtests")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     results = []
+    print(f"Loading {len(settings.tickers)} tickers...")
+    ticker_data = load_price_data_batch(settings.tickers, period="2y")
 
-    for ticker in TICKERS:
+    for ticker in settings.tickers:
         try:
-            df = load_price_data(ticker, period="2y")
+            df = ticker_data[ticker]
             result, equity_df, trades_df = run_backtest(ticker, df)
 
             equity_path = output_dir / f"{ticker}_equity.csv"

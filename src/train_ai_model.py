@@ -1,18 +1,15 @@
 from pathlib import Path
 
 from src.settings import load_settings
-from src.data_loader import load_price_data
+from src.data_loader import load_price_data_batch
 from src.ml_model import train_ai_score_model
 
 
 def main() -> None:
     settings = load_settings()
 
-    training_data = {}
-
-    for ticker in settings.tickers:
-        print(f"Loading {ticker}...")
-        training_data[ticker] = load_price_data(ticker, period="5y")
+    print(f"Loading {len(settings.tickers)} tickers...")
+    training_data = load_price_data_batch(settings.tickers, period="5y")
 
     model, metrics_df = train_ai_score_model(
         training_data=training_data,

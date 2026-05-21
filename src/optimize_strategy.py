@@ -3,17 +3,15 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.config import TICKERS
-from src.data_loader import load_price_data
+from src.settings import load_settings
+from src.data_loader import load_price_data_batch
 from src.portfolio_backtester import run_portfolio_backtest
 
 
 def main() -> None:
-    ticker_data = {}
-
-    for ticker in TICKERS:
-        print(f"Loading {ticker}...")
-        ticker_data[ticker] = load_price_data(ticker, period="2y")
+    settings = load_settings()
+    print(f"Loading {len(settings.tickers)} tickers...")
+    ticker_data = load_price_data_batch(settings.tickers, period="2y")
 
     ma_fast_values = [10, 20, 30]
     ma_slow_values = [50, 100, 150, 200]

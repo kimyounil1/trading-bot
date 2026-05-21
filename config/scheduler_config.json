@@ -4,8 +4,8 @@
   "timezone": "America/New_York",
   "schedule_note": "Weekdays after US market open and before market close.",
   "on_calendar_times": [
-    "Mon..Fri 04:30:00",
-    "Mon..Fri 23:00:00"
+    "Mon..Fri 05:30:00",
+    "Mon..Fri 00:00:00"
   ],
   "service_name": "trading-bot.service",
   "timer_name": "trading-bot.timer"
