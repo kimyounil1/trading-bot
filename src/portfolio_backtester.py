@@ -28,6 +28,8 @@ def _prepare_ticker_frame(
     use_ai_score: bool = False,
     ai_score_buy_threshold: float = 0.55,
     ai_model_bundle=None,
+    ai_score_frame: pd.DataFrame | None = None,
+    relative_strength_lookback_days: int = 20,
 ) -> pd.DataFrame:
     raw_df = df.copy()
     df = add_indicators(df, ma_fast=ma_fast, ma_slow=ma_slow).copy()
@@ -35,25 +37,25 @@ def _prepare_ticker_frame(
 
     df["ticker"] = ticker
     df["ai_score"] = None
+    df["relative_return"] = df["close"].pct_change(relative_strength_lookback_days)
+    df["volatility_20d"] = df["close"].pct_change().rolling(20).std()
 
-    if use_ai_score:
+    if use_ai_score and ai_score_frame is not None:
+        score_df = ai_score_frame[["date", "ai_score"]].copy()
+        score_df["date"] = pd.to_datetime(score_df["date"])
+        df["date"] = pd.to_datetime(df["date"])
+        df = df.merge(score_df, on="date", how="left", suffixes=("", "_model"))
+        if "ai_score_model" in df.columns:
+            df["ai_score"] = df["ai_score_model"]
+            df = df.drop(columns=["ai_score_model"])
+    elif use_ai_score:
         try:
             if ai_model_bundle is None:
                 raise ValueError("AI score model was not loaded")
-            feature_df = build_features(
-                raw_df,
-                prediction_horizon=ai_model_bundle.prediction_horizon,
-                target_return_threshold=ai_model_bundle.target_return_threshold,
-            )
-
-            feature_df["ai_score"] = ai_model_bundle.predict_proba(raw_df).values
-
-            score_df = feature_df[["date", "ai_score"]].copy()
+            score_df = build_ai_score_frame(raw_df, ai_model_bundle)
             score_df["date"] = pd.to_datetime(score_df["date"])
-
             df["date"] = pd.to_datetime(df["date"])
             df = df.merge(score_df, on="date", how="left", suffixes=("", "_model"))
-
             if "ai_score_model" in df.columns:
                 df["ai_score"] = df["ai_score_model"]
                 df = df.drop(columns=["ai_score_model"])
@@ -83,10 +85,36 @@ def _prepare_ticker_frame(
             "ma_slow",
             "rsi",
             "ai_score",
+            "relative_return",
+            "volatility_20d",
             "buy_signal",
             "sell_signal",
         ]
     ]
+
+
+def build_ai_score_frame(df: pd.DataFrame, ai_model_bundle) -> pd.DataFrame:
+    feature_df = build_features(
+        df,
+        prediction_horizon=ai_model_bundle.prediction_horizon,
+        target_return_threshold=ai_model_bundle.target_return_threshold,
+    )
+    score_df = feature_df[["date"]].copy()
+    score_df["ai_score"] = ai_model_bundle.predict_proba(df).values
+    return score_df[["date", "ai_score"]]
+
+
+def build_ai_score_frames(
+    ticker_data: dict[str, pd.DataFrame],
+    ai_model_bundle=None,
+) -> dict[str, pd.DataFrame]:
+    if ai_model_bundle is None:
+        ai_model_bundle = load_ai_score_model()
+
+    score_frames = {}
+    for ticker, df in ticker_data.items():
+        score_frames[ticker] = build_ai_score_frame(df, ai_model_bundle)
+    return score_frames
 
 
 def _apply_market_regime_filter(
@@ -105,9 +133,49 @@ def _apply_market_regime_filter(
     filtered_df["buy_signal"] = filtered_df["buy_signal"] & filtered_df["market_regime_bullish"]
     return filtered_df
 
+
+def _build_benchmark_relative_return_frame(
+    benchmark_df: pd.DataFrame,
+    lookback_days: int,
+) -> pd.DataFrame:
+    if benchmark_df.empty:
+        raise ValueError("No benchmark price data available for relative strength filter")
+    if "date" not in benchmark_df.columns or "close" not in benchmark_df.columns:
+        raise ValueError("Benchmark data must contain date and close columns")
+
+    frame = benchmark_df[["date", "close"]].copy()
+    frame["date"] = pd.to_datetime(frame["date"])
+    frame = frame.sort_values("date").reset_index(drop=True)
+    frame["benchmark_relative_return"] = frame["close"].pct_change(lookback_days)
+    return frame[["date", "benchmark_relative_return"]]
+
+
+def _apply_relative_strength_filter(
+    market_df: pd.DataFrame,
+    benchmark_df: pd.DataFrame,
+    lookback_days: int,
+    min_excess_return: float,
+) -> pd.DataFrame:
+    benchmark_returns = _build_benchmark_relative_return_frame(
+        benchmark_df,
+        lookback_days=lookback_days,
+    )
+    filtered_df = market_df.merge(benchmark_returns, on="date", how="left")
+    filtered_df["relative_strength_excess_return"] = (
+        pd.to_numeric(filtered_df["relative_return"], errors="coerce")
+        - pd.to_numeric(filtered_df["benchmark_relative_return"], errors="coerce")
+    )
+    filtered_df["relative_strength_pass"] = (
+        filtered_df["relative_strength_excess_return"] >= min_excess_return
+    )
+    filtered_df["buy_signal"] = filtered_df["buy_signal"] & filtered_df["relative_strength_pass"]
+    return filtered_df
+
+
 def run_portfolio_backtest(
     ticker_data: dict[str, pd.DataFrame],
     benchmark_df: pd.DataFrame | None = None,
+    relative_strength_benchmark_df: pd.DataFrame | None = None,
     initial_cash: float = 10000.0,
     max_positions: int = 3,
     target_position_pct: float = 0.30,
@@ -120,7 +188,27 @@ def run_portfolio_backtest(
     market_regime_filter_enabled: bool = False,
     market_regime_ma_fast: int = 50,
     market_regime_ma_slow: int = 200,
+    stop_loss_pct: float = 0.0,
+    take_profit_pct: float = 0.0,
+    trailing_stop_pct: float = 0.0,
+    rank_trend_weight: float = 1.0,
+    rank_ai_weight: float = 0.0,
+    rank_momentum_weight: float = 0.0,
+    rank_volatility_weight: float = 0.0,
+    relative_strength_filter_enabled: bool = False,
+    relative_strength_lookback_days: int = 20,
+    relative_strength_min_excess_return: float = 0.0,
+    ai_score_frames: dict[str, pd.DataFrame] | None = None,
 ) -> tuple[PortfolioBacktestResult, pd.DataFrame, pd.DataFrame]:
+    if relative_strength_lookback_days <= 0:
+        raise ValueError("relative_strength_lookback_days must be positive")
+    if not 0 <= stop_loss_pct < 1:
+        raise ValueError("stop_loss_pct must be between 0 and 1")
+    if take_profit_pct < 0:
+        raise ValueError("take_profit_pct must be non-negative")
+    if not 0 <= trailing_stop_pct < 1:
+        raise ValueError("trailing_stop_pct must be between 0 and 1")
+
     ai_model_bundle = None
     if use_ai_score:
         try:
@@ -138,6 +226,8 @@ def run_portfolio_backtest(
             use_ai_score=use_ai_score,
             ai_score_buy_threshold=ai_score_buy_threshold,
             ai_model_bundle=ai_model_bundle,
+            ai_score_frame=ai_score_frames.get(ticker) if ai_score_frames else None,
+            relative_strength_lookback_days=relative_strength_lookback_days,
         )
         for ticker, df in ticker_data.items()
     ]
@@ -153,6 +243,21 @@ def run_portfolio_backtest(
             benchmark_df,
             market_regime_ma_fast=market_regime_ma_fast,
             market_regime_ma_slow=market_regime_ma_slow,
+        )
+    if relative_strength_filter_enabled:
+        benchmark_for_relative_strength = relative_strength_benchmark_df
+        if benchmark_for_relative_strength is None:
+            benchmark_for_relative_strength = benchmark_df
+        if benchmark_for_relative_strength is None:
+            raise ValueError(
+                "relative_strength_benchmark_df is required when "
+                "relative_strength_filter_enabled=True"
+            )
+        market_df = _apply_relative_strength_filter(
+            market_df,
+            benchmark_for_relative_strength,
+            lookback_days=relative_strength_lookback_days,
+            min_excess_return=relative_strength_min_excess_return,
         )
 
     all_dates = sorted(market_df["date"].unique())
@@ -178,8 +283,26 @@ def run_portfolio_backtest(
 
             row = ticker_row.iloc[0]
             close = float(row["close"])
+            position = positions[ticker]
+            position["highest_price"] = max(
+                float(position.get("highest_price", position["entry_price"])),
+                close,
+            )
 
-            if bool(row["sell_signal"]):
+            exit_reason = None
+            gross_return_pct = (close / float(position["entry_price"])) - 1.0
+            drawdown_from_high = (close / float(position["highest_price"])) - 1.0
+
+            if stop_loss_pct > 0 and gross_return_pct <= -stop_loss_pct:
+                exit_reason = "STOP_LOSS"
+            elif take_profit_pct > 0 and gross_return_pct >= take_profit_pct:
+                exit_reason = "TAKE_PROFIT"
+            elif trailing_stop_pct > 0 and drawdown_from_high <= -trailing_stop_pct:
+                exit_reason = "TRAILING_STOP"
+            elif bool(row["sell_signal"]):
+                exit_reason = "SELL_SIGNAL"
+
+            if exit_reason is not None:
                 position = positions.pop(ticker)
                 qty = position["qty"]
                 entry_price = position["entry_price"]
@@ -203,7 +326,7 @@ def run_portfolio_backtest(
                         "cost_basis": position["cost_basis"],
                         "exit_value": net_value,
                         "return_pct": return_pct,
-                        "exit_reason": "SELL_SIGNAL",
+                        "exit_reason": exit_reason,
                     }
                 )
 
@@ -224,10 +347,28 @@ def run_portfolio_backtest(
             buy_candidates["trend_strength"] = (
                 buy_candidates["ma_fast"] / buy_candidates["ma_slow"]
             )
+            buy_candidates["rank_ai_score"] = pd.to_numeric(
+                buy_candidates["ai_score"],
+                errors="coerce",
+            ).fillna(0.0)
+            buy_candidates["rank_momentum"] = pd.to_numeric(
+                buy_candidates["relative_return"],
+                errors="coerce",
+            ).fillna(0.0)
+            buy_candidates["rank_volatility"] = pd.to_numeric(
+                buy_candidates["volatility_20d"],
+                errors="coerce",
+            ).fillna(0.0)
+            buy_candidates["rank_score"] = (
+                rank_trend_weight * (buy_candidates["trend_strength"] - 1.0)
+                + rank_ai_weight * buy_candidates["rank_ai_score"]
+                + rank_momentum_weight * buy_candidates["rank_momentum"]
+                - rank_volatility_weight * buy_candidates["rank_volatility"]
+            )
 
             buy_candidates = buy_candidates.sort_values(
-                ["trend_strength", "rsi"],
-                ascending=[False, True],
+                ["rank_score", "trend_strength", "rsi"],
+                ascending=[False, False, True],
             )
 
             for _, row in buy_candidates.head(slots_left).iterrows():
@@ -258,6 +399,7 @@ def run_portfolio_backtest(
                     "entry_date": current_date,
                     "cost_basis": available_value,
                     "last_price": close,
+                    "highest_price": close,
                 }
 
         for ticker, pos in positions.items():

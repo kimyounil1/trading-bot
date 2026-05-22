@@ -21,9 +21,13 @@ ON_CALENDAR_LINES="$("$PROJECT_DIR/.venv/bin/python" - <<PY
 import json
 from pathlib import Path
 config = json.loads(Path("$CONFIG_FILE").read_text())
+timezone = str(config.get("timezone", "")).strip()
 times = config.get("on_calendar_times") or [config.get("systemd_on_calendar", "Mon..Fri 10:00:00")]
 for item in times:
-    print(f"OnCalendar={item}")
+    value = str(item).strip()
+    if timezone and "/" not in value:
+        value = f"{value} {timezone}"
+    print(f"OnCalendar={value}")
 PY
 )"
 

@@ -15,7 +15,17 @@ def main() -> None:
     settings = load_settings()
 
     print(f"Loading {len(settings.tickers)} tickers...")
-    ticker_data = load_price_data_batch(settings.tickers, period="2y")
+    tickers_to_load = list(settings.tickers)
+    if settings.relative_strength_filter_enabled:
+        tickers_to_load.append(settings.relative_strength_benchmark_ticker)
+    tickers_to_load = list(dict.fromkeys(tickers_to_load))
+    loaded_data = load_price_data_batch(tickers_to_load, period="2y")
+    ticker_data = {ticker: loaded_data[ticker] for ticker in settings.tickers}
+    relative_strength_benchmark_df = (
+        loaded_data[settings.relative_strength_benchmark_ticker]
+        if settings.relative_strength_filter_enabled
+        else None
+    )
 
     thresholds = [0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70]
 
@@ -24,6 +34,7 @@ def main() -> None:
     print("Running baseline...")
     baseline_result, _, _ = run_portfolio_backtest(
         ticker_data=ticker_data,
+        relative_strength_benchmark_df=relative_strength_benchmark_df,
         initial_cash=10000.0,
         max_positions=settings.max_total_positions,
         target_position_pct=settings.max_position_pct,
@@ -33,6 +44,9 @@ def main() -> None:
         rsi_buy_limit=settings.rsi_buy_limit,
         use_ai_score=False,
         ai_score_buy_threshold=settings.ai_score_buy_threshold,
+        relative_strength_filter_enabled=settings.relative_strength_filter_enabled,
+        relative_strength_lookback_days=settings.relative_strength_lookback_days,
+        relative_strength_min_excess_return=settings.relative_strength_min_excess_return,
     )
 
     rows.append(
@@ -55,6 +69,7 @@ def main() -> None:
 
         result, _, _ = run_portfolio_backtest(
             ticker_data=ticker_data,
+            relative_strength_benchmark_df=relative_strength_benchmark_df,
             initial_cash=10000.0,
             max_positions=settings.max_total_positions,
             target_position_pct=settings.max_position_pct,
@@ -64,6 +79,9 @@ def main() -> None:
             rsi_buy_limit=settings.rsi_buy_limit,
             use_ai_score=True,
             ai_score_buy_threshold=threshold,
+            relative_strength_filter_enabled=settings.relative_strength_filter_enabled,
+            relative_strength_lookback_days=settings.relative_strength_lookback_days,
+            relative_strength_min_excess_return=settings.relative_strength_min_excess_return,
         )
 
         rows.append(

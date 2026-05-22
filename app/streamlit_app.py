@@ -9,7 +9,7 @@ import streamlit as st
 
 # app/에서 실행해도 src import 되게 프로젝트 루트 추가
 ROOT_DIR = Path(__file__).resolve().parents[1]
-sys.path.append(str(ROOT_DIR))
+sys.path.insert(0, str(ROOT_DIR))
 
 from src.alpaca_client import (
     get_account_summary,
@@ -225,6 +225,33 @@ def sidebar_settings_editor() -> None:
         step=0.01,
     )
 
+    relative_strength_filter_enabled = st.sidebar.checkbox(
+        "상대강도 필터 사용",
+        value=bool(getattr(settings, "relative_strength_filter_enabled", False)),
+        help="종목 최근 수익률이 벤치마크 최근 수익률 이상일 때만 매수 후보로 남깁니다.",
+    )
+
+    relative_strength_benchmark_ticker = st.sidebar.text_input(
+        "상대강도 벤치마크",
+        value=str(getattr(settings, "relative_strength_benchmark_ticker", "SPY")),
+    )
+
+    relative_strength_lookback_days = st.sidebar.number_input(
+        "상대강도 기간(일)",
+        min_value=1,
+        max_value=252,
+        value=int(getattr(settings, "relative_strength_lookback_days", 20)),
+        step=1,
+    )
+
+    relative_strength_min_excess_return = st.sidebar.number_input(
+        "최소 초과수익률",
+        min_value=-1.0,
+        max_value=1.0,
+        value=float(getattr(settings, "relative_strength_min_excess_return", 0.0)),
+        step=0.01,
+    )
+
     st.sidebar.warning(
         "이 화면은 설정 파일만 수정합니다. 주문 실행은 Paper 실행 화면에서 별도 확인 후 진행하세요."
     )
@@ -244,7 +271,15 @@ def sidebar_settings_editor() -> None:
             st.sidebar.error("최소 1개 이상의 티커가 필요합니다.")
             return
 
-        data = {
+        config_path = ROOT_DIR / CONFIG_PATH
+
+        if config_path.exists():
+            old_data = json.loads(config_path.read_text(encoding="utf-8"))
+        else:
+            old_data = {}
+
+        data = dict(old_data)
+        data.update({
             "tickers": tickers,
             "ma_fast": int(ma_fast),
             "ma_slow": int(ma_slow),
@@ -259,14 +294,11 @@ def sidebar_settings_editor() -> None:
             "buy_cooldown_days": int(buy_cooldown_days),
             "use_ai_score": bool(use_ai_score),
             "ai_score_buy_threshold": float(ai_score_buy_threshold),
-        }
-
-        config_path = ROOT_DIR / CONFIG_PATH
-
-        if config_path.exists():
-            old_data = json.loads(config_path.read_text(encoding="utf-8"))
-        else:
-            old_data = {}
+            "relative_strength_filter_enabled": bool(relative_strength_filter_enabled),
+            "relative_strength_benchmark_ticker": relative_strength_benchmark_ticker.strip().upper(),
+            "relative_strength_lookback_days": int(relative_strength_lookback_days),
+            "relative_strength_min_excess_return": float(relative_strength_min_excess_return),
+        })
 
         save_strategy_config(data)
         history_path = save_config_history(old_data, data)

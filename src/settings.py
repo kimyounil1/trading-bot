@@ -1,5 +1,5 @@
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, fields
 from pathlib import Path
 
 
@@ -32,6 +32,11 @@ class StrategySettings:
     market_regime_ma_fast: int
     market_regime_ma_slow: int
 
+    relative_strength_filter_enabled: bool = False
+    relative_strength_benchmark_ticker: str = "SPY"
+    relative_strength_lookback_days: int = 20
+    relative_strength_min_excess_return: float = 0.0
+
 
 DEFAULT_SETTINGS = StrategySettings(
     tickers=["NVDA", "MSFT", "GOOGL", "AMZN", "AMD"],
@@ -57,6 +62,11 @@ DEFAULT_SETTINGS = StrategySettings(
     market_regime_ticker="SPY",
     market_regime_ma_fast=50,
     market_regime_ma_slow=200,
+
+    relative_strength_filter_enabled=False,
+    relative_strength_benchmark_ticker="SPY",
+    relative_strength_lookback_days=20,
+    relative_strength_min_excess_return=0.0,
 )
 
 
@@ -106,9 +116,19 @@ def validate_settings(settings: StrategySettings) -> StrategySettings:
         raise ValueError("market_regime_ma_fast and market_regime_ma_slow must be positive")
     if settings.market_regime_ma_fast >= settings.market_regime_ma_slow:
         raise ValueError("market_regime_ma_fast must be smaller than market_regime_ma_slow")
+    if (
+        not isinstance(settings.relative_strength_benchmark_ticker, str)
+        or not settings.relative_strength_benchmark_ticker.strip()
+    ):
+        raise ValueError("relative_strength_benchmark_ticker must be a non-empty string")
+    if settings.relative_strength_lookback_days <= 0:
+        raise ValueError("relative_strength_lookback_days must be positive")
 
     settings.tickers = normalized_tickers
     settings.market_regime_ticker = settings.market_regime_ticker.strip().upper()
+    settings.relative_strength_benchmark_ticker = (
+        settings.relative_strength_benchmark_ticker.strip().upper()
+    )
     return settings
 
 
@@ -128,6 +148,8 @@ def load_settings() -> StrategySettings:
 
     merged = asdict(DEFAULT_SETTINGS)
     merged.update(raw)
+    valid_keys = {field.name for field in fields(StrategySettings)}
+    merged = {key: value for key, value in merged.items() if key in valid_keys}
 
     return validate_settings(StrategySettings(**merged))
 

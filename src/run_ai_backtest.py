@@ -19,7 +19,9 @@ def main() -> None:
     tickers_to_load = list(settings.tickers)
     if settings.market_regime_filter_enabled:
         tickers_to_load.append(settings.market_regime_ticker)
-        tickers_to_load = list(dict.fromkeys(tickers_to_load))
+    if settings.relative_strength_filter_enabled:
+        tickers_to_load.append(settings.relative_strength_benchmark_ticker)
+    tickers_to_load = list(dict.fromkeys(tickers_to_load))
     loaded_data = load_price_data_batch(tickers_to_load, period="2y")
     ticker_data = {ticker: loaded_data[ticker] for ticker in settings.tickers}
     benchmark_df = (
@@ -27,11 +29,17 @@ def main() -> None:
         if settings.market_regime_filter_enabled
         else None
     )
+    relative_strength_benchmark_df = (
+        loaded_data[settings.relative_strength_benchmark_ticker]
+        if settings.relative_strength_filter_enabled
+        else None
+    )
 
     print("Running baseline backtest...")
     baseline_result, baseline_equity, baseline_trades = run_portfolio_backtest(
         ticker_data=ticker_data,
         benchmark_df=benchmark_df,
+        relative_strength_benchmark_df=relative_strength_benchmark_df,
         initial_cash=10000.0,
         max_positions=settings.max_total_positions,
         target_position_pct=settings.max_position_pct,
@@ -44,12 +52,16 @@ def main() -> None:
         market_regime_filter_enabled=settings.market_regime_filter_enabled,
         market_regime_ma_fast=settings.market_regime_ma_fast,
         market_regime_ma_slow=settings.market_regime_ma_slow,
+        relative_strength_filter_enabled=settings.relative_strength_filter_enabled,
+        relative_strength_lookback_days=settings.relative_strength_lookback_days,
+        relative_strength_min_excess_return=settings.relative_strength_min_excess_return,
     )
 
     print("Running AI-filtered backtest...")
     ai_result, ai_equity, ai_trades = run_portfolio_backtest(
         ticker_data=ticker_data,
         benchmark_df=benchmark_df,
+        relative_strength_benchmark_df=relative_strength_benchmark_df,
         initial_cash=10000.0,
         max_positions=settings.max_total_positions,
         target_position_pct=settings.max_position_pct,
@@ -62,6 +74,9 @@ def main() -> None:
         market_regime_filter_enabled=settings.market_regime_filter_enabled,
         market_regime_ma_fast=settings.market_regime_ma_fast,
         market_regime_ma_slow=settings.market_regime_ma_slow,
+        relative_strength_filter_enabled=settings.relative_strength_filter_enabled,
+        relative_strength_lookback_days=settings.relative_strength_lookback_days,
+        relative_strength_min_excess_return=settings.relative_strength_min_excess_return,
     )
 
     output_dir = Path("logs/ai_backtest")

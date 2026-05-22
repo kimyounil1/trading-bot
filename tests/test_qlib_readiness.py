@@ -152,6 +152,165 @@ class QlibReadinessTest(unittest.TestCase):
         self.assertTrue(trades_df.empty)
         self.assertTrue((equity_df["positions_count"] == 0).all())
 
+    def test_run_portfolio_backtest_relative_strength_filter_blocks_underperformers(self) -> None:
+        rows = 100
+        dates = pd.date_range("2024-01-01", periods=rows)
+
+        def price_frame(close_values: np.ndarray) -> pd.DataFrame:
+            return pd.DataFrame(
+                {
+                    "date": dates,
+                    "open": close_values,
+                    "high": close_values + 1.0,
+                    "low": close_values - 1.0,
+                    "close": close_values,
+                    "adj_close": close_values,
+                    "volume": np.full(rows, 1000.0),
+                }
+            )
+
+        strong_df = price_frame(np.linspace(100.0, 150.0, rows))
+        weak_df = price_frame(np.linspace(100.0, 105.0, rows))
+        benchmark_df = price_frame(np.linspace(100.0, 120.0, rows))
+
+        _, equity_df, _ = run_portfolio_backtest(
+            ticker_data={"STRONG": strong_df, "WEAK": weak_df},
+            relative_strength_benchmark_df=benchmark_df,
+            initial_cash=10000.0,
+            max_positions=2,
+            target_position_pct=0.4,
+            transaction_cost_pct=0.001,
+            ma_fast=10,
+            ma_slow=50,
+            rsi_buy_limit=101,
+            relative_strength_filter_enabled=True,
+            relative_strength_lookback_days=20,
+            relative_strength_min_excess_return=0.0,
+        )
+
+        open_symbols = equity_df["open_symbols"].fillna("").tolist()
+        self.assertTrue(any("STRONG" in symbols for symbols in open_symbols))
+        self.assertFalse(any("WEAK" in symbols for symbols in open_symbols))
+        self.assertLessEqual(equity_df["positions_count"].max(), 1)
+
+    def test_run_portfolio_backtest_applies_stop_loss_exit(self) -> None:
+        rows = 80
+        close_values = np.concatenate(
+            [
+                np.linspace(100.0, 130.0, 60),
+                np.linspace(120.0, 90.0, 20),
+            ]
+        )
+        stock_df = pd.DataFrame(
+            {
+                "date": pd.date_range("2024-01-01", periods=rows),
+                "open": close_values,
+                "high": close_values + 1.0,
+                "low": close_values - 1.0,
+                "close": close_values,
+                "adj_close": close_values,
+                "volume": np.full(rows, 1000.0),
+            }
+        )
+
+        result, _, trades_df = run_portfolio_backtest(
+            ticker_data={"AAPL": stock_df},
+            initial_cash=10000.0,
+            max_positions=1,
+            target_position_pct=0.5,
+            transaction_cost_pct=0.0,
+            ma_fast=10,
+            ma_slow=50,
+            rsi_buy_limit=101,
+            stop_loss_pct=0.05,
+            take_profit_pct=0.0,
+            trailing_stop_pct=0.0,
+        )
+
+        self.assertGreaterEqual(result.trades, 1)
+        self.assertIn("STOP_LOSS", trades_df["exit_reason"].tolist())
+
+    def test_run_portfolio_backtest_applies_trailing_stop_exit(self) -> None:
+        rows = 90
+        close_values = np.concatenate(
+            [
+                np.linspace(100.0, 150.0, 70),
+                np.linspace(145.0, 120.0, 20),
+            ]
+        )
+        stock_df = pd.DataFrame(
+            {
+                "date": pd.date_range("2024-01-01", periods=rows),
+                "open": close_values,
+                "high": close_values + 1.0,
+                "low": close_values - 1.0,
+                "close": close_values,
+                "adj_close": close_values,
+                "volume": np.full(rows, 1000.0),
+            }
+        )
+
+        result, _, trades_df = run_portfolio_backtest(
+            ticker_data={"AAPL": stock_df},
+            initial_cash=10000.0,
+            max_positions=1,
+            target_position_pct=0.5,
+            transaction_cost_pct=0.0,
+            ma_fast=10,
+            ma_slow=50,
+            rsi_buy_limit=101,
+            stop_loss_pct=0.0,
+            take_profit_pct=0.0,
+            trailing_stop_pct=0.05,
+        )
+
+        self.assertGreaterEqual(result.trades, 1)
+        self.assertIn("TRAILING_STOP", trades_df["exit_reason"].tolist())
+
+    def test_run_portfolio_backtest_rank_ai_weight_prioritizes_higher_ai_score(self) -> None:
+        rows = 80
+        dates = pd.date_range("2024-01-01", periods=rows)
+        close_values = np.linspace(100.0, 140.0, rows)
+
+        def price_frame() -> pd.DataFrame:
+            return pd.DataFrame(
+                {
+                    "date": dates,
+                    "open": close_values,
+                    "high": close_values + 1.0,
+                    "low": close_values - 1.0,
+                    "close": close_values,
+                    "adj_close": close_values,
+                    "volume": np.full(rows, 1000.0),
+                }
+            )
+
+        score_dates = pd.DataFrame({"date": dates})
+        ai_score_frames = {
+            "LOW": score_dates.assign(ai_score=0.1),
+            "HIGH": score_dates.assign(ai_score=0.9),
+        }
+
+        _, equity_df, _ = run_portfolio_backtest(
+            ticker_data={"LOW": price_frame(), "HIGH": price_frame()},
+            initial_cash=10000.0,
+            max_positions=1,
+            target_position_pct=0.5,
+            transaction_cost_pct=0.0,
+            ma_fast=10,
+            ma_slow=50,
+            rsi_buy_limit=101,
+            use_ai_score=True,
+            ai_score_buy_threshold=0.0,
+            ai_score_frames=ai_score_frames,
+            rank_trend_weight=0.0,
+            rank_ai_weight=1.0,
+        )
+
+        open_symbols = equity_df["open_symbols"].fillna("").tolist()
+        self.assertTrue(any("HIGH" in symbols for symbols in open_symbols))
+        self.assertFalse(any("LOW" in symbols for symbols in open_symbols))
+
 
 if __name__ == "__main__":
     unittest.main()
