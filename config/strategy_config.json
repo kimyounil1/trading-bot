@@ -27,7 +27,7 @@
   "relative_strength_benchmark_ticker": "SPY",
   "relative_strength_lookback_days": 20,
   "relative_strength_min_excess_return": 0.0,
-  "volume_filter_enabled": false,
+  "volume_filter_enabled": true,
   "volume_lookback_days": 20,
   "min_volume_ratio": 1.0,
   "volatility_filter_enabled": false,
@@ -35,6 +35,6 @@
   "max_volatility": 0.04,
   "rank_trend_weight": 1.0,
   "rank_ai_weight": 0.0,
-  "rank_momentum_weight": 0.0,
-  "rank_volatility_weight": 0.0
+  "rank_momentum_weight": 0.5,
+  "rank_volatility_weight": 1.0
 }
