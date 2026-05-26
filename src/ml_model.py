@@ -4,7 +4,7 @@ from typing import List, Dict, Tuple
 
 import joblib
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
+from lightgbm import LGBMClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, roc_auc_score
 from sklearn.model_selection import TimeSeriesSplit
 
@@ -12,57 +12,108 @@ from src.features import FEATURE_COLUMNS, build_features
 
 MODEL_PATH = Path("models/ai_score_model.joblib")
 
+
 class BaseModel(ABC):
-    """모든 모델의 공통 인터페이스"""
     @abstractmethod
-    def predict_proba(self, df: pd.DataFrame) -> pd.Series:
+    def predict_proba(
+        self,
+        df: pd.DataFrame,
+        vix_df: pd.DataFrame | None = None,
+        spy_df: pd.DataFrame | None = None,
+        macro_df: pd.DataFrame | None = None,
+    ) -> pd.Series:
         pass
 
     @abstractmethod
-    def predict(self, df: pd.DataFrame) -> pd.Series:
+    def predict(
+        self,
+        df: pd.DataFrame,
+        vix_df: pd.DataFrame | None = None,
+        spy_df: pd.DataFrame | None = None,
+        macro_df: pd.DataFrame | None = None,
+    ) -> pd.Series:
         pass
+
 
 class SklearnModelWrapper(BaseModel):
-    """현재 Sklearn 모델을 위한 Wrapper"""
-    def __init__(self, model, feature_columns: List[str], prediction_horizon: int, target_return_threshold: float):
+    def __init__(
+        self,
+        model,
+        feature_columns: List[str],
+        prediction_horizon: int,
+        target_return_threshold: float,
+    ):
         self.model = model
         self.feature_columns = feature_columns
         self.prediction_horizon = prediction_horizon
         self.target_return_threshold = target_return_threshold
 
-    def _prepare_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """입력 DataFrame으로부터 피처를 생성합니다."""
+    def _prepare_features(
+        self,
+        df: pd.DataFrame,
+        vix_df: pd.DataFrame | None = None,
+        spy_df: pd.DataFrame | None = None,
+        macro_df: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
         return build_features(
-            df, 
-            prediction_horizon=self.prediction_horizon, 
-            target_return_threshold=self.target_return_threshold
+            df,
+            prediction_horizon=self.prediction_horizon,
+            target_return_threshold=self.target_return_threshold,
+            vix_df=vix_df,
+            spy_df=spy_df,
+            macro_df=macro_df,
         )
 
-    def predict_proba(self, df: pd.DataFrame) -> pd.Series:
-        feature_df = self._prepare_features(df)
-        X = feature_df[self.feature_columns]
+    def predict_proba(
+        self,
+        df: pd.DataFrame,
+        vix_df: pd.DataFrame | None = None,
+        spy_df: pd.DataFrame | None = None,
+        macro_df: pd.DataFrame | None = None,
+    ) -> pd.Series:
+        feature_df = self._prepare_features(df, vix_df=vix_df, spy_df=spy_df, macro_df=macro_df)
+        # Use only the columns the model was trained on (backward compatible with old models)
+        available_cols = [c for c in self.feature_columns if c in feature_df.columns]
+        X = feature_df[available_cols]
         proba = self.model.predict_proba(X)
         return pd.Series(proba[:, 1], index=feature_df.index)
 
-    def predict(self, df: pd.DataFrame) -> pd.Series:
-        feature_df = self._prepare_features(df)
-        X = feature_df[self.feature_columns]
+    def predict(
+        self,
+        df: pd.DataFrame,
+        vix_df: pd.DataFrame | None = None,
+        spy_df: pd.DataFrame | None = None,
+        macro_df: pd.DataFrame | None = None,
+    ) -> pd.Series:
+        feature_df = self._prepare_features(df, vix_df=vix_df, spy_df=spy_df, macro_df=macro_df)
+        available_cols = [c for c in self.feature_columns if c in feature_df.columns]
+        X = feature_df[available_cols]
         pred = self.model.predict(X)
         return pd.Series(pred, index=feature_df.index)
+
 
 def train_ai_score_model(
     training_data: Dict[str, pd.DataFrame],
     prediction_horizon: int = 5,
     target_return_threshold: float = 0.0,
+    vix_df: pd.DataFrame | None = None,
+    spy_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
 ) -> Tuple[BaseModel, pd.DataFrame]:
     frames = []
 
     for ticker, df in training_data.items():
-        feature_df = build_features(
-            df,
-            prediction_horizon=prediction_horizon,
-            target_return_threshold=target_return_threshold,
-        )
+        try:
+            feature_df = build_features(
+                df,
+                prediction_horizon=prediction_horizon,
+                target_return_threshold=target_return_threshold,
+                vix_df=vix_df,
+                spy_df=spy_df,
+                macro_df=macro_df,
+            )
+        except ValueError:
+            continue
         feature_df["ticker"] = ticker
         frames.append(feature_df)
 
@@ -72,13 +123,18 @@ def train_ai_score_model(
     X = dataset[FEATURE_COLUMNS]
     y = dataset["target"]
 
-    model = RandomForestClassifier(
-        n_estimators=300,
-        max_depth=5,
-        min_samples_leaf=20,
+    model = LGBMClassifier(
+        n_estimators=500,
+        learning_rate=0.05,
+        max_depth=6,
+        num_leaves=31,
+        min_child_samples=20,
+        subsample=0.8,
+        colsample_bytree=0.8,
         random_state=42,
         class_weight="balanced",
         n_jobs=-1,
+        verbose=-1,
     )
 
     tscv = TimeSeriesSplit(n_splits=5)
@@ -88,13 +144,18 @@ def train_ai_score_model(
         X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
         y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
 
-        fold_model = RandomForestClassifier(
-            n_estimators=300,
-            max_depth=5,
-            min_samples_leaf=20,
+        fold_model = LGBMClassifier(
+            n_estimators=500,
+            learning_rate=0.05,
+            max_depth=6,
+            num_leaves=31,
+            min_child_samples=20,
+            subsample=0.8,
+            colsample_bytree=0.8,
             random_state=42,
             class_weight="balanced",
             n_jobs=-1,
+            verbose=-1,
         )
 
         fold_model.fit(X_train, y_train)
@@ -143,19 +204,24 @@ def load_ai_score_model() -> BaseModel:
         raise FileNotFoundError(
             f"Model not found: {MODEL_PATH}. Run python -m src.train_ai_model first."
         )
-    
+
     bundle = joblib.load(MODEL_PATH)
     return SklearnModelWrapper(
-        bundle["model"], 
-        bundle["feature_columns"], 
-        bundle["prediction_horizon"], 
-        bundle["target_return_threshold"]
+        bundle["model"],
+        bundle["feature_columns"],
+        bundle["prediction_horizon"],
+        bundle["target_return_threshold"],
     )
 
 
-def predict_ai_score_from_bundle(df: pd.DataFrame, model: BaseModel) -> float:
-    """BaseModel 인터페이스를 사용하는 함수입니다."""
-    proba_series = model.predict_proba(df)
+def predict_ai_score_from_bundle(
+    df: pd.DataFrame,
+    model: BaseModel,
+    vix_df: pd.DataFrame | None = None,
+    spy_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
+) -> float:
+    proba_series = model.predict_proba(df, vix_df=vix_df, spy_df=spy_df, macro_df=macro_df)
     return float(proba_series.iloc[-1])
 
 

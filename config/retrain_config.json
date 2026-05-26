@@ -1,0 +1,10 @@
+{
+  "enabled": true,
+  "timezone": "America/New_York",
+  "schedule_note": "Weekdays 06:00 ET — retrain before market open (09:30 ET).",
+  "on_calendar_times": [
+    "Mon..Fri 06:00:00"
+  ],
+  "service_name": "trading-bot-retrain.service",
+  "timer_name": "trading-bot-retrain.timer"
+}

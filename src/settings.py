@@ -69,6 +69,7 @@ class StrategySettings(StrategyProfile):
 
     max_position_pct: float = 0.4
     max_total_positions: int = 2
+    max_sector_positions: int = 2
     stop_loss_pct: float = 0.05
     take_profit_pct: float = 0.1
     trailing_stop_pct: Optional[float] = None
@@ -76,6 +77,16 @@ class StrategySettings(StrategyProfile):
     max_orders_per_run: int = 1
     max_daily_order_amount: float = 1000.0
     buy_cooldown_days: int = 1
+    allocation_method: str = "equal_weight"
+    ai_exit_enabled: bool = False
+    ai_exit_threshold: float = 0.30
+    ai_exit_dynamic_enabled: bool = False
+    ai_exit_vix_low: float = 15.0
+    ai_exit_vix_high: float = 25.0
+    ai_exit_threshold_bull: float = 0.22
+    ai_exit_threshold_bear: float = 0.50
+    news_sentiment_enabled: bool = False
+    news_sentiment_threshold: float = -0.30
 
 
 DEFAULT_SETTINGS = StrategySettings()
@@ -99,6 +110,8 @@ def validate_settings(settings: StrategySettings) -> StrategySettings:
         raise ValueError("max_position_pct must be between 0 and 1")
     if settings.max_total_positions <= 0:
         raise ValueError("max_total_positions must be positive")
+    if settings.max_sector_positions <= 0:
+        raise ValueError("max_sector_positions must be positive")
     if settings.max_orders_per_run <= 0:
         raise ValueError("max_orders_per_run must be positive")
     if settings.max_daily_order_amount <= 0:
