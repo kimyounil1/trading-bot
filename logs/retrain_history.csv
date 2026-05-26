@@ -1,0 +1,4 @@
+timestamp,status,avg_roc_auc,avg_precision,elapsed_sec
+2026-05-26T13:35:17Z,success,0.4985,0.5439,13.9
+2026-05-26T13:51:32Z,success,0.5103,0.5616,19.3
+2026-05-26T14:22:04Z,success,0.5127,0.5809,19.1
