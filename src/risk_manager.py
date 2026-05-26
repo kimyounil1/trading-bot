@@ -45,6 +45,36 @@ def check_buy_allowed(
     return RiskDecision(True, "buy allowed", target_amount)
 
 
+def check_additional_buy_allowed(
+    signal: str,
+    cash: float,
+    portfolio_value: float,
+    current_position_value: float,
+) -> RiskDecision:
+    settings = load_settings()
+
+    if signal != "BUY":
+        return RiskDecision(False, f"signal is {signal}")
+
+    if cash <= 0:
+        return RiskDecision(False, "cash is zero or negative")
+
+    if portfolio_value <= 0:
+        return RiskDecision(False, "portfolio value is zero or negative")
+
+    target_position_value = portfolio_value * settings.max_position_pct
+    remaining_to_target = target_position_value - max(current_position_value, 0.0)
+
+    if remaining_to_target <= 0:
+        return RiskDecision(False, "position target allocation reached")
+
+    target_amount = min(cash, remaining_to_target)
+    if target_amount <= 0:
+        return RiskDecision(False, "target amount is zero or negative")
+
+    return RiskDecision(True, "add to existing position allowed", target_amount)
+
+
 def _load_order_log(path: str | Path = ORDER_LOG_PATH) -> pd.DataFrame:
     log_path = Path(path)
     if not log_path.exists():

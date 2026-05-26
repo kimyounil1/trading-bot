@@ -1,5 +1,5 @@
 from alpaca.trading.client import TradingClient
-from alpaca.trading.requests import MarketOrderRequest
+from alpaca.trading.requests import LimitOrderRequest, MarketOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
 from requests.exceptions import RequestException
 
@@ -102,6 +102,43 @@ def submit_market_buy_notional_order(ticker: str, notional: float):
     order_request = MarketOrderRequest(
         symbol=ticker,
         notional=round(float(notional), 2),
+        side=OrderSide.BUY,
+        time_in_force=TimeInForce.DAY,
+    )
+
+    try:
+        return client.submit_order(order_data=order_request)
+    except RequestException as exc:
+        raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
+
+
+def submit_limit_buy_notional_order(
+    ticker: str,
+    notional: float,
+    limit_price: float,
+    slippage_pct: float = 0.005,
+):
+    """지정가 매수 주문. limit_price 기준으로 수량을 계산해 제출한다.
+
+    slippage_pct: limit_price에 더하는 여유 비율 (기본 0.5%).
+                  즉시 체결 가능성을 높이면서 시장가 대비 슬리피지를 줄인다.
+    """
+    if notional <= 0:
+        raise ValueError("notional must be positive")
+    if limit_price <= 0:
+        raise ValueError("limit_price must be positive")
+
+    effective_limit = round(limit_price * (1 + slippage_pct), 2)
+    qty = round(notional / effective_limit, 6)
+
+    if qty <= 0:
+        raise ValueError("calculated qty is zero or negative")
+
+    client = get_trading_client()
+    order_request = LimitOrderRequest(
+        symbol=ticker,
+        qty=qty,
+        limit_price=effective_limit,
         side=OrderSide.BUY,
         time_in_force=TimeInForce.DAY,
     )

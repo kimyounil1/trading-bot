@@ -39,7 +39,7 @@ class DummyModelBundle:
     prediction_horizon = 5
     target_return_threshold = 0.0
 
-    def predict_proba(self, df: pd.DataFrame) -> pd.Series:
+    def predict_proba(self, df: pd.DataFrame, vix_df=None, spy_df=None, macro_df=None) -> pd.Series:
         size = len(
             build_features(
                 df,

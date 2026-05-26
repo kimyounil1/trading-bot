@@ -2,5 +2,41 @@
 .venv/
 __pycache__/
 *.pyc
-logs/
 data/
+
+# Runtime output is ignored by default. Keep only small decision records that
+# explain model training, validation, and selected backtest baselines.
+logs/*
+!logs/.gitkeep
+!logs/ml/
+!logs/ml/*.csv
+!logs/retrain_history.csv
+!logs/validation/
+!logs/validation/*.csv
+!logs/ai_threshold/
+!logs/ai_threshold/*results*.csv
+!logs/ai_exit_optimize/
+!logs/ai_exit_optimize/*results*.csv
+!logs/baselines/
+!logs/baselines/current_strategy/
+!logs/baselines/current_strategy/*summary*.csv
+!logs/baselines/current_strategy/*snapshot*.json
+!logs/ai_backtest/
+!logs/ai_backtest/*/
+!logs/ai_backtest/*/*summary*.csv
+!logs/allocation_compare/
+!logs/allocation_compare/*/
+!logs/allocation_compare/*/*summary*.csv
+!logs/portfolio_backtest/
+!logs/portfolio_backtest/*summary*.csv
+
+# Never commit bulky/generated trading artifacts.
+logs/**/portfolio_equity.csv
+logs/**/portfolio_trades.csv
+logs/**/qlib_ready/
+logs/**/qlib_ready/**
+logs/bot_runs/
+logs/candidate_cache/
+logs/trades.csv
+logs/orders.csv
+logs/dashboard.log

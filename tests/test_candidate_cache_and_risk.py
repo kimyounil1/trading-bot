@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pandas as pd
 
 from src.candidate_cache import build_data_quality_rows, load_latest_candidate_cache_full
-from src.risk_manager import apply_buy_safety_limits
+from src.risk_manager import apply_buy_safety_limits, check_additional_buy_allowed
 from src.settings import StrategySettings
 
 
@@ -79,6 +79,48 @@ class CandidateCacheAndRiskTest(unittest.TestCase):
         self.assertIn("cooldown", cooldown.reason)
         self.assertFalse(daily_limit.allowed)
         self.assertIn("daily order amount limit", daily_limit.reason)
+
+    def test_check_additional_buy_allowed_targets_position_allocation(self) -> None:
+        settings = StrategySettings(
+            tickers=["NVDA"],
+            ma_fast=10,
+            ma_slow=50,
+            rsi_buy_limit=65,
+            max_position_pct=0.1,
+            max_total_positions=2,
+            stop_loss_pct=0.05,
+            take_profit_pct=0.1,
+            max_test_order_amount=1000.0,
+            max_orders_per_run=1,
+            max_daily_order_amount=1000.0,
+            buy_cooldown_days=1,
+            use_ai_score=False,
+            ai_score_buy_threshold=0.55,
+            market_regime_filter_enabled=False,
+            market_regime_ticker="SPY",
+            market_regime_ma_fast=50,
+            market_regime_ma_slow=200,
+        )
+
+        with patch("src.risk_manager.load_settings", return_value=settings):
+            under_target = check_additional_buy_allowed(
+                signal="BUY",
+                cash=1000.0,
+                portfolio_value=10000.0,
+                current_position_value=250.0,
+            )
+            at_target = check_additional_buy_allowed(
+                signal="BUY",
+                cash=1000.0,
+                portfolio_value=10000.0,
+                current_position_value=1000.0,
+            )
+
+        self.assertTrue(under_target.allowed)
+        self.assertEqual(under_target.reason, "add to existing position allowed")
+        self.assertEqual(under_target.target_amount, 750.0)
+        self.assertFalse(at_target.allowed)
+        self.assertEqual(at_target.reason, "position target allocation reached")
 
     def test_load_latest_candidate_cache_full_reads_optional_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

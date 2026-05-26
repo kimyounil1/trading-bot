@@ -2,10 +2,10 @@
   "enabled": true,
   "mode": "execute",
   "timezone": "America/New_York",
-  "schedule_note": "Weekdays at 30 minutes after US market open and 30 minutes before close, in the configured timezone.",
+  "schedule_note": "Weekdays: 09:35 (5min after open) for entry signals, 15:45 (15min before close) for exit checks.",
   "on_calendar_times": [
-    "Mon..Fri 10:00:00",
-    "Mon..Fri 15:30:00"
+    "Mon..Fri 09:35:00",
+    "Mon..Fri 15:45:00"
   ],
   "service_name": "trading-bot.service",
   "timer_name": "trading-bot.timer"

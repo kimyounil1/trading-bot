@@ -12,6 +12,7 @@ from src.data_loader import load_price_data_batch
 from src.strategy import add_indicators, generate_signal
 from src.risk_manager import (
     apply_buy_safety_limits,
+    check_additional_buy_allowed,
     check_buy_allowed,
     check_exit_allowed,
     get_recent_buy_symbols,
@@ -39,7 +40,14 @@ def _offline_account_summary() -> dict:
     }
 
 
-def get_signal_for_cache(ticker: str, raw_df: pd.DataFrame, settings, ai_model_bundle=None):
+def get_signal_for_cache(
+    ticker: str,
+    raw_df: pd.DataFrame,
+    settings,
+    ai_model_bundle=None,
+    vix_df=None,
+    spy_df=None,
+):
     df = add_indicators(
         raw_df,
         ma_fast=settings.ma_fast,
@@ -55,7 +63,9 @@ def get_signal_for_cache(ticker: str, raw_df: pd.DataFrame, settings, ai_model_b
         try:
             if ai_model_bundle is None:
                 raise ValueError("AI score model was not loaded")
-            ai_score = predict_ai_score_from_bundle(raw_df, ai_model_bundle)
+            ai_score = predict_ai_score_from_bundle(
+                raw_df, ai_model_bundle, vix_df=vix_df, spy_df=spy_df
+            )
             ai_score_status = "OK"
         except Exception as exc:
             ai_score_status = "ERROR"
@@ -155,7 +165,10 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
         account = _offline_account_summary()
         positions = []
 
-    open_symbols = {position["symbol"] for position in positions}
+    open_symbols = {str(position["symbol"]).upper() for position in positions}
+    positions_by_symbol = {
+        str(position["symbol"]).upper(): position for position in positions
+    }
     tickers_to_load = list(dict.fromkeys([*settings.tickers, *open_symbols]))
     ticker_data = load_price_data_batch(tickers_to_load, period="1y")
     quality_df, errors_df = build_data_quality_rows(tickers_to_load, ticker_data)
@@ -171,7 +184,7 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
     buy_rows = []
 
     for position in positions:
-        ticker = position["symbol"]
+        ticker = str(position["symbol"]).upper()
 
         try:
             signal, latest, ai_score, ai_score_status, ai_score_error = get_signal_for_cache(
@@ -232,10 +245,17 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
                 ai_model_bundle=ai_model_bundle,
             )
 
-            if ticker in open_symbols:
-                risk_allowed = False
-                reason = "already holding position"
-                target_amount = 0.0
+            position = positions_by_symbol.get(ticker)
+            if position is not None:
+                risk = check_additional_buy_allowed(
+                    signal=signal,
+                    cash=cash,
+                    portfolio_value=float(account["portfolio_value"]),
+                    current_position_value=float(position["market_value"]),
+                )
+                risk_allowed = risk.allowed
+                reason = risk.reason
+                target_amount = risk.target_amount
             else:
                 risk = check_buy_allowed(
                     signal=signal,
