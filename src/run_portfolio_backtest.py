@@ -1,3 +1,4 @@
+import argparse
 from pathlib import Path
 
 from src.settings import load_settings
@@ -6,6 +7,7 @@ from src.portfolio_backtester import (
     run_portfolio_backtest,
     save_portfolio_backtest_outputs,
 )
+from src.macro_loader import load_macro_data
 
 
 def pct(value: float) -> str:
@@ -13,6 +15,15 @@ def pct(value: float) -> str:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--allocation",
+        choices=["equal_weight", "mvo", "bl_mvo"],
+        default="equal_weight",
+        help="Position sizing method",
+    )
+    args = parser.parse_args()
+
     settings = load_settings()
     print(f"Loading {len(settings.tickers)} tickers...")
     tickers_to_load = list(settings.tickers)
@@ -20,9 +31,13 @@ def main() -> None:
         tickers_to_load.append(settings.market_regime_ticker)
     if settings.relative_strength_filter_enabled:
         tickers_to_load.append(settings.relative_strength_benchmark_ticker)
+    if settings.use_ai_score and "^VIX" not in tickers_to_load:
+        tickers_to_load.append("^VIX")
     tickers_to_load = list(dict.fromkeys(tickers_to_load))
     loaded_data = load_price_data_batch(tickers_to_load, period="2y")
     ticker_data = {ticker: loaded_data[ticker] for ticker in settings.tickers}
+    vix_df = loaded_data.get("^VIX")
+    macro_df = load_macro_data(period="2y") if settings.use_ai_score else None
     benchmark_df = (
         loaded_data[settings.market_regime_ticker]
         if settings.market_regime_filter_enabled
@@ -63,6 +78,16 @@ def main() -> None:
         rank_ai_weight=settings.rank_ai_weight,
         rank_momentum_weight=settings.rank_momentum_weight,
         rank_volatility_weight=settings.rank_volatility_weight,
+        allocation_method=args.allocation,
+        ai_exit_enabled=getattr(settings, "ai_exit_enabled", False),
+        ai_exit_threshold=getattr(settings, "ai_exit_threshold", 0.35),
+        ai_exit_dynamic_enabled=getattr(settings, "ai_exit_dynamic_enabled", False),
+        ai_exit_vix_low=getattr(settings, "ai_exit_vix_low", 15.0),
+        ai_exit_vix_high=getattr(settings, "ai_exit_vix_high", 25.0),
+        ai_exit_threshold_bull=getattr(settings, "ai_exit_threshold_bull", 0.55),
+        ai_exit_threshold_bear=getattr(settings, "ai_exit_threshold_bear", 0.28),
+        vix_df=vix_df,
+        macro_df=macro_df,
     )
 
     output_dir = Path("logs/portfolio_backtest")
@@ -81,6 +106,8 @@ def main() -> None:
     print(f"trades={result.trades}")
     print(f"win_rate={pct(result.win_rate)}")
     print(f"final_equity=${result.final_equity:.2f}")
+    print(f"sharpe_ratio={result.sharpe_ratio:.3f}")
+    print(f"allocation_method={args.allocation}")
     print("-" * 80)
     print(f"Saved outputs to {output_dir}")
 

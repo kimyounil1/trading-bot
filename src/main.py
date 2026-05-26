@@ -8,6 +8,7 @@ from src.strategy import add_indicators, generate_signal, is_bullish_market_regi
 from src.logger import log_signal, log_order, log_order_status
 from src.risk_manager import (
     apply_buy_safety_limits,
+    check_additional_buy_allowed,
     check_buy_allowed,
     check_exit_allowed,
     get_recent_buy_symbols,
@@ -24,6 +25,10 @@ from src.alpaca_client import (
 from src.market_clock import get_market_clock
 from src.notifier import notify_order, notify_error, notify_run_summary
 from src.ml_model import load_ai_score_model, predict_ai_score_from_bundle
+from src.sector import is_sector_allowed
+from src.portfolio_optimizer import compute_weights_from_ticker_data
+from src.macro_loader import load_macro_data
+from src.news_sentiment import get_ticker_sentiment
 
 
 def _apply_volume_volatility_filters(signal: str, indicator_df, settings) -> str:
@@ -84,6 +89,9 @@ def get_signal_for_ticker(
     settings,
     ai_model_bundle=None,
     market_regime_bullish: bool = True,
+    vix_df=None,
+    spy_df=None,
+    macro_df=None,
 ) -> tuple[str, object, float | None]:
     if raw_df.empty:
         raise ValueError(f"No price data available for {ticker}")
@@ -113,7 +121,9 @@ def get_signal_for_ticker(
         try:
             if ai_model_bundle is None:
                 raise ValueError("AI score model was not loaded")
-            ai_score = predict_ai_score_from_bundle(raw_df, ai_model_bundle)
+            ai_score = predict_ai_score_from_bundle(
+                raw_df, ai_model_bundle, vix_df=vix_df, spy_df=spy_df, macro_df=macro_df
+            )
         except Exception:
             ai_score = None
 
@@ -143,11 +153,20 @@ def main() -> None:
         account = _offline_account_summary()
         open_symbols = set()
         positions = []
+    open_symbols = {str(symbol).upper() for symbol in open_symbols}
+    positions_by_symbol = {
+        str(position["symbol"]).upper(): position for position in positions
+    }
     tickers_to_load = list(dict.fromkeys([*settings.tickers, *open_symbols]))
     if getattr(settings, "market_regime_filter_enabled", False):
         tickers_to_load.append(settings.market_regime_ticker)
         tickers_to_load = list(dict.fromkeys(tickers_to_load))
+    if getattr(settings, "use_ai_score", False) and "^VIX" not in tickers_to_load:
+        tickers_to_load.append("^VIX")
     ticker_data = load_price_data_batch(tickers_to_load, period="1y")
+    vix_df = ticker_data.get("^VIX")
+    spy_df = ticker_data.get("SPY")
+    macro_df = load_macro_data(period="1y") if getattr(settings, "use_ai_score", False) else None
     market_regime_bullish = True
     if getattr(settings, "market_regime_filter_enabled", False):
         market_regime_bullish = is_bullish_market_regime(
@@ -192,7 +211,7 @@ def main() -> None:
     if positions:
         print("Checking open positions for exit conditions...")
         for position in positions:
-            ticker = position["symbol"]
+            ticker = str(position["symbol"]).upper()
 
             try:
                 signal, latest, ai_score = get_signal_for_ticker(
@@ -201,8 +220,30 @@ def main() -> None:
                     settings,
                     ai_model_bundle=ai_model_bundle,
                     market_regime_bullish=market_regime_bullish,
+                    vix_df=vix_df,
+                    spy_df=spy_df,
+                    macro_df=macro_df,
                 )
                 unrealized_plpc = float(position["unrealized_plpc"])
+
+                # AI exit: override to SELL if score drops below threshold
+                if (
+                    getattr(settings, "ai_exit_enabled", False)
+                    and signal != "SELL"
+                    and ai_score is not None
+                ):
+                    exit_thr = float(getattr(settings, "ai_exit_threshold", 0.35))
+                    if getattr(settings, "ai_exit_dynamic_enabled", False) and vix_df is not None and not vix_df.empty:
+                        close_col = "adj_close" if "adj_close" in vix_df.columns else "close"
+                        latest_vix = float(vix_df[close_col].iloc[-1])
+                        vix_low = float(getattr(settings, "ai_exit_vix_low", 15.0))
+                        vix_high = float(getattr(settings, "ai_exit_vix_high", 25.0))
+                        if latest_vix < vix_low:
+                            exit_thr = float(getattr(settings, "ai_exit_threshold_bull", 0.55))
+                        elif latest_vix > vix_high:
+                            exit_thr = float(getattr(settings, "ai_exit_threshold_bear", 0.28))
+                    if ai_score < exit_thr:
+                        signal = "SELL"
 
                 exit_decision = check_exit_allowed(
                     signal=signal,
@@ -280,6 +321,7 @@ def main() -> None:
 
                 if ticker in open_symbols:
                     open_symbols.remove(ticker)
+                    positions_by_symbol.pop(ticker, None)
                     positions_count -= 1
 
             except Exception as exc:
@@ -289,7 +331,9 @@ def main() -> None:
 
         print("-" * 80)
 
-    # 2) 신규 매수 후보 확인
+    # 2) 신규 매수 후보 수집 (Pass 1: 신호 생성 + 리스크 검사, 주문 미제출)
+    approved_buys: list[dict] = []
+
     for ticker in settings.tickers:
         try:
             signal, latest, ai_score = get_signal_for_ticker(
@@ -298,12 +342,21 @@ def main() -> None:
                 settings,
                 ai_model_bundle=ai_model_bundle,
                 market_regime_bullish=market_regime_bullish,
+                vix_df=vix_df,
+                spy_df=spy_df,
             )
 
-            if ticker in open_symbols:
-                risk_allowed = False
-                risk_reason = "already holding position"
-                target_amount = 0.0
+            position = positions_by_symbol.get(ticker)
+            if position is not None:
+                risk = check_additional_buy_allowed(
+                    signal=signal,
+                    cash=cash,
+                    portfolio_value=float(account["portfolio_value"]),
+                    current_position_value=float(position["market_value"]),
+                )
+                risk_allowed = risk.allowed
+                risk_reason = risk.reason
+                target_amount = risk.target_amount
             else:
                 risk = check_buy_allowed(
                     signal=signal,
@@ -328,6 +381,28 @@ def main() -> None:
                     f"(score={ai_score}, threshold={settings.ai_score_buy_threshold})"
                 )
                 target_amount = 0.0
+
+            # 뉴스 감성 필터: 강한 부정 뉴스면 매수 차단
+            if risk_allowed and position is None and getattr(settings, "news_sentiment_enabled", False):
+                try:
+                    sentiment = get_ticker_sentiment(ticker)
+                    threshold = float(getattr(settings, "news_sentiment_threshold", -0.30))
+                    if sentiment is not None and sentiment < threshold:
+                        risk_allowed = False
+                        risk_reason = f"negative news sentiment (score={sentiment:.2f}, threshold={threshold})"
+                        target_amount = 0.0
+                except Exception:
+                    pass
+
+            if risk_allowed and position is None:
+                sector_ok, sector_reason = is_sector_allowed(
+                    ticker, open_symbols,
+                    max_sector_positions=getattr(settings, "max_sector_positions", 2),
+                )
+                if not sector_ok:
+                    risk_allowed = False
+                    risk_reason = sector_reason
+                    target_amount = 0.0
 
             order_amount = min(target_amount, settings.max_test_order_amount)
 
@@ -368,95 +443,137 @@ def main() -> None:
                 f"ai_score={ai_score}"
             )
 
-            if not risk_allowed:
-                continue
-
-            if orders_submitted >= settings.max_orders_per_run:
-                print("  SKIP_ORDER: max orders per run reached")
-                buy_summary_rows.append(
-                    f"{ticker}: SKIP_ORDER max orders per run reached, "
-                    f"ai_score={ai_score}"
-                )
-                continue
-
-            if not can_submit_orders:
-                label = "DRY_RUN_ONLY" if not execute_orders else "MARKET_CLOSED"
-                print(
-                    f"  {label}: would BUY {ticker} "
-                    f"notional=${order_amount:.2f}"
-                )
-                buy_summary_rows.append(
-                    f"{ticker}: {label} would BUY ${order_amount:.2f}, "
-                    f"ai_score={ai_score}"
-                )
-                orders_submitted += 1
-                submitted_notional_today += order_amount
-                continue
-
-            order = submit_market_buy_notional_order(
-                ticker=ticker,
-                notional=order_amount,
-            )
-            orders_submitted += 1
-            submitted_notional_today += order_amount
-
-            log_order(
-                ticker=ticker,
-                notional=order_amount,
-                order_id=str(order.id),
-                status=str(order.status),
-                side=str(order.side),
-                order_type=str(order.type),
-                reason=risk_reason,
-            )
-
-            print(
-                f"  PAPER_ORDER_SUBMITTED: BUY {ticker} "
-                f"notional=${order_amount:.2f}, "
-                f"order_id={order.id}, status={order.status}"
-            )
-
-            checked_order = wait_for_order_status(str(order.id))
-            log_order_status(
-                ticker=ticker,
-                order_id=checked_order["id"],
-                status=checked_order["status"],
-                side=checked_order["side"],
-                order_type=checked_order["type"],
-                filled_qty=checked_order["filled_qty"],
-                filled_avg_price=checked_order["filled_avg_price"],
-                reason=risk_reason,
-            )
-            print(
-                f"  BUY_STATUS_CHECK: status={checked_order['status']}, "
-                f"filled_qty={checked_order['filled_qty']}, "
-                f"filled_avg_price={checked_order['filled_avg_price']}"
-            )
-
-            notify_order(
-                action="BUY",
-                ticker=ticker,
-                status=checked_order["status"],
-                order_id=checked_order["id"],
-                reason=risk_reason,
-                filled_qty=checked_order["filled_qty"],
-                filled_avg_price=checked_order["filled_avg_price"],
-            )
-
-            buy_summary_rows.append(
-                f"{ticker}: BUY_SUBMITTED status={checked_order['status']}, "
-                f"filled_qty={checked_order['filled_qty']}, "
-                f"filled_avg_price={checked_order['filled_avg_price']}, "
-                f"ai_score={ai_score}"
-            )
-
-            positions_count += 1
-            cash -= order_amount
+            if risk_allowed:
+                approved_buys.append({
+                    "ticker": ticker,
+                    "order_amount": order_amount,
+                    "ai_score": ai_score,
+                    "risk_reason": risk_reason,
+                })
 
         except Exception as exc:
             print(f"{ticker}: ERROR - {exc}")
             buy_summary_rows.append(f"{ticker}: ERROR - {exc}")
             notify_error(f"{ticker} bot error", exc)
+
+    # 3) MVO 가중치 적용 (Pass 2: allocation_method에 따라 주문 금액 조정)
+    allocation_method = getattr(settings, "allocation_method", "equal_weight")
+    if allocation_method != "equal_weight" and len(approved_buys) > 1:
+        candidate_tickers = [c["ticker"] for c in approved_buys]
+        candidate_ai_scores = {
+            c["ticker"]: float(c["ai_score"]) if c["ai_score"] is not None else 0.5
+            for c in approved_buys
+        }
+        mvo_weights = compute_weights_from_ticker_data(
+            candidate_tickers=candidate_tickers,
+            ticker_data=ticker_data,
+            ai_scores=candidate_ai_scores,
+            allocation_method=allocation_method,
+        )
+        portfolio_value = float(account["portfolio_value"])
+        for candidate in approved_buys:
+            t = candidate["ticker"]
+            mvo_amount = portfolio_value * mvo_weights.get(t, 1.0 / len(approved_buys))
+            # Respect individual order cap
+            candidate["order_amount"] = min(mvo_amount, settings.max_test_order_amount)
+        print(
+            f"MVO weights: "
+            + ", ".join(
+                f"{c['ticker']}={mvo_weights.get(c['ticker'], 0):.3f}"
+                for c in approved_buys
+            )
+        )
+
+    # 4) 주문 제출 (Pass 3)
+    for candidate in approved_buys:
+        ticker = candidate["ticker"]
+        order_amount = candidate["order_amount"]
+        risk_reason = candidate["risk_reason"]
+        ai_score = candidate["ai_score"]
+
+        if orders_submitted >= settings.max_orders_per_run:
+            print("  SKIP_ORDER: max orders per run reached")
+            buy_summary_rows.append(
+                f"{ticker}: SKIP_ORDER max orders per run reached, "
+                f"ai_score={ai_score}"
+            )
+            continue
+
+        if not can_submit_orders:
+            label = "DRY_RUN_ONLY" if not execute_orders else "MARKET_CLOSED"
+            print(
+                f"  {label}: would BUY {ticker} "
+                f"notional=${order_amount:.2f}"
+            )
+            buy_summary_rows.append(
+                f"{ticker}: {label} would BUY ${order_amount:.2f}, "
+                f"ai_score={ai_score}"
+            )
+            orders_submitted += 1
+            submitted_notional_today += order_amount
+            continue
+
+        order = submit_market_buy_notional_order(
+            ticker=ticker,
+            notional=order_amount,
+        )
+        orders_submitted += 1
+        submitted_notional_today += order_amount
+
+        log_order(
+            ticker=ticker,
+            notional=order_amount,
+            order_id=str(order.id),
+            status=str(order.status),
+            side=str(order.side),
+            order_type=str(order.type),
+            reason=risk_reason,
+        )
+
+        print(
+            f"  PAPER_ORDER_SUBMITTED: BUY {ticker} "
+            f"notional=${order_amount:.2f}, "
+            f"order_id={order.id}, status={order.status}"
+        )
+
+        checked_order = wait_for_order_status(str(order.id))
+        log_order_status(
+            ticker=ticker,
+            order_id=checked_order["id"],
+            status=checked_order["status"],
+            side=checked_order["side"],
+            order_type=checked_order["type"],
+            filled_qty=checked_order["filled_qty"],
+            filled_avg_price=checked_order["filled_avg_price"],
+            reason=risk_reason,
+        )
+        print(
+            f"  BUY_STATUS_CHECK: status={checked_order['status']}, "
+            f"filled_qty={checked_order['filled_qty']}, "
+            f"filled_avg_price={checked_order['filled_avg_price']}"
+        )
+
+        notify_order(
+            action="BUY",
+            ticker=ticker,
+            status=checked_order["status"],
+            order_id=checked_order["id"],
+            reason=risk_reason,
+            filled_qty=checked_order["filled_qty"],
+            filled_avg_price=checked_order["filled_avg_price"],
+        )
+
+        buy_summary_rows.append(
+            f"{ticker}: BUY_SUBMITTED status={checked_order['status']}, "
+            f"filled_qty={checked_order['filled_qty']}, "
+            f"filled_avg_price={checked_order['filled_avg_price']}, "
+            f"ai_score={ai_score}"
+        )
+
+        if ticker not in open_symbols:
+            open_symbols.add(ticker)
+            positions_count += 1
+        cash -= order_amount
 
 
     exit_summary = compact_exit_summary(exit_summary_rows, limit=20)

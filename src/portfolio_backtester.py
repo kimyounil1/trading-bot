@@ -6,6 +6,7 @@ import pandas as pd
 from src.strategy import add_indicators, build_market_regime_frame
 from src.features import FEATURE_COLUMNS, build_features
 from src.ml_model import load_ai_score_model
+from src.portfolio_optimizer import compute_candidate_weights
 
 
 @dataclass
@@ -17,6 +18,7 @@ class PortfolioBacktestResult:
     trades: int
     win_rate: float
     benchmark_return: float
+    sharpe_ratio: float = 0.0
 
 
 def _prepare_ticker_frame(
@@ -60,7 +62,7 @@ def _prepare_ticker_frame(
         try:
             if ai_model_bundle is None:
                 raise ValueError("AI score model was not loaded")
-            score_df = build_ai_score_frame(raw_df, ai_model_bundle)
+            score_df = build_ai_score_frame(raw_df, ai_model_bundle, vix_df=None, spy_df=None)
             score_df["date"] = pd.to_datetime(score_df["date"])
             df["date"] = pd.to_datetime(df["date"])
             df = df.merge(score_df, on="date", how="left", suffixes=("", "_model"))
@@ -113,27 +115,43 @@ def _prepare_ticker_frame(
     ]
 
 
-def build_ai_score_frame(df: pd.DataFrame, ai_model_bundle) -> pd.DataFrame:
+def build_ai_score_frame(
+    df: pd.DataFrame,
+    ai_model_bundle,
+    vix_df: pd.DataFrame | None = None,
+    spy_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
+) -> pd.DataFrame:
     feature_df = build_features(
         df,
         prediction_horizon=ai_model_bundle.prediction_horizon,
         target_return_threshold=ai_model_bundle.target_return_threshold,
+        vix_df=vix_df,
+        spy_df=spy_df,
+        macro_df=macro_df,
     )
     score_df = feature_df[["date"]].copy()
-    score_df["ai_score"] = ai_model_bundle.predict_proba(df).values
+    score_df["ai_score"] = ai_model_bundle.predict_proba(
+        df, vix_df=vix_df, spy_df=spy_df, macro_df=macro_df
+    ).values
     return score_df[["date", "ai_score"]]
 
 
 def build_ai_score_frames(
     ticker_data: dict[str, pd.DataFrame],
     ai_model_bundle=None,
+    vix_df: pd.DataFrame | None = None,
+    spy_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
 ) -> dict[str, pd.DataFrame]:
     if ai_model_bundle is None:
         ai_model_bundle = load_ai_score_model()
 
     score_frames = {}
     for ticker, df in ticker_data.items():
-        score_frames[ticker] = build_ai_score_frame(df, ai_model_bundle)
+        score_frames[ticker] = build_ai_score_frame(
+            df, ai_model_bundle, vix_df=vix_df, spy_df=spy_df, macro_df=macro_df
+        )
     return score_frames
 
 
@@ -225,6 +243,19 @@ def run_portfolio_backtest(
     volatility_lookback_days: int = 20,
     max_volatility: float = 0.04,
     ai_score_frames: dict[str, pd.DataFrame] | None = None,
+    allocation_method: str = "equal_weight",
+    mvo_lookback_days: int = 60,
+    mvo_min_weight: float = 0.05,
+    mvo_max_weight: float = 0.40,
+    ai_exit_enabled: bool = False,
+    ai_exit_threshold: float = 0.30,
+    ai_exit_dynamic_enabled: bool = False,
+    ai_exit_vix_low: float = 15.0,
+    ai_exit_vix_high: float = 25.0,
+    ai_exit_threshold_bull: float = 0.55,
+    ai_exit_threshold_bear: float = 0.28,
+    vix_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
 ) -> tuple[PortfolioBacktestResult, pd.DataFrame, pd.DataFrame]:
     if relative_strength_lookback_days <= 0:
         raise ValueError("relative_strength_lookback_days must be positive")
@@ -250,6 +281,20 @@ def run_portfolio_backtest(
         except Exception:
             ai_model_bundle = None
 
+    # SPY data for relative return feature
+    spy_df = ticker_data.get("SPY")
+
+    # Pre-compute AI score frames with full context (VIX + macro)
+    _ai_score_frames = ai_score_frames
+    if use_ai_score and ai_model_bundle is not None and _ai_score_frames is None:
+        _ai_score_frames = build_ai_score_frames(
+            ticker_data,
+            ai_model_bundle=ai_model_bundle,
+            vix_df=vix_df,
+            spy_df=spy_df,
+            macro_df=macro_df,
+        )
+
     prepared_frames = [
         _prepare_ticker_frame(
             ticker,
@@ -260,7 +305,7 @@ def run_portfolio_backtest(
             use_ai_score=use_ai_score,
             ai_score_buy_threshold=ai_score_buy_threshold,
             ai_model_bundle=ai_model_bundle,
-            ai_score_frame=ai_score_frames.get(ticker) if ai_score_frames else None,
+            ai_score_frame=_ai_score_frames.get(ticker) if _ai_score_frames else None,
             relative_strength_lookback_days=relative_strength_lookback_days,
             volume_filter_enabled=volume_filter_enabled,
             volume_lookback_days=volume_lookback_days,
@@ -302,6 +347,15 @@ def run_portfolio_backtest(
 
     all_dates = sorted(market_df["date"].unique())
 
+    # VIX lookup index for dynamic AI exit threshold
+    _vix_by_date: dict = {}
+    if ai_exit_dynamic_enabled and vix_df is not None and not vix_df.empty:
+        _vix_tmp = vix_df.copy()
+        _vix_tmp["date"] = pd.to_datetime(_vix_tmp["date"])
+        _vix_tmp = _vix_tmp.sort_values("date")
+        close_col = "adj_close" if "adj_close" in _vix_tmp.columns else "close"
+        _vix_by_date = dict(zip(_vix_tmp["date"], _vix_tmp[close_col]))
+
     cash = initial_cash
     positions: dict[str, dict] = {}
 
@@ -341,6 +395,23 @@ def run_portfolio_backtest(
                 exit_reason = "TRAILING_STOP"
             elif bool(row["sell_signal"]):
                 exit_reason = "SELL_SIGNAL"
+            elif ai_exit_enabled:
+                ai_score_val = pd.to_numeric(row.get("ai_score"), errors="coerce")
+                if not pd.isna(ai_score_val):
+                    effective_threshold = ai_exit_threshold
+                    if ai_exit_dynamic_enabled and _vix_by_date:
+                        ts = pd.Timestamp(current_date)
+                        vix_val = _vix_by_date.get(ts)
+                        if vix_val is None:
+                            past = {k: v for k, v in _vix_by_date.items() if k <= ts}
+                            vix_val = past[max(past)] if past else None
+                        if vix_val is not None:
+                            if float(vix_val) < ai_exit_vix_low:
+                                effective_threshold = ai_exit_threshold_bull
+                            elif float(vix_val) > ai_exit_vix_high:
+                                effective_threshold = ai_exit_threshold_bear
+                    if float(ai_score_val) < effective_threshold:
+                        exit_reason = "AI_EXIT"
 
             if exit_reason is not None:
                 position = positions.pop(ticker)
@@ -411,14 +482,47 @@ def run_portfolio_backtest(
                 ascending=[False, False, True],
             )
 
-            for _, row in buy_candidates.head(slots_left).iterrows():
+            selected = buy_candidates.head(slots_left)
+            candidate_tickers = selected["ticker"].tolist()
+
+            # Compute dynamic weights when using MVO/BL
+            if allocation_method != "equal_weight" and len(candidate_tickers) > 1:
+                candidate_ai_scores = {
+                    row["ticker"]: float(
+                        pd.to_numeric(row["ai_score"], errors="coerce") or 0.5
+                    )
+                    for _, row in selected.iterrows()
+                }
+                alloc_weights = compute_candidate_weights(
+                    market_df=market_df,
+                    candidate_tickers=candidate_tickers,
+                    current_date=current_date,
+                    ai_scores=candidate_ai_scores,
+                    allocation_method=allocation_method,
+                    lookback_days=mvo_lookback_days,
+                    min_weight=mvo_min_weight,
+                    max_weight=mvo_max_weight,
+                )
+                # Total capital same as equal-weight baseline: N * target_position_pct * equity
+                total_to_deploy = len(candidate_tickers) * target_position_pct * equity
+            else:
+                alloc_weights = {t: 1.0 / max(len(candidate_tickers), 1) for t in candidate_tickers}
+                total_to_deploy = None  # use original target_position_pct per ticker
+
+            for _, row in selected.iterrows():
                 ticker = row["ticker"]
                 close = float(row["close"])
 
                 if close <= 0:
                     continue
 
-                target_value = equity * target_position_pct
+                if total_to_deploy is not None:
+                    target_value = total_to_deploy * alloc_weights.get(
+                        ticker, 1.0 / len(candidate_tickers)
+                    )
+                else:
+                    target_value = equity * target_position_pct
+
                 available_value = min(cash, target_value)
 
                 if available_value <= 0:
@@ -518,6 +622,11 @@ def run_portfolio_backtest(
         float(equity_df["benchmark_equity"].iloc[-1]) / initial_cash - 1.0
     )
 
+    # Annualized Sharpe (252 trading days, risk-free=0)
+    daily_returns = equity_df["daily_return"]
+    std = float(daily_returns.std())
+    sharpe_ratio = float(daily_returns.mean() / std * (252 ** 0.5)) if std > 1e-10 else 0.0
+
     result = PortfolioBacktestResult(
         initial_cash=initial_cash,
         final_equity=final_equity,
@@ -526,6 +635,7 @@ def run_portfolio_backtest(
         trades=trades_count,
         win_rate=win_rate,
         benchmark_return=benchmark_return,
+        sharpe_ratio=sharpe_ratio,
     )
 
     return result, equity_df, trades_df
@@ -548,6 +658,7 @@ def save_portfolio_backtest_outputs(
                 "total_return": result.total_return,
                 "benchmark_return": result.benchmark_return,
                 "max_drawdown": result.max_drawdown,
+                "sharpe_ratio": result.sharpe_ratio,
                 "trades": result.trades,
                 "win_rate": result.win_rate,
             }
