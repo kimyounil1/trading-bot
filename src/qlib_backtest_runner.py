@@ -87,7 +87,8 @@ def load_qlib_ready_price_frame(csv_dir: str | Path) -> pd.DataFrame:
 def load_strategy_settings_from_json(path: str | Path) -> StrategySettings:
     settings_path = Path(path).expanduser().resolve()
     merged = DEFAULT_SETTINGS.__dict__.copy()
-    merged.update(json.loads(settings_path.read_text(encoding="utf-8")))
+    if settings_path.exists():
+        merged.update(json.loads(settings_path.read_text(encoding="utf-8")))
     return validate_settings(StrategySettings(**merged))
 
 
@@ -105,14 +106,10 @@ def build_strategy_signal_from_price_data(
         frame = raw_df.copy()
         if "datetime" in frame.columns and "date" not in frame.columns:
             frame = frame.rename(columns={"datetime": "date"})
-        if "instrument" in frame.columns:
-            frame["instrument"] = frame["instrument"].astype(str).str.upper()
+        if "date" not in frame.columns:
+            raise ValueError(f"{ticker} price data must contain a date or datetime column")
 
-        indicator_df = add_indicators(
-            frame,
-            ma_fast=settings.ma_fast,
-            ma_slow=settings.ma_slow,
-        ).copy()
+        indicator_df = add_indicators(frame, settings).copy()
         if indicator_df.empty:
             continue
 
@@ -387,6 +384,9 @@ def run_custom_signal_backtest(
 ) -> tuple[dict[str, float], pd.DataFrame, pd.DataFrame]:
     filtered_prices = price_frame.copy()
     filtered_prices["datetime"] = pd.to_datetime(filtered_prices["datetime"])
+    filtered_prices["instrument"] = filtered_prices["instrument"].astype(str).str.upper()
+    filtered_prices["close"] = pd.to_numeric(filtered_prices["close"], errors="coerce")
+    filtered_prices = filtered_prices.dropna(subset=["datetime", "instrument", "close"])
     filtered_prices = filtered_prices[
         (filtered_prices["datetime"] >= pd.Timestamp(start_time))
         & (filtered_prices["datetime"] <= pd.Timestamp(end_time))
@@ -396,6 +396,9 @@ def run_custom_signal_backtest(
 
     filtered_signals = signal_frame.reset_index().copy()
     filtered_signals["datetime"] = pd.to_datetime(filtered_signals["datetime"])
+    filtered_signals["instrument"] = filtered_signals["instrument"].astype(str).str.upper()
+    filtered_signals["score"] = pd.to_numeric(filtered_signals["score"], errors="coerce")
+    filtered_signals = filtered_signals.dropna(subset=["datetime", "instrument", "score"])
     filtered_signals = filtered_signals[
         (filtered_signals["datetime"] >= pd.Timestamp(start_time))
         & (filtered_signals["datetime"] <= pd.Timestamp(end_time))
@@ -424,6 +427,11 @@ def run_custom_signal_backtest(
     trades: list[dict] = []
     equity_rows: list[dict] = []
 
+    max_positions = max(1, int(settings.max_total_positions))
+    max_orders_per_run = max(1, int(settings.max_orders_per_run))
+    max_daily_order_amount = float(settings.max_daily_order_amount)
+    max_position_pct = float(settings.max_position_pct)
+
     for current_date in all_dates:
         day_prices_df = prices_by_date[current_date]
         day_prices = {
@@ -431,6 +439,7 @@ def run_custom_signal_backtest(
             for _, row in day_prices_df.iterrows()
         }
         day_signal_df = signals_by_date.get(current_date, pd.DataFrame(columns=["datetime", "instrument", "score"]))
+        day_signal_df = day_signal_df.sort_values(["score", "instrument"], ascending=[False, True]).reset_index(drop=True)
         signal_symbols = set(day_signal_df["instrument"].astype(str).str.upper())
 
         for ticker in list(positions.keys()):
@@ -464,6 +473,53 @@ def run_custom_signal_backtest(
             if ticker in day_prices:
                 position["last_price"] = day_prices[ticker]
 
+        daily_buy_budget = min(max_daily_order_amount, cash)
+        orders_placed = 0
+        if current_date == all_dates[-1]:
+            day_signal_df = day_signal_df.iloc[0:0]
+        for _, signal in day_signal_df.iterrows():
+            ticker = str(signal["instrument"]).upper()
+            if ticker in positions or ticker not in day_prices:
+                continue
+            if len(positions) >= max_positions or orders_placed >= max_orders_per_run:
+                break
+
+            last_buy_date = recent_buy_dates.get(ticker)
+            if last_buy_date is not None:
+                days_since_buy = (pd.Timestamp(current_date) - last_buy_date).days
+                if days_since_buy <= int(settings.buy_cooldown_days):
+                    continue
+
+            close = day_prices[ticker]
+            equity_before_buy = cash + sum(
+                position["qty"] * position["last_price"] for position in positions.values()
+            )
+            target_value = min(
+                equity_before_buy * max_position_pct,
+                float(settings.max_test_order_amount),
+                daily_buy_budget,
+                cash,
+            )
+            if target_value <= 0:
+                continue
+
+            fee = target_value * open_cost
+            gross_value = target_value - fee
+            if gross_value <= 0:
+                continue
+
+            qty = gross_value / close
+            cash -= target_value
+            daily_buy_budget -= target_value
+            positions[ticker] = {
+                "entry_date": pd.Timestamp(current_date),
+                "entry_price": close,
+                "qty": qty,
+                "cost_basis": target_value,
+                "last_price": close,
+            }
+            recent_buy_dates[ticker] = pd.Timestamp(current_date)
+            orders_placed += 1
 
         positions_value = sum(position["qty"] * position["last_price"] for position in positions.values())
         equity = cash + positions_value
@@ -477,6 +533,42 @@ def run_custom_signal_backtest(
                 "open_symbols": ",".join(sorted(positions.keys())),
             }
         )
+
+    last_date = all_dates[-1]
+    last_prices_df = prices_by_date[last_date]
+    last_prices = {
+        str(row["instrument"]).upper(): float(row["close"])
+        for _, row in last_prices_df.iterrows()
+    }
+    for ticker, position in list(positions.items()):
+        close = last_prices.get(ticker, position["last_price"])
+        gross_value = position["qty"] * close
+        cost = gross_value * close_cost
+        net_value = gross_value - cost
+        cash += net_value
+        trades.append(
+            {
+                "ticker": ticker,
+                "entry_date": position["entry_date"],
+                "exit_date": last_date,
+                "entry_price": position["entry_price"],
+                "exit_price": close,
+                "qty": position["qty"],
+                "cost_basis": position["cost_basis"],
+                "exit_value": net_value,
+                "return_pct": net_value / position["cost_basis"] - 1.0,
+                "exit_reason": "END_OF_BACKTEST",
+            }
+        )
+        positions.pop(ticker, None)
+
+    if equity_rows:
+        positions_value = 0.0
+        equity_rows[-1]["cash"] = cash
+        equity_rows[-1]["positions_value"] = positions_value
+        equity_rows[-1]["equity"] = cash + positions_value
+        equity_rows[-1]["positions_count"] = 0
+        equity_rows[-1]["open_symbols"] = ""
 
     equity_df = pd.DataFrame(equity_rows)
     if equity_df.empty:
@@ -502,6 +594,8 @@ def run_custom_signal_backtest(
                 "exit_reason",
             ]
         )
+    else:
+        trades_df = trades_df.sort_values(["exit_date", "ticker"]).reset_index(drop=True)
 
     benchmark_values: list[float] = []
     first_prices = prices_by_date[all_dates[0]]
@@ -653,219 +747,44 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _build_signal_frame(args: argparse.Namespace, settings: StrategySettings) -> pd.DataFrame:
+    if args.signal_csv:
+        return load_signal_frame(args.signal_csv)
+
+    if args.signal_mode == "strategy":
+        from src.data_loader import load_cached_price_data_batch
+
+        ai_model_bundle = None
+        if settings.use_ai_score:
+            try:
+                ai_model_bundle = load_ai_score_model()
+            except Exception:
+                ai_model_bundle = None
+
+        ticker_data = load_cached_price_data_batch(settings.tickers, period=args.price_period)
+        return build_strategy_signal_from_price_data(
+            ticker_data,
+            settings,
+            ai_model_bundle=ai_model_bundle,
+            trend_weight=args.trend_weight,
+            rsi_weight=args.rsi_weight,
+            ai_weight=args.ai_weight,
+        )
+
+    return build_momentum_signal_from_qlib_ready(
+        args.qlib_ready_dir,
+        momentum_window=args.momentum_window,
+    )
+
+
 def main() -> None:
     args = parse_args()
     output_dir = Path(args.output_dir).expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
+
     settings = load_strategy_settings_from_json(args.settings_json)
     price_frame = load_qlib_ready_price_frame(args.qlib_ready_dir)
-
-    if args.signal_csv:
-        signal_csv_path = save_signal_csv(signal_frame, output_dir / "signal.csv")
-        positions_path = output_dir / "qlib_positions_summary.json"
-        
-        if args.execution_engine == "custom":
-            metrics, equity_df, trades_df = run_custom_signal_backtest(
-                signal_frame=signal_frame,
-                price_frame=price_frame,
-                settings=settings,
-                initial_cash=args.initial_cash,
-                open_cost=args.open_cost,
-                close_cost=args.close_cost,
-                start_time=start_time,
-                end_time=end_time,
-                n_drop=args.n_drop,
-            )
-            report_path = output_dir / "backtest_equity.csv"
-            equity_df.to_csv(report_path, index=False)
-            positions_path.write_text(json.dumps({"position_count": 0, "engine": "custom"}), encoding="utf-8")
-            trades_path = save_trades_csv(trades_df, output_dir / "qlib_trades.csv")
-        else:
-            report_df, positions = run_qlib_backtest(
-                provider_uri=args.provider_uri,
-                region=args.region,
-                signal_frame=signal_frame,
-                benchmark=args.benchmark,
-                initial_cash=args.initial_cash,
-                topk=topk,
-                n_drop=n_drop,
-                deal_price=args.deal_price,
-                open_cost=args.open_cost,
-                close_cost=args.close_cost,
-                min_cost=args.min_cost,
-                start_time=start_time,
-                end_time=end_time,
-            )
-            report_path = output_dir / "qlib_report.csv"
-            report_df.to_csv(report_path, index=True)
-            positions_path.write_text(json.dumps({"position_count": len(positions), "engine": "qlib"}), encoding="utf-8")
-            trades_df = extract_trades_from_positions(
-                positions,
-                build_close_price_lookup(price_frame),
-            )
-            trades_path = save_trades_csv(trades_df, output_dir / "qlib_trades.csv")
-            metrics = compute_report_metrics(report_df, initial_cash=args.initial_cash)
-            if not trades_df.empty:
-                metrics["trades"] = int(len(trades_df))
-                metrics["win_rate"] = float((trades_df["return_pct"] > 0).mean())
-
-    elif args.signal_mode == "strategy":
-        from src.data_loader import load_cached_price_data_batch
-        ai_model_bundle = None
-        if settings.use_ai_score:
-            try:
-                ai_model_bundle = load_ai_score_model()
-            except Exception:
-                ai_model_bundle = None
-
-        ticker_data = load_cached_price_data_batch(settings.tickers, period=args.price_period)
-        signal_frame = build_strategy_signal_from_price_data(
-            ticker_data,
-            settings,
-            ai_model_bundle=ai_model_bundle,
-            trend_weight=args.trend_weight,
-            rsi_weight=args.rsi_weight,
-            ai_weight=args.ai_weight,
-        )
-        # After generating strategy signal, we still need to handle the execution engine
-        # but the signal_frame is already generated.
-        # We'll let the next block handle the rest of the logic if needed, 
-        # but the existing code structure is quite messy. 
-        # Let's re-organize to ensure signal_frame is available for the final logic.
-        # To keep it simple and avoid a full rewrite, we'll continue to the next conditional.
-        pass 
-    else:
-        signal_frame = build_momentum_signal_from_qlib_ready(
-            args.qlib_ready_dir,
-            momentum_window=args.momentum_window,
-        )
-
-    # Since the previous 'elif' might have just set signal_frame, 
-    # we need to make sure the following logic (applying constraints, etc.) 
-    # works for all modes.
-    # However, the original code had the execution logic INSIDE the 'if args.signal_csv' block.
-    # This is fundamentally broken. I must restructure the whole main function.
-
-
-
-            report_path = output_dir / "backtest_equity.csv"
-            equity_df.to_csv(report_path, index=False)
-            positions_path.write_text(json.dumps({"position_count": 0, "engine": "custom"}), encoding="utf-8")
-            trades_path = save_trades_csv(trades_df, output_dir / "qlib_trades.csv")
-        else:
-            report_df, positions = run_qlib_backtest(
-                provider_uri=args.provider_uri,
-                region=args.region,
-                signal_frame=signal_frame,
-                benchmark=args.benchmark,
-                initial_cash=args.initial_cash,
-                topk=topk,
-                n_drop=n_drop,
-                deal_price=args.deal_price,
-                open_cost=args.open_cost,
-                close_cost=args.close_cost,
-                min_cost=args.min_cost,
-                start_time=start_time,
-                end_time=end_time,
-            )
-
-            report_path = output_dir / "qlib_report.csv"
-            report_df.to_csv(report_path, index=True)
-            positions_path.write_text(json.dumps({"position_count": len(positions), "engine": "qlib"}), encoding="utf-8")
-            trades_df = extract_trades_from_positions(
-                positions,
-                build_close_price_lookup(price_frame),
-            )
-            trades_path = save_trades_csv(trades_df, output_dir / "qlib_trades.csv")
-
-            metrics = compute_report_metrics(report_df, initial_cash=args.initial_cash)
-            if not trades_df.empty:
-                metrics["trades"] = int(len(trades_df))
-                metrics["win_rate"] = float((trades_df["return_pct"] > 0).mean())
-    elif args.signal_mode == "strategy":
-        from src.data_loader import load_cached_price_data_batch
-        ai_model_bundle = None
-        if settings.use_ai_score:
-            try:
-                ai_model_bundle = load_ai_score_model()
-            except Exception:
-                ai_model_bundle = None
-
-        ticker_data = load_cached_price_data_batch(settings.tickers, period=args.price_period)
-        signal_frame = build_strategy_signal_from_price_data(
-            ticker_data,
-            settings,
-            ai_model_bundle=ai_model_bundle,
-            trend_weight=args.trend_weight,
-            rsi_weight=args.rsi_weight,
-            ai_weight=args.ai_weight,
-        )
-    else:
-        signal_frame = build_momentum_signal_from_qlib_ready(
-            args.qlib_ready_dir,
-            momentum_window=args.momentum_window,
-        )
-
-
-            report_path = output_dir / "backtest_equity.csv"
-            equity_df.to_csv(report_path, index=False)
-            positions_path.write_text(json.dumps({"position_count": 0, "engine": "custom"}), encoding="utf-8")
-            trades_path = save_trades_csv(trades_df, output_dir / "qlib_trades.csv")
-        else:
-            report_df, positions = run_qlib_backtest(
-                provider_uri=args.provider_uri,
-                region=args.region,
-                signal_frame=signal_frame,
-                benchmark=args.benchmark,
-                initial_cash=args.initial_cash,
-                topk=topk,
-                n_drop=n_drop,
-                deal_price=args.deal_price,
-                open_cost=args.open_cost,
-                close_cost=args.close_cost,
-                min_cost=args.min_cost,
-                start_time=start_time,
-                end_time=end_time,
-            )
-
-            report_path = output_dir / "qlib_report.csv"
-            report_df.to_csv(report_path, index=True)
-            positions_path.write_text(json.dumps({"position_count": len(positions), "engine": "qlib"}), encoding="utf-8")
-            trades_df = extract_trades_from_positions(
-                positions,
-                build_close_price_lookup(price_frame),
-            )
-            trades_path = save_trades_csv(trades_df, output_dir / "qlib_trades.csv")
-
-            metrics = compute_report_metrics(report_df, initial_cash=args.initial_cash)
-            if not trades_df.empty:
-                metrics["trades"] = int(len(trades_df))
-                metrics["win_rate"] = float((trades_df["return_pct"] > 0).mean())
-    elif args.signal_mode == "strategy":
-        from src.data_loader import load_cached_price_data_batch
-        ai_model_bundle = None
-        if settings.use_ai_score:
-            try:
-                ai_model_bundle = load_ai_score_model()
-            except Exception:
-                ai_model_bundle = None
-
-        ticker_data = load_cached_price_data_batch(settings.tickers, period=args.price_period)
-        signal_frame = build_strategy_signal_from_price_data(
-            ticker_data,
-            settings,
-            ai_model_bundle=ai_model_bundle,
-            trend_weight=args.trend_weight,
-            rsi_weight=args.rsi_weight,
-            ai_weight=args.ai_weight,
-        )
-        # ... rest of signal_frame logic ... (wait, I should just fix the indent)
-
-    else:
-        signal_frame = build_momentum_signal_from_qlib_ready(
-            args.qlib_ready_dir,
-            momentum_window=args.momentum_window,
-        )
+    signal_frame = _build_signal_frame(args, settings)
 
     inferred_start, inferred_end = infer_backtest_window(signal_frame)
     start_time = args.start_time or inferred_start
@@ -876,6 +795,12 @@ def main() -> None:
     n_drop = args.n_drop if args.n_drop is not None else (
         1 if args.signal_mode == "strategy" else 2
     )
+
+    if topk <= 0:
+        raise ValueError("topk must be positive")
+    if n_drop < 0:
+        raise ValueError("n_drop must be non-negative")
+
     if args.signal_mode == "strategy" and args.execution_engine == "qlib":
         signal_frame = apply_signal_execution_constraints(
             signal_frame,
@@ -886,20 +811,19 @@ def main() -> None:
 
     signal_csv_path = save_signal_csv(signal_frame, output_dir / "signal.csv")
     positions_path = output_dir / "qlib_positions_summary.json"
-        if args.execution_engine == "custom":
-            metrics, equity_df, trades_df = run_custom_signal_backtest(
-                signal_frame=signal_frame,
-                price_frame=price_frame,
-                settings=settings,
-                initial_cash=args.initial_cash,
-                open_cost=args.open_cost,
-                close_cost=args.close_cost,
-                start_time=start_time,
-                end_time=end_time,
-                n_drop=args.n_drop,
-            )
 
-
+    if args.execution_engine == "custom":
+        metrics, equity_df, trades_df = run_custom_signal_backtest(
+            signal_frame=signal_frame,
+            price_frame=price_frame,
+            settings=settings,
+            initial_cash=args.initial_cash,
+            open_cost=args.open_cost,
+            close_cost=args.close_cost,
+            start_time=start_time,
+            end_time=end_time,
+            n_drop=n_drop,
+        )
         report_path = output_dir / "backtest_equity.csv"
         equity_df.to_csv(report_path, index=False)
         positions_path.write_text(json.dumps({"position_count": 0, "engine": "custom"}), encoding="utf-8")
@@ -920,7 +844,6 @@ def main() -> None:
             start_time=start_time,
             end_time=end_time,
         )
-
         report_path = output_dir / "qlib_report.csv"
         report_df.to_csv(report_path, index=True)
         positions_path.write_text(json.dumps({"position_count": len(positions), "engine": "qlib"}), encoding="utf-8")
@@ -929,7 +852,6 @@ def main() -> None:
             build_close_price_lookup(price_frame),
         )
         trades_path = save_trades_csv(trades_df, output_dir / "qlib_trades.csv")
-
         metrics = compute_report_metrics(report_df, initial_cash=args.initial_cash)
         if not trades_df.empty:
             metrics["trades"] = int(len(trades_df))
