@@ -42,13 +42,13 @@ class StrategyProfile:
     min_volume_ratio: float = 1.0
     volatility_filter_enabled: bool = False
     volatility_lookback_days: int = 20
-    max_volatility: float = 1.0
+    max_volatility: float = 0.04
 
     # 랭킹 가중치
     rank_trend_weight: float = 1.0
-    rank_ai_weight: float = 1.0
-    rank_momentum_weight: float = 1.0
-    rank_volatility_weight: float = 1.0
+    rank_ai_weight: float = 0.0
+    rank_momentum_weight: float = 0.0
+    rank_volatility_weight: float = 0.0
 
 
 @dataclass
@@ -56,25 +56,25 @@ class StrategySettings(StrategyProfile):
     """Legacy single-strategy settings used by backtests and tests."""
 
     name: str = "default"
-    tickers: List[str] = field(default_factory=lambda: ["AAPL", "MSFT", "SPY"])
-    ma_fast: int = 20
+    tickers: List[str] = field(default_factory=lambda: ["NVDA", "MSFT", "GOOGL", "AMZN", "AMD"])
+    ma_fast: int = 10
     ma_slow: int = 50
     rsi_buy_limit: float = 65.0
     use_ai_score: bool = False
-    ai_score_buy_threshold: float = 0.45
+    ai_score_buy_threshold: float = 0.55
     market_regime_filter_enabled: bool = False
     market_regime_ticker: str = "SPY"
     market_regime_ma_fast: int = 50
     market_regime_ma_slow: int = 200
 
-    max_position_pct: float = 0.1
-    max_total_positions: int = 4
+    max_position_pct: float = 0.4
+    max_total_positions: int = 2
     stop_loss_pct: float = 0.05
     take_profit_pct: float = 0.1
     trailing_stop_pct: Optional[float] = None
-    max_test_order_amount: float = 1000.0
-    max_orders_per_run: int = 2
-    max_daily_order_amount: float = 2000.0
+    max_test_order_amount: float = 10.0
+    max_orders_per_run: int = 1
+    max_daily_order_amount: float = 1000.0
     buy_cooldown_days: int = 1
 
 
