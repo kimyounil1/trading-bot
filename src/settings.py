@@ -84,15 +84,15 @@ DEFAULT_SETTINGS = StrategySettings()
 def validate_settings(settings: StrategySettings) -> StrategySettings:
     """Normalize and validate legacy single-strategy settings."""
 
-    settings.tickers = [str(ticker).upper() for ticker in settings.tickers]
-    settings.market_regime_ticker = str(settings.market_regime_ticker).upper()
-    settings.relative_strength_benchmark_ticker = str(settings.relative_strength_benchmark_ticker).upper()
-    if not settings.tickers:
+    settings.tickers = [str(ticker).strip().upper() for ticker in settings.tickers]
+    settings.market_regime_ticker = str(settings.market_regime_ticker).strip().upper()
+    settings.relative_strength_benchmark_ticker = str(settings.relative_strength_benchmark_ticker).strip().upper()
+    if not settings.tickers or any(not ticker for ticker in settings.tickers):
         raise ValueError("tickers must not be empty")
     if settings.ma_fast <= 0 or settings.ma_slow <= 0:
         raise ValueError("ma_fast and ma_slow must be positive")
     if settings.ma_fast >= settings.ma_slow:
-        raise ValueError("ma_fast must be less than ma_slow")
+        raise ValueError("ma_fast must be smaller than ma_slow")
     if not 0 < settings.rsi_buy_limit <= 101:
         raise ValueError("rsi_buy_limit must be between 0 and 101")
     if not 0 < settings.max_position_pct <= 1:

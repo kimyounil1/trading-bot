@@ -35,21 +35,30 @@ def add_indicators(
 
 
 def generate_signal(
-    row: pd.Series,
-    profile: StrategyProfile,
+    data: pd.Series | pd.DataFrame,
+    profile: StrategyProfile | None = None,
+    *,
+    rsi_buy_limit: float | None = None,
     model: any = None,
     benchmark_df: pd.DataFrame = None,
 ) -> str:
     """
-    Generates a signal for a single row based on the provided StrategyProfile.
+    Generates a signal from either a legacy indicator frame or a profile row.
     """
+    row = data.iloc[-1] if isinstance(data, pd.DataFrame) else data
+
     # 1. Basic Trend/RSI Signal
     ma_fast = row["ma_fast"]
     ma_slow = row["ma_slow"]
     rsi = row["rsi"]
 
     trend_up = ma_fast > ma_slow
-    rsi_ok = rsi < profile.rsi_buy_limit
+    buy_limit = (
+        profile.rsi_buy_limit
+        if profile is not None and rsi_buy_limit is None
+        else (70 if rsi_buy_limit is None else rsi_buy_limit)
+    )
+    rsi_ok = rsi < buy_limit
 
     # Default action
     action = "HOLD"
@@ -61,17 +70,21 @@ def generate_signal(
     # Entry Signal Logic
     if trend_up and rsi_ok:
         # A. AI Score Filter
-        if profile.use_ai_score and model is not None:
+        if profile is not None and profile.use_ai_score and model is not None:
             if "ai_score" in row and row["ai_score"] < profile.ai_score_buy_threshold:
                 return "HOLD"
 
         # B. Volume Filter
-        if profile.volume_filter_enabled:
+        if profile is not None and profile.volume_filter_enabled:
             if "volume_change_5d" in row and row["volume_change_5d"] < profile.min_volume_ratio:
                 return "HOLD"
 
         # C. Relative Strength Filter
-        if profile.relative_strength_filter_enabled and benchmark_df is not None:
+        if (
+            profile is not None
+            and profile.relative_strength_filter_enabled
+            and benchmark_df is not None
+        ):
             bench_row = benchmark_df[benchmark_df["date"] == row["date"]]
             if not bench_row.empty:
                 ticker_return = row.get("return_20d", 0)
