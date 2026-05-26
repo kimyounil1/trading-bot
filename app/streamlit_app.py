@@ -252,6 +252,82 @@ def sidebar_settings_editor() -> None:
         step=0.01,
     )
 
+    volume_filter_enabled = st.sidebar.checkbox(
+        "거래량 필터 사용",
+        value=bool(getattr(settings, "volume_filter_enabled", False)),
+        help="현재 거래량이 최근 평균 거래량 대비 기준 이상일 때만 매수 후보로 남깁니다.",
+    )
+
+    volume_lookback_days = st.sidebar.number_input(
+        "거래량 평균 기간(일)",
+        min_value=1,
+        max_value=252,
+        value=int(getattr(settings, "volume_lookback_days", 20)),
+        step=1,
+    )
+
+    min_volume_ratio = st.sidebar.number_input(
+        "최소 거래량 비율",
+        min_value=0.0,
+        max_value=10.0,
+        value=float(getattr(settings, "min_volume_ratio", 1.0)),
+        step=0.1,
+    )
+
+    volatility_filter_enabled = st.sidebar.checkbox(
+        "변동성 필터 사용",
+        value=bool(getattr(settings, "volatility_filter_enabled", False)),
+        help="최근 일간 수익률 변동성이 기준 이하일 때만 매수 후보로 남깁니다.",
+    )
+
+    volatility_lookback_days = st.sidebar.number_input(
+        "변동성 기간(일)",
+        min_value=1,
+        max_value=252,
+        value=int(getattr(settings, "volatility_lookback_days", 20)),
+        step=1,
+    )
+
+    max_volatility = st.sidebar.number_input(
+        "최대 변동성",
+        min_value=0.0,
+        max_value=1.0,
+        value=float(getattr(settings, "max_volatility", 0.04)),
+        step=0.01,
+    )
+
+    rank_trend_weight = st.sidebar.number_input(
+        "랭킹 추세 가중치",
+        min_value=0.0,
+        max_value=10.0,
+        value=float(getattr(settings, "rank_trend_weight", 1.0)),
+        step=0.1,
+    )
+
+    rank_ai_weight = st.sidebar.number_input(
+        "랭킹 AI 가중치",
+        min_value=0.0,
+        max_value=10.0,
+        value=float(getattr(settings, "rank_ai_weight", 0.0)),
+        step=0.1,
+    )
+
+    rank_momentum_weight = st.sidebar.number_input(
+        "랭킹 모멘텀 가중치",
+        min_value=0.0,
+        max_value=10.0,
+        value=float(getattr(settings, "rank_momentum_weight", 0.0)),
+        step=0.1,
+    )
+
+    rank_volatility_weight = st.sidebar.number_input(
+        "랭킹 변동성 가중치",
+        min_value=0.0,
+        max_value=10.0,
+        value=float(getattr(settings, "rank_volatility_weight", 0.0)),
+        step=0.1,
+    )
+
     st.sidebar.warning(
         "이 화면은 설정 파일만 수정합니다. 주문 실행은 Paper 실행 화면에서 별도 확인 후 진행하세요."
     )
@@ -298,6 +374,16 @@ def sidebar_settings_editor() -> None:
             "relative_strength_benchmark_ticker": relative_strength_benchmark_ticker.strip().upper(),
             "relative_strength_lookback_days": int(relative_strength_lookback_days),
             "relative_strength_min_excess_return": float(relative_strength_min_excess_return),
+            "volume_filter_enabled": bool(volume_filter_enabled),
+            "volume_lookback_days": int(volume_lookback_days),
+            "min_volume_ratio": float(min_volume_ratio),
+            "volatility_filter_enabled": bool(volatility_filter_enabled),
+            "volatility_lookback_days": int(volatility_lookback_days),
+            "max_volatility": float(max_volatility),
+            "rank_trend_weight": float(rank_trend_weight),
+            "rank_ai_weight": float(rank_ai_weight),
+            "rank_momentum_weight": float(rank_momentum_weight),
+            "rank_volatility_weight": float(rank_volatility_weight),
         })
 
         save_strategy_config(data)
@@ -781,6 +867,16 @@ def save_backtest_run_history(
                 "target_position_pct": settings.max_position_pct,
                 "max_daily_order_amount": settings.max_daily_order_amount,
                 "buy_cooldown_days": settings.buy_cooldown_days,
+                "volume_filter_enabled": settings.volume_filter_enabled,
+                "volume_lookback_days": settings.volume_lookback_days,
+                "min_volume_ratio": settings.min_volume_ratio,
+                "volatility_filter_enabled": settings.volatility_filter_enabled,
+                "volatility_lookback_days": settings.volatility_lookback_days,
+                "max_volatility": settings.max_volatility,
+                "rank_trend_weight": settings.rank_trend_weight,
+                "rank_ai_weight": settings.rank_ai_weight,
+                "rank_momentum_weight": settings.rank_momentum_weight,
+                "rank_volatility_weight": settings.rank_volatility_weight,
                 "tickers": ",".join(settings.tickers),
             }
         ]
@@ -805,6 +901,16 @@ def save_backtest_run_history(
         "max_orders_per_run": settings.max_orders_per_run,
         "max_daily_order_amount": settings.max_daily_order_amount,
         "buy_cooldown_days": settings.buy_cooldown_days,
+        "volume_filter_enabled": settings.volume_filter_enabled,
+        "volume_lookback_days": settings.volume_lookback_days,
+        "min_volume_ratio": settings.min_volume_ratio,
+        "volatility_filter_enabled": settings.volatility_filter_enabled,
+        "volatility_lookback_days": settings.volatility_lookback_days,
+        "max_volatility": settings.max_volatility,
+        "rank_trend_weight": settings.rank_trend_weight,
+        "rank_ai_weight": settings.rank_ai_weight,
+        "rank_momentum_weight": settings.rank_momentum_weight,
+        "rank_volatility_weight": settings.rank_volatility_weight,
     }
 
     (output_dir / "run_config.json").write_text(
@@ -865,6 +971,16 @@ def run_cms_backtest(period: str = "2y") -> tuple[object, pd.DataFrame, pd.DataF
         ma_fast=settings.ma_fast,
         ma_slow=settings.ma_slow,
         rsi_buy_limit=settings.rsi_buy_limit,
+        volume_filter_enabled=settings.volume_filter_enabled,
+        volume_lookback_days=settings.volume_lookback_days,
+        min_volume_ratio=settings.min_volume_ratio,
+        volatility_filter_enabled=settings.volatility_filter_enabled,
+        volatility_lookback_days=settings.volatility_lookback_days,
+        max_volatility=settings.max_volatility,
+        rank_trend_weight=settings.rank_trend_weight,
+        rank_ai_weight=settings.rank_ai_weight,
+        rank_momentum_weight=settings.rank_momentum_weight,
+        rank_volatility_weight=settings.rank_volatility_weight,
     )
 
     output_dir = ROOT_DIR / "logs/cms_backtest"
@@ -902,6 +1018,14 @@ ma_slow={settings.ma_slow}
 rsi_buy_limit={settings.rsi_buy_limit}
 max_positions={settings.max_total_positions}
 target_position_pct={settings.max_position_pct}
+volume_filter_enabled={settings.volume_filter_enabled}
+min_volume_ratio={settings.min_volume_ratio}
+volatility_filter_enabled={settings.volatility_filter_enabled}
+max_volatility={settings.max_volatility}
+rank_trend_weight={settings.rank_trend_weight}
+rank_ai_weight={settings.rank_ai_weight}
+rank_momentum_weight={settings.rank_momentum_weight}
+rank_volatility_weight={settings.rank_volatility_weight}
 """,
         language="text",
     )
@@ -1985,6 +2109,12 @@ def validate_selected_ai_threshold(threshold: float) -> tuple[object, object, pd
         rsi_buy_limit=settings.rsi_buy_limit,
         use_ai_score=False,
         ai_score_buy_threshold=threshold,
+        volume_filter_enabled=settings.volume_filter_enabled,
+        volume_lookback_days=settings.volume_lookback_days,
+        min_volume_ratio=settings.min_volume_ratio,
+        volatility_filter_enabled=settings.volatility_filter_enabled,
+        volatility_lookback_days=settings.volatility_lookback_days,
+        max_volatility=settings.max_volatility,
     )
 
     ai_result, ai_equity, _ = run_portfolio_backtest(
@@ -1998,6 +2128,12 @@ def validate_selected_ai_threshold(threshold: float) -> tuple[object, object, pd
         rsi_buy_limit=settings.rsi_buy_limit,
         use_ai_score=True,
         ai_score_buy_threshold=threshold,
+        volume_filter_enabled=settings.volume_filter_enabled,
+        volume_lookback_days=settings.volume_lookback_days,
+        min_volume_ratio=settings.min_volume_ratio,
+        volatility_filter_enabled=settings.volatility_filter_enabled,
+        volatility_lookback_days=settings.volatility_lookback_days,
+        max_volatility=settings.max_volatility,
     )
 
     return baseline_result, ai_result, baseline_equity, ai_equity

@@ -4,6 +4,7 @@ import html
 from datetime import datetime
 
 import requests
+from requests.exceptions import RequestException
 
 from src.config import (
     TELEGRAM_BOT_TOKEN,
@@ -40,11 +41,14 @@ def send_telegram_message(message: str, parse_mode: str = "HTML") -> bool:
         "disable_web_page_preview": True,
     }
 
-    response = requests.post(url, data=payload, timeout=10)
-    response.raise_for_status()
+    try:
+        response = requests.post(url, data=payload, timeout=10)
+        response.raise_for_status()
 
-    data = response.json()
-    return bool(data.get("ok"))
+        data = response.json()
+        return bool(data.get("ok"))
+    except (RequestException, ValueError):
+        return False
 
 
 def escape(value: object) -> str:

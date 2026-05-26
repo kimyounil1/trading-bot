@@ -30,6 +30,12 @@ def _prepare_ticker_frame(
     ai_model_bundle=None,
     ai_score_frame: pd.DataFrame | None = None,
     relative_strength_lookback_days: int = 20,
+    volume_filter_enabled: bool = False,
+    volume_lookback_days: int = 20,
+    min_volume_ratio: float = 1.0,
+    volatility_filter_enabled: bool = False,
+    volatility_lookback_days: int = 20,
+    max_volatility: float = 0.04,
 ) -> pd.DataFrame:
     raw_df = df.copy()
     df = add_indicators(df, ma_fast=ma_fast, ma_slow=ma_slow).copy()
@@ -38,7 +44,9 @@ def _prepare_ticker_frame(
     df["ticker"] = ticker
     df["ai_score"] = None
     df["relative_return"] = df["close"].pct_change(relative_strength_lookback_days)
-    df["volatility_20d"] = df["close"].pct_change().rolling(20).std()
+    df["volume_ratio"] = df["volume"] / df["volume"].rolling(volume_lookback_days).mean()
+    df["volatility"] = df["close"].pct_change().rolling(volatility_lookback_days).std()
+    df["volatility_20d"] = df["volatility"]
 
     if use_ai_score and ai_score_frame is not None:
         score_df = ai_score_frame[["date", "ai_score"]].copy()
@@ -72,6 +80,16 @@ def _prepare_ticker_frame(
     else:
         df["buy_signal"] = base_buy_signal
 
+    if volume_filter_enabled:
+        df["buy_signal"] = df["buy_signal"] & (
+            pd.to_numeric(df["volume_ratio"], errors="coerce") >= min_volume_ratio
+        )
+
+    if volatility_filter_enabled:
+        df["buy_signal"] = df["buy_signal"] & (
+            pd.to_numeric(df["volatility"], errors="coerce") <= max_volatility
+        )
+
     df["sell_signal"] = df["ma_fast"] < df["ma_slow"]
 
     return df[
@@ -86,6 +104,8 @@ def _prepare_ticker_frame(
             "rsi",
             "ai_score",
             "relative_return",
+            "volume_ratio",
+            "volatility",
             "volatility_20d",
             "buy_signal",
             "sell_signal",
@@ -198,10 +218,24 @@ def run_portfolio_backtest(
     relative_strength_filter_enabled: bool = False,
     relative_strength_lookback_days: int = 20,
     relative_strength_min_excess_return: float = 0.0,
+    volume_filter_enabled: bool = False,
+    volume_lookback_days: int = 20,
+    min_volume_ratio: float = 1.0,
+    volatility_filter_enabled: bool = False,
+    volatility_lookback_days: int = 20,
+    max_volatility: float = 0.04,
     ai_score_frames: dict[str, pd.DataFrame] | None = None,
 ) -> tuple[PortfolioBacktestResult, pd.DataFrame, pd.DataFrame]:
     if relative_strength_lookback_days <= 0:
         raise ValueError("relative_strength_lookback_days must be positive")
+    if volume_lookback_days <= 0:
+        raise ValueError("volume_lookback_days must be positive")
+    if min_volume_ratio < 0:
+        raise ValueError("min_volume_ratio must be non-negative")
+    if volatility_lookback_days <= 0:
+        raise ValueError("volatility_lookback_days must be positive")
+    if max_volatility < 0:
+        raise ValueError("max_volatility must be non-negative")
     if not 0 <= stop_loss_pct < 1:
         raise ValueError("stop_loss_pct must be between 0 and 1")
     if take_profit_pct < 0:
@@ -228,6 +262,12 @@ def run_portfolio_backtest(
             ai_model_bundle=ai_model_bundle,
             ai_score_frame=ai_score_frames.get(ticker) if ai_score_frames else None,
             relative_strength_lookback_days=relative_strength_lookback_days,
+            volume_filter_enabled=volume_filter_enabled,
+            volume_lookback_days=volume_lookback_days,
+            min_volume_ratio=min_volume_ratio,
+            volatility_filter_enabled=volatility_filter_enabled,
+            volatility_lookback_days=volatility_lookback_days,
+            max_volatility=max_volatility,
         )
         for ticker, df in ticker_data.items()
     ]
@@ -356,7 +396,7 @@ def run_portfolio_backtest(
                 errors="coerce",
             ).fillna(0.0)
             buy_candidates["rank_volatility"] = pd.to_numeric(
-                buy_candidates["volatility_20d"],
+                buy_candidates["volatility"],
                 errors="coerce",
             ).fillna(0.0)
             buy_candidates["rank_score"] = (

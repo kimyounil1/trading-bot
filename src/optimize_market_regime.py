@@ -1,12 +1,25 @@
+import argparse
 from itertools import product
 from pathlib import Path
 
 import pandas as pd
 
 from src.data_loader import load_cached_price_data_batch
-from src.portfolio_backtester import build_ai_score_frames, run_portfolio_backtest
 from src.ml_model import load_ai_score_model
+from src.portfolio_backtester import build_ai_score_frames, run_portfolio_backtest
 from src.settings import load_settings
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Grid-search market regime filter settings against the current baseline."
+    )
+    parser.add_argument(
+        "--no-ai-score",
+        action="store_true",
+        help="Disable AI score during this optimization run for a faster first-pass check.",
+    )
+    return parser.parse_args()
 
 
 def _risk_adjusted_score(total_return: float, max_drawdown: float) -> float:
@@ -16,15 +29,20 @@ def _risk_adjusted_score(total_return: float, max_drawdown: float) -> float:
 
 
 def main() -> None:
+    args = parse_args()
     settings = load_settings()
     period = "2y"
+    benchmark_ticker = settings.market_regime_ticker
 
-    print(f"Loading cached data for {len(settings.tickers)} tickers...")
-    loaded_data = load_cached_price_data_batch(settings.tickers, period=period)
+    tickers_to_load = list(dict.fromkeys([*settings.tickers, benchmark_ticker]))
+    print(f"Loading cached data for {len(tickers_to_load)} tickers...")
+    loaded_data = load_cached_price_data_batch(tickers_to_load, period=period)
     ticker_data = {ticker: loaded_data[ticker] for ticker in settings.tickers}
+    benchmark_df = loaded_data[benchmark_ticker]
 
+    use_ai_score = bool(settings.use_ai_score and not args.no_ai_score)
     ai_score_frames = None
-    if settings.use_ai_score:
+    if use_ai_score:
         print("Building AI score cache...")
         ai_score_frames = build_ai_score_frames(
             ticker_data,
@@ -40,7 +58,7 @@ def main() -> None:
         "ma_fast": settings.ma_fast,
         "ma_slow": settings.ma_slow,
         "rsi_buy_limit": settings.rsi_buy_limit,
-        "use_ai_score": settings.use_ai_score,
+        "use_ai_score": use_ai_score,
         "ai_score_buy_threshold": settings.ai_score_buy_threshold,
         "ai_score_frames": ai_score_frames,
         "volume_filter_enabled": settings.volume_filter_enabled,
@@ -61,16 +79,13 @@ def main() -> None:
         baseline_result.max_drawdown,
     )
 
-    stop_loss_values = [0.0, 0.03, 0.05, 0.08]
-    take_profit_values = [0.0, 0.10, 0.15, 0.25]
-    trailing_stop_values = [0.0, 0.05, 0.08, 0.12]
-
     rows = [
         {
             "mode": "baseline",
-            "stop_loss_pct": 0.0,
-            "take_profit_pct": 0.0,
-            "trailing_stop_pct": 0.0,
+            "use_ai_score": use_ai_score,
+            "benchmark_ticker": benchmark_ticker,
+            "market_regime_ma_fast": None,
+            "market_regime_ma_slow": None,
             "total_return": baseline_result.total_return,
             "benchmark_return": baseline_result.benchmark_return,
             "max_drawdown": baseline_result.max_drawdown,
@@ -85,23 +100,27 @@ def main() -> None:
         }
     ]
 
-    combos = list(product(stop_loss_values, take_profit_values, trailing_stop_values))
-    for index, (stop_loss_pct, take_profit_pct, trailing_stop_pct) in enumerate(
+    fast_values = [20, 50, 100]
+    slow_values = [100, 150, 200]
+    combos = [
+        (fast, slow)
+        for fast, slow in product(fast_values, slow_values)
+        if fast < slow
+    ]
+    for index, (market_regime_ma_fast, market_regime_ma_slow) in enumerate(
         combos,
         start=1,
     ):
-        if stop_loss_pct == 0.0 and take_profit_pct == 0.0 and trailing_stop_pct == 0.0:
-            continue
-
         print(
             f"[{index}/{len(combos)}] "
-            f"stop={stop_loss_pct}, take={take_profit_pct}, trailing={trailing_stop_pct}"
+            f"market_fast={market_regime_ma_fast}, market_slow={market_regime_ma_slow}"
         )
         result, _, _ = run_portfolio_backtest(
             **common_kwargs,
-            stop_loss_pct=stop_loss_pct,
-            take_profit_pct=take_profit_pct,
-            trailing_stop_pct=trailing_stop_pct,
+            benchmark_df=benchmark_df,
+            market_regime_filter_enabled=True,
+            market_regime_ma_fast=market_regime_ma_fast,
+            market_regime_ma_slow=market_regime_ma_slow,
         )
         risk_adjusted = _risk_adjusted_score(result.total_return, result.max_drawdown)
         passes_return_and_risk = (
@@ -110,10 +129,11 @@ def main() -> None:
         )
         rows.append(
             {
-                "mode": "exit_rules",
-                "stop_loss_pct": stop_loss_pct,
-                "take_profit_pct": take_profit_pct,
-                "trailing_stop_pct": trailing_stop_pct,
+                "mode": "market_regime",
+                "use_ai_score": use_ai_score,
+                "benchmark_ticker": benchmark_ticker,
+                "market_regime_ma_fast": market_regime_ma_fast,
+                "market_regime_ma_slow": market_regime_ma_slow,
                 "total_return": result.total_return,
                 "benchmark_return": result.benchmark_return,
                 "max_drawdown": result.max_drawdown,
@@ -128,9 +148,10 @@ def main() -> None:
             }
         )
 
-    output_dir = Path("logs/exit_strategy")
+    output_dir = Path("logs/market_regime")
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / "grid_search_results.csv"
+    output_name = "grid_search_results_ai.csv" if use_ai_score else "grid_search_results_no_ai.csv"
+    output_path = output_dir / output_name
 
     df = pd.DataFrame(rows)
     df = df.sort_values(
@@ -140,16 +161,17 @@ def main() -> None:
     df.to_csv(output_path, index=False)
 
     print("-" * 80)
-    print(f"Saved exit strategy results to {output_path}")
+    print(f"Saved market regime results to {output_path}")
     print()
     print("Top 10")
     print(
         df.head(10)[
             [
                 "mode",
-                "stop_loss_pct",
-                "take_profit_pct",
-                "trailing_stop_pct",
+                "use_ai_score",
+                "benchmark_ticker",
+                "market_regime_ma_fast",
+                "market_regime_ma_slow",
                 "total_return",
                 "return_vs_baseline",
                 "max_drawdown",

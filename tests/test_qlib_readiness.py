@@ -193,6 +193,56 @@ class QlibReadinessTest(unittest.TestCase):
         self.assertFalse(any("WEAK" in symbols for symbols in open_symbols))
         self.assertLessEqual(equity_df["positions_count"].max(), 1)
 
+    def test_run_portfolio_backtest_volume_filter_blocks_low_volume(self) -> None:
+        rows = 100
+        stock_df = _sample_price_frame(rows)
+        stock_df["close"] = np.linspace(100.0, 150.0, rows)
+        stock_df["adj_close"] = stock_df["close"]
+        stock_df["volume"] = np.full(rows, 1000.0)
+
+        result, equity_df, trades_df = run_portfolio_backtest(
+            ticker_data={"AAPL": stock_df},
+            initial_cash=10000.0,
+            max_positions=1,
+            target_position_pct=0.5,
+            transaction_cost_pct=0.0,
+            ma_fast=10,
+            ma_slow=50,
+            rsi_buy_limit=101,
+            volume_filter_enabled=True,
+            volume_lookback_days=20,
+            min_volume_ratio=2.0,
+        )
+
+        self.assertEqual(result.trades, 0)
+        self.assertTrue(trades_df.empty)
+        self.assertTrue((equity_df["positions_count"] == 0).all())
+
+    def test_run_portfolio_backtest_volatility_filter_blocks_high_volatility(self) -> None:
+        rows = 100
+        stock_df = _sample_price_frame(rows)
+        stock_df["close"] = np.linspace(100.0, 150.0, rows)
+        stock_df["close"] = stock_df["close"] + np.where(np.arange(rows) % 2 == 0, 8.0, -8.0)
+        stock_df["adj_close"] = stock_df["close"]
+
+        result, equity_df, trades_df = run_portfolio_backtest(
+            ticker_data={"AAPL": stock_df},
+            initial_cash=10000.0,
+            max_positions=1,
+            target_position_pct=0.5,
+            transaction_cost_pct=0.0,
+            ma_fast=10,
+            ma_slow=50,
+            rsi_buy_limit=101,
+            volatility_filter_enabled=True,
+            volatility_lookback_days=20,
+            max_volatility=0.01,
+        )
+
+        self.assertEqual(result.trades, 0)
+        self.assertTrue(trades_df.empty)
+        self.assertTrue((equity_df["positions_count"] == 0).all())
+
     def test_run_portfolio_backtest_applies_stop_loss_exit(self) -> None:
         rows = 80
         close_values = np.concatenate(

@@ -1,5 +1,7 @@
 import argparse
 
+import pandas as pd
+
 from src.settings import load_settings
 from src.data_loader import load_price_data_batch
 from src.strategy import add_indicators, generate_signal, is_bullish_market_regime
@@ -22,6 +24,46 @@ from src.alpaca_client import (
 from src.market_clock import get_market_clock
 from src.notifier import notify_order, notify_error, notify_run_summary
 from src.ml_model import load_ai_score_model, predict_ai_score_from_bundle
+
+
+def _apply_volume_volatility_filters(signal: str, indicator_df, settings) -> str:
+    if signal != "BUY":
+        return signal
+
+    latest = indicator_df.iloc[-1]
+
+    if getattr(settings, "volume_filter_enabled", False):
+        lookback = int(getattr(settings, "volume_lookback_days", 20))
+        if lookback <= 0:
+            raise ValueError("volume_lookback_days must be positive")
+        volume_ma = indicator_df["volume"].rolling(lookback).mean().iloc[-1]
+        if (
+            pd.isna(volume_ma)
+            or volume_ma <= 0
+            or latest["volume"] / volume_ma < float(settings.min_volume_ratio)
+        ):
+            return "HOLD"
+
+    if getattr(settings, "volatility_filter_enabled", False):
+        lookback = int(getattr(settings, "volatility_lookback_days", 20))
+        if lookback <= 0:
+            raise ValueError("volatility_lookback_days must be positive")
+        volatility = indicator_df["close"].pct_change().rolling(lookback).std().iloc[-1]
+        if pd.isna(volatility) or volatility > float(settings.max_volatility):
+            return "HOLD"
+
+    return signal
+
+
+def _offline_account_summary() -> dict:
+    return {
+        "status": "UNKNOWN",
+        "currency": "USD",
+        "cash": 0.0,
+        "portfolio_value": 0.0,
+        "buying_power": 0.0,
+        "positions_count": 0,
+    }
 
 
 def parse_args() -> argparse.Namespace:
@@ -63,6 +105,7 @@ def get_signal_for_ticker(
         and not market_regime_bullish
     ):
         signal = "HOLD"
+    signal = _apply_volume_volatility_filters(signal, df, settings)
     latest = df.iloc[-1]
 
     ai_score = None
@@ -89,9 +132,17 @@ def main() -> None:
             ai_model_bundle = None
 
     market_clock = get_market_clock()
-    account = get_account_summary()
-    open_symbols = get_open_symbols()
-    positions = get_positions_summary()
+    try:
+        account = get_account_summary()
+        open_symbols = get_open_symbols()
+        positions = get_positions_summary()
+    except ConnectionError as exc:
+        if execute_orders:
+            raise
+        print(f"Alpaca unavailable, using offline dry-run defaults: {exc}")
+        account = _offline_account_summary()
+        open_symbols = set()
+        positions = []
     tickers_to_load = list(dict.fromkeys([*settings.tickers, *open_symbols]))
     if getattr(settings, "market_regime_filter_enabled", False):
         tickers_to_load.append(settings.market_regime_ticker)

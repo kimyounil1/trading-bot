@@ -37,6 +37,19 @@ class StrategySettings:
     relative_strength_lookback_days: int = 20
     relative_strength_min_excess_return: float = 0.0
 
+    volume_filter_enabled: bool = False
+    volume_lookback_days: int = 20
+    min_volume_ratio: float = 1.0
+
+    volatility_filter_enabled: bool = False
+    volatility_lookback_days: int = 20
+    max_volatility: float = 0.04
+
+    rank_trend_weight: float = 1.0
+    rank_ai_weight: float = 0.0
+    rank_momentum_weight: float = 0.0
+    rank_volatility_weight: float = 0.0
+
 
 DEFAULT_SETTINGS = StrategySettings(
     tickers=["NVDA", "MSFT", "GOOGL", "AMZN", "AMD"],
@@ -67,6 +80,19 @@ DEFAULT_SETTINGS = StrategySettings(
     relative_strength_benchmark_ticker="SPY",
     relative_strength_lookback_days=20,
     relative_strength_min_excess_return=0.0,
+
+    volume_filter_enabled=False,
+    volume_lookback_days=20,
+    min_volume_ratio=1.0,
+
+    volatility_filter_enabled=False,
+    volatility_lookback_days=20,
+    max_volatility=0.04,
+
+    rank_trend_weight=1.0,
+    rank_ai_weight=0.0,
+    rank_momentum_weight=0.0,
+    rank_volatility_weight=0.0,
 )
 
 
@@ -123,6 +149,23 @@ def validate_settings(settings: StrategySettings) -> StrategySettings:
         raise ValueError("relative_strength_benchmark_ticker must be a non-empty string")
     if settings.relative_strength_lookback_days <= 0:
         raise ValueError("relative_strength_lookback_days must be positive")
+    if settings.volume_lookback_days <= 0:
+        raise ValueError("volume_lookback_days must be positive")
+    if settings.min_volume_ratio < 0:
+        raise ValueError("min_volume_ratio must be non-negative")
+    if settings.volatility_lookback_days <= 0:
+        raise ValueError("volatility_lookback_days must be positive")
+    if settings.max_volatility < 0:
+        raise ValueError("max_volatility must be non-negative")
+    rank_weights = {
+        "rank_trend_weight": settings.rank_trend_weight,
+        "rank_ai_weight": settings.rank_ai_weight,
+        "rank_momentum_weight": settings.rank_momentum_weight,
+        "rank_volatility_weight": settings.rank_volatility_weight,
+    }
+    for name, value in rank_weights.items():
+        if value < 0:
+            raise ValueError(f"{name} must be non-negative")
 
     settings.tickers = normalized_tickers
     settings.market_regime_ticker = settings.market_regime_ticker.strip().upper()

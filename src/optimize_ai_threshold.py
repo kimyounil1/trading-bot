@@ -3,8 +3,9 @@ from pathlib import Path
 import pandas as pd
 
 from src.settings import load_settings
-from src.data_loader import load_price_data_batch
-from src.portfolio_backtester import run_portfolio_backtest
+from src.data_loader import load_cached_price_data_batch
+from src.ml_model import load_ai_score_model
+from src.portfolio_backtester import build_ai_score_frames, run_portfolio_backtest
 
 
 def pct(value: float) -> str:
@@ -14,17 +15,22 @@ def pct(value: float) -> str:
 def main() -> None:
     settings = load_settings()
 
-    print(f"Loading {len(settings.tickers)} tickers...")
+    print(f"Loading cached data for {len(settings.tickers)} tickers...")
     tickers_to_load = list(settings.tickers)
     if settings.relative_strength_filter_enabled:
         tickers_to_load.append(settings.relative_strength_benchmark_ticker)
     tickers_to_load = list(dict.fromkeys(tickers_to_load))
-    loaded_data = load_price_data_batch(tickers_to_load, period="2y")
+    loaded_data = load_cached_price_data_batch(tickers_to_load, period="2y")
     ticker_data = {ticker: loaded_data[ticker] for ticker in settings.tickers}
     relative_strength_benchmark_df = (
         loaded_data[settings.relative_strength_benchmark_ticker]
         if settings.relative_strength_filter_enabled
         else None
+    )
+    print("Building AI score cache...")
+    ai_score_frames = build_ai_score_frames(
+        ticker_data,
+        ai_model_bundle=load_ai_score_model(),
     )
 
     thresholds = [0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70]
@@ -47,6 +53,16 @@ def main() -> None:
         relative_strength_filter_enabled=settings.relative_strength_filter_enabled,
         relative_strength_lookback_days=settings.relative_strength_lookback_days,
         relative_strength_min_excess_return=settings.relative_strength_min_excess_return,
+        volume_filter_enabled=settings.volume_filter_enabled,
+        volume_lookback_days=settings.volume_lookback_days,
+        min_volume_ratio=settings.min_volume_ratio,
+        volatility_filter_enabled=settings.volatility_filter_enabled,
+        volatility_lookback_days=settings.volatility_lookback_days,
+        max_volatility=settings.max_volatility,
+        rank_trend_weight=settings.rank_trend_weight,
+        rank_ai_weight=settings.rank_ai_weight,
+        rank_momentum_weight=settings.rank_momentum_weight,
+        rank_volatility_weight=settings.rank_volatility_weight,
     )
 
     rows.append(
@@ -79,9 +95,20 @@ def main() -> None:
             rsi_buy_limit=settings.rsi_buy_limit,
             use_ai_score=True,
             ai_score_buy_threshold=threshold,
+            ai_score_frames=ai_score_frames,
             relative_strength_filter_enabled=settings.relative_strength_filter_enabled,
             relative_strength_lookback_days=settings.relative_strength_lookback_days,
             relative_strength_min_excess_return=settings.relative_strength_min_excess_return,
+            volume_filter_enabled=settings.volume_filter_enabled,
+            volume_lookback_days=settings.volume_lookback_days,
+            min_volume_ratio=settings.min_volume_ratio,
+            volatility_filter_enabled=settings.volatility_filter_enabled,
+            volatility_lookback_days=settings.volatility_lookback_days,
+            max_volatility=settings.max_volatility,
+            rank_trend_weight=settings.rank_trend_weight,
+            rank_ai_weight=settings.rank_ai_weight,
+            rank_momentum_weight=settings.rank_momentum_weight,
+            rank_volatility_weight=settings.rank_volatility_weight,
         )
 
         rows.append(

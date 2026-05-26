@@ -31,6 +31,8 @@
 ## Workflow rules
 - First summarize the intended change.
 - Then inspect only the relevant files.
+- Default to the lightweight/standard model for routine edits, commands, and small debugging tasks.
+- Recommend switching to a stronger model when the task involves high-risk trading logic, data leakage analysis, broad architecture changes, or complex backtest/strategy reasoning.
 - After editing, show the changed files and the reason for each change.
 - If tests are not run, explain why.
 - Never claim tests passed unless they were actually executed.

@@ -28,6 +28,17 @@ LATEST_QUALITY_PATH = CACHE_DIR / "latest_quality.csv"
 LATEST_ERRORS_PATH = CACHE_DIR / "latest_errors.csv"
 
 
+def _offline_account_summary() -> dict:
+    return {
+        "status": "UNKNOWN",
+        "currency": "USD",
+        "cash": 0.0,
+        "portfolio_value": 0.0,
+        "buying_power": 0.0,
+        "positions_count": 0,
+    }
+
+
 def get_signal_for_cache(ticker: str, raw_df: pd.DataFrame, settings, ai_model_bundle=None):
     df = add_indicators(
         raw_df,
@@ -136,8 +147,13 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
     started_at = time.monotonic()
     settings = load_settings()
     clock = get_market_clock()
-    account = get_account_summary()
-    positions = get_positions_summary()
+    try:
+        account = get_account_summary()
+        positions = get_positions_summary()
+    except ConnectionError as exc:
+        print(f"Alpaca unavailable, building candidate cache with offline defaults: {exc}")
+        account = _offline_account_summary()
+        positions = []
 
     open_symbols = {position["symbol"] for position in positions}
     tickers_to_load = list(dict.fromkeys([*settings.tickers, *open_symbols]))

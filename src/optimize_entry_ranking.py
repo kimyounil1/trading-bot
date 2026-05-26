@@ -43,6 +43,12 @@ def main() -> None:
         "use_ai_score": settings.use_ai_score,
         "ai_score_buy_threshold": settings.ai_score_buy_threshold,
         "ai_score_frames": ai_score_frames,
+        "volume_filter_enabled": settings.volume_filter_enabled,
+        "volume_lookback_days": settings.volume_lookback_days,
+        "min_volume_ratio": settings.min_volume_ratio,
+        "volatility_filter_enabled": settings.volatility_filter_enabled,
+        "volatility_lookback_days": settings.volatility_lookback_days,
+        "max_volatility": settings.max_volatility,
     }
 
     baseline_result, _, _ = run_portfolio_backtest(**common_kwargs)

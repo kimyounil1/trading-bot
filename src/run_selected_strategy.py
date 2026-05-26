@@ -55,6 +55,12 @@ def main() -> None:
         relative_strength_filter_enabled=settings.relative_strength_filter_enabled,
         relative_strength_lookback_days=settings.relative_strength_lookback_days,
         relative_strength_min_excess_return=settings.relative_strength_min_excess_return,
+        volume_filter_enabled=settings.volume_filter_enabled,
+        volume_lookback_days=settings.volume_lookback_days,
+        min_volume_ratio=settings.min_volume_ratio,
+        volatility_filter_enabled=settings.volatility_filter_enabled,
+        volatility_lookback_days=settings.volatility_lookback_days,
+        max_volatility=settings.max_volatility,
         **params,
     )
 

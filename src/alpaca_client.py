@@ -1,6 +1,7 @@
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
+from requests.exceptions import RequestException
 
 from src.config import ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_PAPER
 
@@ -24,8 +25,11 @@ def get_trading_client() -> TradingClient:
 
 def get_account_summary() -> dict:
     client = get_trading_client()
-    account = client.get_account()
-    positions = client.get_all_positions()
+    try:
+        account = client.get_account()
+        positions = client.get_all_positions()
+    except RequestException as exc:
+        raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
 
     return {
         "account_number": account.account_number,
@@ -40,13 +44,19 @@ def get_account_summary() -> dict:
 
 def get_open_symbols() -> set[str]:
     client = get_trading_client()
-    positions = client.get_all_positions()
+    try:
+        positions = client.get_all_positions()
+    except RequestException as exc:
+        raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
     return {position.symbol for position in positions}
 
 
 def get_positions_summary() -> list[dict]:
     client = get_trading_client()
-    positions = client.get_all_positions()
+    try:
+        positions = client.get_all_positions()
+    except RequestException as exc:
+        raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
 
     return [
         {
@@ -63,7 +73,10 @@ def get_positions_summary() -> list[dict]:
 
 def get_order_summary(order_id: str) -> dict:
     client = get_trading_client()
-    order = client.get_order_by_id(order_id)
+    try:
+        order = client.get_order_by_id(order_id)
+    except RequestException as exc:
+        raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
 
     return {
         "id": str(order.id),
@@ -93,12 +106,18 @@ def submit_market_buy_notional_order(ticker: str, notional: float):
         time_in_force=TimeInForce.DAY,
     )
 
-    return client.submit_order(order_data=order_request)
+    try:
+        return client.submit_order(order_data=order_request)
+    except RequestException as exc:
+        raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
 
 
 def close_position_by_symbol(ticker: str):
     client = get_trading_client()
-    return client.close_position(ticker)
+    try:
+        return client.close_position(ticker)
+    except RequestException as exc:
+        raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
 
 
 def wait_for_order_status(
@@ -121,7 +140,10 @@ def wait_for_order_status(
     last_order = None
 
     for attempt in range(1, max_attempts + 1):
-        order = client.get_order_by_id(order_id)
+        try:
+            order = client.get_order_by_id(order_id)
+        except RequestException as exc:
+            raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
         last_order = order
 
         status = str(order.status)

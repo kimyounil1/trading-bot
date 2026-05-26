@@ -18,5 +18,15 @@
   "max_daily_order_amount": 1000.0,
   "buy_cooldown_days": 1,
   "use_ai_score": true,
-  "ai_score_buy_threshold": 0.45
+  "ai_score_buy_threshold": 0.45,
+  "volume_filter_enabled": false,
+  "volume_lookback_days": 20,
+  "min_volume_ratio": 1.0,
+  "volatility_filter_enabled": false,
+  "volatility_lookback_days": 20,
+  "max_volatility": 0.04,
+  "rank_trend_weight": 1.0,
+  "rank_ai_weight": 0.0,
+  "rank_momentum_weight": 0.0,
+  "rank_volatility_weight": 0.0
 }

@@ -8,14 +8,20 @@
 - Stock-relative-strength no-AI and AI-enabled grid searches did not beat baseline return/risk.
 - Stop-loss, take-profit, and trailing-stop exits are implemented in backtests but disabled by default; grid search reduced drawdown but did not beat baseline return/risk.
 - Entry ranking grid search found return/risk improvements using momentum and volatility-aware ranking.
+- Best entry-ranking profile is wired into the active config: trend=1.0, ai=0.0, momentum=0.5, volatility=1.0.
+- Volume and volatility filters are implemented for live signals and portfolio backtests.
+- Single-variable retest found the volume filter improved return and drawdown; active config now enables volume lookback=20, min ratio=1.0.
+- Volatility-only grid search did not beat the current baseline on return and risk together, so it remains disabled.
+- AI threshold retest did not find a better setting than the current 0.45 under the active volume/ranking config; 0.40 matched it, 0.50 reduced return while improving drawdown.
+- Exit rule retest against the updated active config did not beat baseline on return and risk together, so stop-loss/take-profit/trailing-stop remain disabled in backtests.
+- Relative strength retest against the updated active config did not beat baseline on return and risk together, so it remains disabled.
+- Market regime retest against the updated active config did not beat baseline on return and risk together, so it remains disabled.
+- Baseline snapshot was regenerated for the updated active config.
+- The updated active config is the current baseline.
 
 ## Next Priorities
-1. Validate the best entry-ranking profile before enabling it by default.
-   Current best: trend=1.0, ai=0.0, momentum=0.5, volatility=1.0; it improved return and drawdown in the 2y cached backtest.
-2. Add volume and volatility filters.
-   Focus on simple, explainable filters before introducing higher-noise data sources.
-3. Re-test the current strategy with one new variable at a time.
-   Keep the existing baseline snapshot as the control and reject changes that do not improve return/risk together.
+1. Only evaluate future candidates one variable at a time against the current baseline.
+2. Do not combine new filters unless each candidate first beats the updated baseline on return and risk.
 
 ## Qlib Follow-up
 1. Keep `qlib` scripts and snapshots for offline experimentation only.
