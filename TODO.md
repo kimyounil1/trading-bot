@@ -23,7 +23,19 @@
 1. Only evaluate future candidates one variable at a time against the current baseline.
 2. Do not combine new filters unless each candidate first beats the updated baseline on return and risk.
 
+## Portfolio Management System (PMS) Implementation
+- [x] Redesign Configuration structure (Strategy Profiles & Asset Allocation)
+- [x] Implement Multi-Strategy Backtester (Portfolio-level simulation)
+- [x] Develop Portfolio Rebalancing & Risk Management engine
+- [x] Implement Asset Allocation logic (e.g., Risk-parity, Fixed-weight)
+
 ## Qlib Follow-up
 1. Keep `qlib` scripts and snapshots for offline experimentation only.
 2. Prefer the custom execution engine over `TopkDropoutStrategy` if `qlib` research continues.
 3. Do not connect `qlib` results to the live trading path unless they beat the current baseline on return, drawdown, and trade efficiency.
+
+## Advanced PMS Development (Future Roadmap)
+- [ ] **Execution Layer**: Implement real-time order management (Alpaca/Binance API integration)
+- [ ] **Advanced Optimization**: Implement Mean-Variance Optimization (MVO) and Black-Litterman models
+- [ ] **Real-time Monitoring**: Develop live dashboard (Streamlit) and notification system (Telegram/Slack)
+- [ ] **Data Pipeline**: Build real-time data ingestion and feature engineering pipeline

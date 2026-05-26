@@ -1,0 +1,56 @@
+{
+  "profiles": {
+    "baseline": {
+      "ma_fast": 20,
+      "ma_slow": 50,
+      "rsi_buy_limit": 70.0,
+      "use_ai_score": true,
+      "ai_score_buy_threshold": 0.4,
+      "volume_filter_enabled": false,
+      "volume_lookback_days": 20,
+      "min_volume_ratio": 1.0,
+      "rank_momentum_weight": 0.5,
+      "rank_volatility_weight": 1.0,
+      "rank_trend_weight": 1.0,
+      "stop_loss_pct": null,
+      "take_profit_pct": null,
+      "trailing_stop_pct": 0.03,
+      "market_regime_filter_enabled": false
+    },
+    "aggressive": {
+      "ma_fast": 20,
+      "ma_slow": 50,
+      "rsi_buy_limit": 70.0,
+      "use_ai_score": true,
+      "ai_score_buy_threshold": 0.4,
+      "volume_filter_enabled": false,
+      "rank_momentum_weight": 1.0,
+      "rank_volatility_weight": 0.0,
+      "rank_trend_weight": 1.0,
+      "stop_loss_pct": null,
+      "take_profit_pct": null,
+      "trailing_stop_pct": null,
+      "market_regime_filter_enabled": false
+    },
+    "conservative": {
+      "ma_fast": 50,
+      "ma_slow": 200,
+      "rsi_buy_limit": 60.0,
+      "use_ai_score": true,
+      "ai_score_buy_threshold": 0.5,
+      "volume_filter_enabled": true,
+      "volume_lookback_days": 20,
+      "min_volume_ratio": 1.2,
+      "rank_momentum_weight": 0.0,
+      "rank_volatility_weight": 1.0,
+      "rank_trend_weight: 0.5,
+      "stop_loss_pct": 0.03,
+      "take_profit_pct": 0.07,
+      "trailing_stop_pct": 0.03,
+      "market_regime_filter_enabled": true
+    }
+  }
+}
+
+  }
+}

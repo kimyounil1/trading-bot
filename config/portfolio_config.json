@@ -1,0 +1,8 @@
+{
+  "allocations": {
+    "baseline": 0.4,
+    "aggressive": 0.3,
+    "conservative": 0.3
+  },
+  "max_position_size": 0.1
+}

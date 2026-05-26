@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import List, Dict, Tuple
 
 import joblib
 import pandas as pd
@@ -23,7 +24,7 @@ class BaseModel(ABC):
 
 class SklearnModelWrapper(BaseModel):
     """현재 Sklearn 모델을 위한 Wrapper"""
-    def __init__(self, model, feature_columns: list[str], prediction_horizon: int, target_return_threshold: float):
+    def __init__(self, model, feature_columns: List[str], prediction_horizon: int, target_return_threshold: float):
         self.model = model
         self.feature_columns = feature_columns
         self.prediction_horizon = prediction_horizon
@@ -50,10 +51,10 @@ class SklearnModelWrapper(BaseModel):
         return pd.Series(pred, index=feature_df.index)
 
 def train_ai_score_model(
-    training_data: dict[str, pd.DataFrame],
+    training_data: Dict[str, pd.DataFrame],
     prediction_horizon: int = 5,
     target_return_threshold: float = 0.0,
-) -> tuple[BaseModel, pd.DataFrame]:
+) -> Tuple[BaseModel, pd.DataFrame]:
     frames = []
 
     for ticker, df in training_data.items():
