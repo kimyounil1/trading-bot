@@ -85,6 +85,8 @@ def validate_settings(settings: StrategySettings) -> StrategySettings:
     """Normalize and validate legacy single-strategy settings."""
 
     settings.tickers = [str(ticker).upper() for ticker in settings.tickers]
+    settings.market_regime_ticker = str(settings.market_regime_ticker).upper()
+    settings.relative_strength_benchmark_ticker = str(settings.relative_strength_benchmark_ticker).upper()
     if not settings.tickers:
         raise ValueError("tickers must not be empty")
     if settings.ma_fast <= 0 or settings.ma_slow <= 0:
@@ -106,6 +108,25 @@ def validate_settings(settings: StrategySettings) -> StrategySettings:
     if settings.buy_cooldown_days < 0:
         raise ValueError("buy_cooldown_days must be non-negative")
     return settings
+
+
+def load_settings(path: str | Path = CONFIG_PATH) -> StrategySettings:
+    """Load the active legacy single-strategy config."""
+
+    settings_path = Path(path).expanduser().resolve()
+    merged = DEFAULT_SETTINGS.__dict__.copy()
+    if settings_path.exists():
+        merged.update(json.loads(settings_path.read_text(encoding="utf-8")))
+    return validate_settings(StrategySettings(**merged))
+
+
+def save_settings(settings: StrategySettings, path: str | Path = CONFIG_PATH) -> None:
+    """Save the active legacy single-strategy config."""
+
+    settings = validate_settings(settings)
+    settings_path = Path(path).expanduser().resolve()
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(json.dumps(asdict(settings), indent=2), encoding="utf-8")
 
 
 @dataclass
