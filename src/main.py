@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 from collections import Counter
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -28,6 +29,7 @@ from src.alpaca_client import (
     get_account_summary,
     get_open_symbols,
     get_positions_summary,
+    get_position_entry_date,
     submit_market_buy_notional_order,
     close_position_by_symbol,
     wait_for_order_status,
@@ -39,6 +41,7 @@ from src.sector import is_sector_allowed
 from src.correlation_guard import is_correlation_allowed
 from src.market_regime import get_current_regime
 from src.earnings import is_earnings_window
+from src.macro_events import get_macro_event_risk
 from src.llm_analyst import evaluate_ticker_consensus
 from src.candidate_cache import get_dynamic_universe
 from src.sector_rotation import get_sector_leadership, get_ticker_sector_bonus
@@ -159,9 +162,13 @@ def _resolve_full_exit_reason(
     trailing_stop_pct: float,
     signal: str,
     ai_exit_triggered: bool,
+    holding_days: int = 0,
+    max_holding_days: int = 30,
 ) -> str | None:
     if stop_loss_pct > 0 and unrealized_plpc <= -stop_loss_pct:
         return "stop loss triggered"
+    if max_holding_days > 0 and holding_days >= max_holding_days:
+        return f"max holding period reached ({holding_days} days)"
     if (
         trailing_drawdown is not None
         and trailing_stop_pct > 0
@@ -281,6 +288,7 @@ def get_signal_for_ticker(
 def main() -> None:
     args = parse_args()
     execute_orders = args.execute
+    run_id = datetime.now().strftime("%Y%m%dT%H%M%S")
     settings = load_settings()
     ai_model_bundle = None
     if getattr(settings, "use_ai_score", False):
@@ -468,6 +476,14 @@ def main() -> None:
 
                 ai_exit_triggered = False
                 exit_thr = None
+
+                # 보유 기간 계산 (Phase 18-C)
+                holding_days = 0
+                entry_date = get_position_entry_date(ticker)
+                if entry_date:
+                    holding_days = (datetime.now(entry_date.tzinfo) - entry_date).days
+                    # print(f"  {ticker} held for {holding_days} days (entered {entry_date.date()})")
+
                 # AI exit candidate
                 if (
                     getattr(settings, "ai_exit_enabled", False)
@@ -487,9 +503,19 @@ def main() -> None:
                     if ai_score < exit_thr:
                         ai_exit_triggered = True
 
-                # Trailing Stop (Phase 14-A)
+                # Trailing Stop (Phase 14-A / Phase 18-C Adaptive)
                 peak_price = peaks.get(ticker, 0.0)
                 trailing_pct = float(getattr(settings, "trailing_stop_pct", 0.05))
+
+                if getattr(settings, "adaptive_trailing_stop_enabled", False) and "atr" in latest:
+                    atr_val = float(latest["atr"])
+                    if atr_val > 0 and peak_price > 0:
+                        multiplier = float(getattr(settings, "atr_multiplier", 3.0))
+                        # ATR 기반의 변동성을 백분율로 변환 (ATR * Multiplier 만큼 하락 시 스탑)
+                        trailing_pct = (atr_val * multiplier) / peak_price
+                        # 합리적 범위 내에서 제한 (예: 최소 2% ~ 최대 20%)
+                        trailing_pct = max(0.02, min(0.20, trailing_pct))
+
                 trailing_drawdown = None
                 if peak_price > 0 and current_price < peak_price:
                     trailing_drawdown = (peak_price - current_price) / peak_price
@@ -502,6 +528,8 @@ def main() -> None:
                     trailing_stop_pct=trailing_pct,
                     signal=signal,
                     ai_exit_triggered=ai_exit_triggered,
+                    holding_days=holding_days,
+                    max_holding_days=int(getattr(settings, "max_holding_days", 30)),
                 )
                 exit_decision = ExitDecision(
                     should_exit=full_exit_reason is not None,
@@ -538,7 +566,11 @@ def main() -> None:
                         print(f"  PARTIAL_EXIT_TRIGGERED: {ticker} pnl={unrealized_plpc*100:.2f}% >= {partial_tp_thr*100:.2f}%. Selling {sell_qty}")
                         if can_submit_orders:
                             try:
-                                partial_order = close_position_by_symbol(ticker, qty=sell_qty)
+                                partial_order = close_position_by_symbol(
+                                    ticker, 
+                                    qty=sell_qty, 
+                                    client_order_id=f"part_{run_id}_{ticker}"
+                                )
                                 live_order_count += 1
                                 log_execution_audit(
                                     event_type="PARTIAL_EXIT",
@@ -558,6 +590,9 @@ def main() -> None:
                                 notify_info("💰 Partial Profit Taken", f"{ticker}: Sold {sell_qty} shares at +{unrealized_plpc*100:.2f}% profit.")
                             except Exception as e:
                                 print(f"  Partial exit error for {ticker}: {e}")
+                                if isinstance(e, ConnectionError) and execute_orders:
+                                    notify_error(f"CRITICAL: Network error during partial exit for {ticker}", e)
+                                    raise
                                 api_error_count += 1
                                 log_execution_audit(
                                     event_type="PARTIAL_EXIT",
@@ -586,7 +621,11 @@ def main() -> None:
                         print(f"  REBALANCE_TRIM: {ticker} weight {current_weight*100:.1f}% > target {target_weight*100:.1f}%. Trimming {trim_qty}")
                         if can_submit_orders:
                             try:
-                                trim_order = close_position_by_symbol(ticker, qty=trim_qty)
+                                trim_order = close_position_by_symbol(
+                                    ticker, 
+                                    qty=trim_qty, 
+                                    client_order_id=f"trim_{run_id}_{ticker}"
+                                )
                                 live_order_count += 1
                                 log_execution_audit(
                                     event_type="REBALANCE_TRIM",
@@ -605,6 +644,9 @@ def main() -> None:
                                 )
                             except Exception as e:
                                 print(f"  Trim error for {ticker}: {e}")
+                                if isinstance(e, ConnectionError) and execute_orders:
+                                    notify_error(f"CRITICAL: Network error during rebalance trim for {ticker}", e)
+                                    raise
                                 api_error_count += 1
                                 log_execution_audit(
                                     event_type="REBALANCE_TRIM",
@@ -642,7 +684,7 @@ def main() -> None:
                     )
                     continue
 
-                order = close_position_by_symbol(ticker)
+                order = close_position_by_symbol(ticker, client_order_id=f"exit_{run_id}_{ticker}")
                 live_order_count += 1
 
                 log_order(
@@ -723,6 +765,9 @@ def main() -> None:
                     positions_count -= 1
 
             except Exception as exc:
+                if isinstance(exc, ConnectionError) and execute_orders:
+                    notify_error("CRITICAL: Network error during exit loop", exc)
+                    raise
                 exit_summary_rows.append(f"{ticker}: EXIT_CHECK_ERROR - {exc}")
                 api_error_count += 1
                 log_execution_audit(
@@ -739,6 +784,17 @@ def main() -> None:
         print("-" * 80)
     # 2) 신규 매수 후보 수집 (Pass 1: 신호 생성 + 리스크 검사, 주문 미제출)
     approved_buys: list[dict] = []
+
+    # 매크로 이벤트 리스크 체크 (Phase 18-B)
+    macro_risk_active = False
+    macro_risk_reason = ""
+    if getattr(settings, "macro_event_risk_enabled", False):
+        macro_risk_active, macro_risk_reason = get_macro_event_risk(
+            lookforward_days=int(getattr(settings, "macro_event_lookahead_days", 2)),
+            lookback_days=int(getattr(settings, "macro_event_lookback_days", 1))
+        )
+        if macro_risk_active:
+            print(f"MACRO_EVENT_RISK_ACTIVE: {macro_risk_reason}. New buys will be restricted.")
 
     for ticker in settings.tickers:
         try:
@@ -853,6 +909,7 @@ def main() -> None:
                 corr_ok, corr_reason = is_correlation_allowed(
                     ticker, open_symbols, ticker_data,
                     max_corr=float(getattr(settings, "max_correlation_threshold", 0.85)),
+                    max_portfolio_avg_corr=float(getattr(settings, "max_portfolio_avg_correlation_threshold", 0.70)),
                     lookback_days=int(getattr(settings, "correlation_lookback_days", 60))
                 )
                 if not corr_ok:
@@ -883,9 +940,15 @@ def main() -> None:
                     risk_reason = f"earnings filter: {earnings_reason}"
                     target_amount = 0.0
 
+            # 매크로 이벤트 리스크 적용 (Phase 18-B)
+            if risk_allowed and position is None and macro_risk_active:
+                risk_allowed = False
+                risk_reason = f"macro event risk: {macro_risk_reason}"
+                target_amount = 0.0
+
             # LLM Consensus 필터: 정량적 신호를 뉴스로 정성 검증 (Phase 11-B)
             if risk_allowed and position is None:
-                llm_is_ok, llm_reason = evaluate_ticker_consensus(ticker)
+                llm_is_ok, llm_reason = evaluate_ticker_consensus(ticker, settings=settings)
                 if not llm_is_ok:
                     risk_allowed = False
                     risk_reason = f"LLM Reject: {llm_reason}"
@@ -1072,103 +1135,123 @@ def main() -> None:
             submitted_notional_today += order_amount
             continue
 
-        order = submit_market_buy_notional_order(
-            ticker=ticker,
-            notional=order_amount,
-        )
-        live_order_count += 1
-        orders_submitted += 1
-        submitted_notional_today += order_amount
+        try:
+            order = submit_market_buy_notional_order(
+                ticker=ticker,
+                notional=order_amount,
+                client_order_id=f"buy_{run_id}_{ticker}"
+            )
+            live_order_count += 1
+            orders_submitted += 1
+            submitted_notional_today += order_amount
 
-        log_order(
-            ticker=ticker,
-            notional=order_amount,
-            order_id=str(order.id),
-            status=str(order.status),
-            side=str(order.side),
-            order_type=str(order.type),
-            reason=risk_reason,
-        )
+            log_order(
+                ticker=ticker,
+                notional=order_amount,
+                order_id=str(order.id),
+                status=str(order.status),
+                side=str(order.side),
+                order_type=str(order.type),
+                reason=risk_reason,
+            )
 
-        print(
-            f"  PAPER_ORDER_SUBMITTED: BUY {ticker} "
-            f"notional=${order_amount:.2f}, "
-            f"order_id={order.id}, status={order.status}"
-        )
-        log_execution_audit(
-            event_type="BUY_SUBMITTED",
-            ticker=ticker,
-            action="BUY",
-            status=str(order.status),
-            reason=risk_reason,
-            profile_name=profile_name,
-            regime=current_regime,
-            signal=signal,
-            ai_score=ai_score,
-            llm_verdict=llm_verdict,
-            order_id=str(order.id),
-            order_type=str(order.type),
-            side=str(order.side),
-            notional=order_amount,
-        )
+            print(
+                f"  PAPER_ORDER_SUBMITTED: BUY {ticker} "
+                f"notional=${order_amount:.2f}, "
+                f"order_id={order.id}, status={order.status}"
+            )
+            log_execution_audit(
+                event_type="BUY_SUBMITTED",
+                ticker=ticker,
+                action="BUY",
+                status=str(order.status),
+                reason=risk_reason,
+                profile_name=profile_name,
+                regime=current_regime,
+                signal=signal,
+                ai_score=ai_score,
+                llm_verdict=llm_verdict,
+                order_id=str(order.id),
+                order_type=str(order.type),
+                side=str(order.side),
+                notional=order_amount,
+            )
 
-        checked_order = wait_for_order_status(str(order.id))
-        log_order_status(
-            ticker=ticker,
-            order_id=checked_order["id"],
-            status=checked_order["status"],
-            side=checked_order["side"],
-            order_type=checked_order["type"],
-            filled_qty=checked_order["filled_qty"],
-            filled_avg_price=checked_order["filled_avg_price"],
-            reason=risk_reason,
-        )
-        print(
-            f"  BUY_STATUS_CHECK: status={checked_order['status']}, "
-            f"filled_qty={checked_order['filled_qty']}, "
-            f"filled_avg_price={checked_order['filled_avg_price']}"
-        )
-        log_execution_audit(
-            event_type="BUY_STATUS",
-            ticker=ticker,
-            action="BUY",
-            status=str(checked_order["status"]),
-            reason=risk_reason,
-            profile_name=profile_name,
-            regime=current_regime,
-            signal=signal,
-            ai_score=ai_score,
-            llm_verdict=llm_verdict,
-            order_id=str(checked_order["id"]),
-            order_type=str(checked_order["type"]),
-            side=str(checked_order["side"]),
-            notional=order_amount,
-            filled_qty=checked_order["filled_qty"],
-            filled_avg_price=checked_order["filled_avg_price"],
-        )
+            checked_order = wait_for_order_status(str(order.id))
+            log_order_status(
+                ticker=ticker,
+                order_id=checked_order["id"],
+                status=checked_order["status"],
+                side=checked_order["side"],
+                order_type=checked_order["type"],
+                filled_qty=checked_order["filled_qty"],
+                filled_avg_price=checked_order["filled_avg_price"],
+                reason=risk_reason,
+            )
+            print(
+                f"  BUY_STATUS_CHECK: status={checked_order['status']}, "
+                f"filled_qty={checked_order['filled_qty']}, "
+                f"filled_avg_price={checked_order['filled_avg_price']}"
+            )
+            log_execution_audit(
+                event_type="BUY_STATUS",
+                ticker=ticker,
+                action="BUY",
+                status=str(checked_order["status"]),
+                reason=risk_reason,
+                profile_name=profile_name,
+                regime=current_regime,
+                signal=signal,
+                ai_score=ai_score,
+                llm_verdict=llm_verdict,
+                order_id=str(checked_order["id"]),
+                order_type=str(checked_order["type"]),
+                side=str(checked_order["side"]),
+                notional=order_amount,
+                filled_qty=checked_order["filled_qty"],
+                filled_avg_price=checked_order["filled_avg_price"],
+            )
 
-        notify_order(
-            action="BUY",
-            ticker=ticker,
-            status=checked_order["status"],
-            order_id=checked_order["id"],
-            reason=risk_reason,
-            filled_qty=checked_order["filled_qty"],
-            filled_avg_price=checked_order["filled_avg_price"],
-        )
+            notify_order(
+                action="BUY",
+                ticker=ticker,
+                status=checked_order["status"],
+                order_id=checked_order["id"],
+                reason=risk_reason,
+                filled_qty=checked_order["filled_qty"],
+                filled_avg_price=checked_order["filled_avg_price"],
+            )
 
-        buy_summary_rows.append(
-            f"{ticker}: BUY_SUBMITTED status={checked_order['status']}, "
-            f"filled_qty={checked_order['filled_qty']}, "
-            f"filled_avg_price={checked_order['filled_avg_price']}, "
-            f"ai_score={ai_score}"
-        )
+            buy_summary_rows.append(
+                f"{ticker}: BUY_SUBMITTED status={checked_order['status']}, "
+                f"filled_qty={checked_order['filled_qty']}, "
+                f"filled_avg_price={checked_order['filled_avg_price']}, "
+                f"ai_score={ai_score}"
+            )
 
-        if ticker not in open_symbols:
-            open_symbols.add(ticker)
-            positions_count += 1
-        cash -= order_amount
-        current_gross_exposure += order_amount
+            if ticker not in open_symbols:
+                open_symbols.add(ticker)
+                positions_count += 1
+            cash -= order_amount
+            current_gross_exposure += order_amount
+        except Exception as exc:
+            if isinstance(exc, ConnectionError) and execute_orders:
+                notify_error(f"CRITICAL: Network error during buy execution for {ticker}", exc)
+                raise
+            print(f"  Buy order error for {ticker}: {exc}")
+            api_error_count += 1
+            log_execution_audit(
+                event_type="BUY_ERROR",
+                ticker=ticker,
+                action="BUY",
+                status="ERROR",
+                reason=str(exc),
+                profile_name=profile_name,
+                regime=current_regime,
+                signal=signal,
+                ai_score=ai_score,
+                notional=order_amount,
+            )
 
     # 6) 결과 저장 및 피크 정보 갱신
     _save_peaks(peaks)

@@ -88,8 +88,10 @@ class StrategySettings(StrategyProfile):
     news_sentiment_enabled: bool = False
     news_sentiment_threshold: float = -0.30
     max_portfolio_drawdown_pct: float = 0.15
+    max_holding_days: int = 30
     correlation_guard_enabled: bool = False
     max_correlation_threshold: float = 0.85
+    max_portfolio_avg_correlation_threshold: float = 0.70
     correlation_lookback_days: int = 60
     earnings_filter_enabled: bool = False
     earnings_lookback_days: int = 3
@@ -108,8 +110,15 @@ class StrategySettings(StrategyProfile):
     dynamic_universe_enabled: bool = False
     dynamic_count: int = 50
     trailing_stop_pct: float = 0.05
+    adaptive_trailing_stop_enabled: bool = False
+    atr_multiplier: float = 3.0
     rebalance_threshold_pct: float = 0.20
     sector_rotation_enabled: bool = False
+    macro_event_risk_enabled: bool = False
+    macro_event_lookahead_days: int = 2
+    macro_event_lookback_days: int = 1
+    llm_degraded_mode: str = "PASS"  # "PASS" or "FAIL"
+    llm_cache_enabled: bool = True
 
 
 _STRATEGY_SETTINGS_FIELD_NAMES = {item.name for item in fields(StrategySettings)}
@@ -218,6 +227,8 @@ def validate_settings(settings: StrategySettings) -> StrategySettings:
         raise ValueError("take_profit_pct must be non-negative")
     if not 0 <= settings.trailing_stop_pct < 1:
         raise ValueError("trailing_stop_pct must be between 0 and 1")
+    if settings.atr_multiplier <= 0:
+        raise ValueError("atr_multiplier must be positive")
     if settings.max_orders_per_run <= 0:
         raise ValueError("max_orders_per_run must be positive")
     if settings.max_daily_order_amount <= 0:
@@ -226,10 +237,14 @@ def validate_settings(settings: StrategySettings) -> StrategySettings:
         raise ValueError("max_test_order_amount must be positive")
     if settings.buy_cooldown_days < 0:
         raise ValueError("buy_cooldown_days must be non-negative")
+    if settings.max_holding_days <= 0:
+        raise ValueError("max_holding_days must be positive")
     if not 0 <= settings.max_portfolio_drawdown_pct < 1:
         raise ValueError("max_portfolio_drawdown_pct must be between 0 and 1")
     if not 0 < settings.max_correlation_threshold <= 1:
         raise ValueError("max_correlation_threshold must be between 0 and 1")
+    if not 0 < settings.max_portfolio_avg_correlation_threshold <= 1:
+        raise ValueError("max_portfolio_avg_correlation_threshold must be between 0 and 1")
     if settings.correlation_lookback_days <= 0:
         raise ValueError("correlation_lookback_days must be positive")
     if settings.earnings_lookback_days < 0 or settings.earnings_lookforward_days < 0:

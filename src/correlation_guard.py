@@ -10,11 +10,13 @@ def is_correlation_allowed(
     open_symbols: Set[str],
     ticker_data: Dict[str, pd.DataFrame],
     max_corr: float = 0.85,
+    max_portfolio_avg_corr: float = 0.70,
     lookback_days: int = 60,
 ) -> Tuple[bool, str]:
     """매수 후보 종목과 기존 보유 종목 간의 상관관계를 체크한다.
 
-    상관관계가 max_corr보다 높으면 False를 반환한다.
+    1. Pairwise check: 기존 보유 종목 중 하나라도 max_corr를 넘으면 차단.
+    2. Portfolio average check: 모든 보유 종목과의 평균 상관관계가 max_portfolio_avg_corr를 넘으면 차단.
     """
     if not open_symbols:
         return True, "no open positions to compare"
@@ -26,6 +28,8 @@ def is_correlation_allowed(
     # 대상 종목의 수익률 계산
     target_close = target_df["adj_close"] if "adj_close" in target_df.columns else target_df["close"]
     target_returns = target_close.pct_change().iloc[-lookback_days:]
+
+    correlations = []
 
     for symbol in open_symbols:
         symbol_df = ticker_data.get(symbol)
@@ -41,8 +45,19 @@ def is_correlation_allowed(
             continue
 
         correlation = combined.corr().iloc[0, 1]
+        if np.isnan(correlation):
+            continue
 
-        if not np.isnan(correlation) and correlation > max_corr:
-            return False, f"high correlation ({correlation:.2f}) with {symbol} (threshold={max_corr})"
+        # 1. 개별 종목 간 과도한 상관관계 체크 (Pairwise)
+        if correlation > max_corr:
+            return False, f"high pairwise correlation ({correlation:.2f}) with {symbol} (threshold={max_corr})"
+        
+        correlations.append(correlation)
+
+    # 2. 포트폴리오 전체 평균 상관관계 체크 (Portfolio Average)
+    if correlations:
+        avg_corr = np.mean(correlations)
+        if avg_corr > max_portfolio_avg_corr:
+            return False, f"high portfolio average correlation ({avg_corr:.2f}) (threshold={max_portfolio_avg_corr})"
 
     return True, "correlation check passed"

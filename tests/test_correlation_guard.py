@@ -43,7 +43,21 @@ class TestCorrelationGuard(unittest.TestCase):
         open_symbols = {"A"}
         allowed, reason = is_correlation_allowed("B", open_symbols, self.ticker_data, max_corr=0.8)
         self.assertFalse(allowed)
-        self.assertIn("high correlation", reason)
+        self.assertIn("high pairwise correlation", reason)
+
+    def test_high_portfolio_avg_correlation(self):
+        # A and C are held, trying to buy B
+        # A vs B: 0.98, C vs B: low, but average might be high
+        open_symbols = {"A", "C"}
+        # Assume C vs B correlation is around 0.3. Avg (0.98 + 0.3) / 2 = 0.64
+        # If threshold is 0.6, it should be blocked.
+        allowed, reason = is_correlation_allowed(
+            "B", open_symbols, self.ticker_data, 
+            max_corr=0.99, # Pairwise passes
+            max_portfolio_avg_corr=0.60 # Avg fails
+        )
+        self.assertFalse(allowed)
+        self.assertIn("high portfolio average correlation", reason)
 
     def test_low_correlation(self):
         # A is held, trying to buy C (uncorrelated)

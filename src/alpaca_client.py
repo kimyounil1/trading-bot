@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from alpaca.trading.client import TradingClient
-from alpaca.trading.requests import LimitOrderRequest, MarketOrderRequest
-from alpaca.trading.enums import OrderSide, TimeInForce
+import time
 from typing import Optional
 from requests.exceptions import RequestException
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
+from alpaca.trading.client import TradingClient
+from alpaca.trading.requests import LimitOrderRequest, MarketOrderRequest, ClosePositionRequest, GetOrdersRequest
+from alpaca.trading.enums import OrderSide, TimeInForce, QueryOrderStatus
 
 from src.config import ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_PAPER
 
@@ -26,6 +29,12 @@ def get_trading_client() -> TradingClient:
     )
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RequestException, ConnectionError)),
+    reraise=True
+)
 def get_account_summary() -> dict:
     client = get_trading_client()
     try:
@@ -46,6 +55,12 @@ def get_account_summary() -> dict:
     }
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RequestException, ConnectionError)),
+    reraise=True
+)
 def get_open_symbols() -> set[str]:
     client = get_trading_client()
     try:
@@ -55,6 +70,12 @@ def get_open_symbols() -> set[str]:
     return {position.symbol for position in positions}
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RequestException, ConnectionError)),
+    reraise=True
+)
 def get_positions_summary() -> list[dict]:
     client = get_trading_client()
     try:
@@ -75,6 +96,12 @@ def get_positions_summary() -> list[dict]:
     ]
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RequestException, ConnectionError)),
+    reraise=True
+)
 def get_order_summary(order_id: str) -> dict:
     client = get_trading_client()
     try:
@@ -97,7 +124,17 @@ def get_order_summary(order_id: str) -> dict:
     }
 
 
-def submit_market_buy_notional_order(ticker: str, notional: float):
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RequestException, ConnectionError)),
+    reraise=True
+)
+def submit_market_buy_notional_order(
+    ticker: str, 
+    notional: float, 
+    client_order_id: Optional[str] = None
+):
     if notional <= 0:
         raise ValueError("notional must be positive")
 
@@ -108,6 +145,7 @@ def submit_market_buy_notional_order(ticker: str, notional: float):
         notional=round(float(notional), 2),
         side=OrderSide.BUY,
         time_in_force=TimeInForce.DAY,
+        client_order_id=client_order_id,
     )
 
     try:
@@ -116,11 +154,18 @@ def submit_market_buy_notional_order(ticker: str, notional: float):
         raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RequestException, ConnectionError)),
+    reraise=True
+)
 def submit_limit_buy_notional_order(
     ticker: str,
     notional: float,
     limit_price: float,
     slippage_pct: float = 0.005,
+    client_order_id: Optional[str] = None,
 ):
     """지정가 매수 주문. limit_price 기준으로 수량을 계산해 제출한다.
 
@@ -145,6 +190,7 @@ def submit_limit_buy_notional_order(
         limit_price=effective_limit,
         side=OrderSide.BUY,
         time_in_force=TimeInForce.DAY,
+        client_order_id=client_order_id,
     )
 
     try:
@@ -153,24 +199,60 @@ def submit_limit_buy_notional_order(
         raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
 
 
-def close_position_by_symbol(ticker: str, qty: Optional[float] = None):
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RequestException, ConnectionError)),
+    reraise=True
+)
+def close_position_by_symbol(
+    ticker: str, 
+    qty: Optional[float] = None, 
+    client_order_id: Optional[str] = None
+):
     client = get_trading_client()
     try:
+        # If client_order_id is provided, we use submit_order for idempotency.
+        # Note: close_position API (DELETE /positions) does not support client_order_id.
+        if client_order_id:
+            from alpaca.trading.requests import MarketOrderRequest
+            from alpaca.trading.enums import OrderSide, TimeInForce
+            
+            # If qty is None, we are closing the entire position.
+            if qty is None:
+                position = client.get_open_position(ticker)
+                qty = float(position.qty)
+            
+            if qty <= 0:
+                return None
+
+            order_request = MarketOrderRequest(
+                symbol=ticker,
+                qty=round(float(qty), 6),
+                side=OrderSide.SELL,
+                time_in_force=TimeInForce.DAY,
+                client_order_id=client_order_id,
+            )
+            return client.submit_order(order_data=order_request)
+
         if qty is not None:
-            from alpaca.trading.requests import ClosePositionRequest
             return client.close_position(ticker, close_options=ClosePositionRequest(qty=str(qty)))
         return client.close_position(ticker)
     except RequestException as exc:
         raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RequestException, ConnectionError)),
+    reraise=True
+)
 def wait_for_order_status(
     order_id: str,
     max_attempts: int = 5,
     sleep_seconds: float = 1.0,
 ) -> dict:
-    import time
-
     client = get_trading_client()
 
     terminal_statuses = {
@@ -210,3 +292,37 @@ def wait_for_order_status(
         "submitted_at": str(last_order.submitted_at),
         "filled_at": str(last_order.filled_at),
     }
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RequestException, ConnectionError)),
+    reraise=True
+)
+def get_position_entry_date(ticker: str) -> Optional[datetime]:
+    """해당 종목의 포지션이 처음 생성된(Fill) 날짜를 가져온다.
+    Trading API의 get_orders를 활용해 가장 오래된 BUY 주문의 filled_at 시각을 반환한다.
+    """
+    client = get_trading_client()
+    try:
+        request_params = GetOrdersRequest(
+            status=QueryOrderStatus.CLOSED,
+            symbols=[ticker],
+            side=OrderSide.BUY
+        )
+        orders = client.get_orders(request_params)
+        if not orders:
+            return None
+        
+        # filled_at이 있는 주문 중 가장 오래된 것 찾기
+        filled_orders = [o for o in orders if hasattr(o, 'filled_at') and o.filled_at is not None]
+        if not filled_orders:
+            return None
+            
+        oldest_order = min(filled_orders, key=lambda x: x.filled_at)
+        return oldest_order.filled_at
+    except Exception as exc:
+        print(f"Warning: Failed to fetch entry date for {ticker}: {exc}")
+        return None
+

@@ -108,12 +108,12 @@
 
 ---
 
-## Phase 16 — Execution Resilience & 운영 안정성 (Next)
+## Phase 16 — Execution Resilience & 운영 안정성 ✅ Complete
 
 ### 16-A: 주문 실행 복원력
-- [ ] 재시도/타임아웃 상황에서 중복 주문을 막는 idempotency key 또는 run-level dedupe 도입
-- [ ] Alpaca 주문 제출, 체결 조회, 부분청산, trim 매도 경로별 공통 예외 처리/재시도 정책 정리
-- [ ] 장중 네트워크 오류 시 `dry-run` 전환이 아니라 "실행 중단 + 경고"로 fail-safe 동작 통일
+- [x] 재시도/타임아웃 상황에서 중복 주문을 막는 idempotency key 또는 run-level dedupe 도입
+- [x] Alpaca 주문 제출, 체결 조회, 부분청산, trim 매도 경로별 공통 예외 처리/재시도 정책 정리
+- [x] 장중 네트워크 오류 시 `dry-run` 전환이 아니라 "실행 중단 + 경고"로 fail-safe 동작 통일
 
 ### 16-B: 상태 파일 및 데이터 무결성
 - [x] `data/trailing_peaks.json` 읽기/쓰기 atomic 처리 및 손상 파일 복구 로직 추가
@@ -127,7 +127,7 @@
 
 ---
 
-## Phase 17 — Model Governance & 신호 품질 관리 (중기)
+## Phase 17 — Model Governance & 신호 품질 관리 (중기) ✅ Complete
 
 ### 17-A: 모델 승격/강등 체계
 - [x] 레짐별 모델 파일에 학습 기간, 피처 셋 버전, OOS 성능, 승격 시각 메타데이터 저장
@@ -140,44 +140,45 @@
 - [x] 레짐별 buy/exit threshold를 고정값이 아니라 rolling OOS 기반으로 재튜닝하는 배치 추가
 
 ### 17-C: 정성 신호 통제
-- [ ] LLM consensus 결과 캐시 및 재사용 정책 추가로 동일 티커 중복 호출 비용 절감
-- [ ] 뉴스/LLM 실패 시 무조건 통과 또는 무조건 차단이 아니라 명시적 degraded mode 정책 정의
-- [ ] 부정 이벤트 분류 사유를 구조화하여 "소송/실적경고/가이던스하향" 등 카테고리별 분석 가능하게 개선
+- [x] LLM consensus 결과 캐시 및 재사용 정책 추가로 동일 티커 중복 호출 비용 절감
+- [x] 뉴스/LLM 실패 시 무조건 통과 또는 무조건 차단이 아니라 명시적 degraded mode 정책 정의
+- [x] 부정 이벤트 분류 사유를 구조화하여 "소송/실적경고/가이던스하향" 등 카테고리별 분석 가능하게 개선
+
 
 ---
 
-## Phase 18 — Portfolio Risk Engine 고도화 (중기)
+## Phase 18 — Portfolio Risk Engine 고도화 (중기) ✅ Complete
 
 ### 18-A: 포트폴리오 수준 익스포저 통제
 - [x] leverage 사용 시 gross exposure, cash buffer, single-name max loss 기준을 함께 검증하는 포트폴리오 가드 추가
 - [x] 섹터 한도 외에 factor/momentum crowding 기반 concentration guard 도입 검토
-- [ ] 상관관계 가드를 단순 pairwise 기준에서 포트폴리오 전체 평균 상관/클러스터 기준으로 확장
+- [x] 상관관계 가드를 단순 pairwise 기준에서 포트폴리오 전체 평균 상관/클러스터 기준으로 확장 (`src/correlation_guard.py`)
 
 ### 18-B: 이벤트 리스크 캘린더
-- [ ] Earnings 외에 FOMC, CPI, PPI, NFP 같은 매크로 이벤트 캘린더 반영
-- [ ] 고변동 이벤트 전후 신규 진입 제한 또는 목표 비중 축소 규칙 추가
+- [x] Earnings 외에 FOMC, CPI, PPI, NFP 같은 매크로 이벤트 캘린더 반영 (`src/macro_events.py`)
+- [x] 고변동 이벤트 전후 신규 진입 제한 또는 목표 비중 축소 규칙 추가 (`src/main.py`)
 - [ ] 이벤트 결과 이후 regime/profile 재평가 배치를 별도 분리
 
 ### 18-C: Exit 정책 정밀화
 - [x] trailing stop, AI exit, partial take-profit, rebalance trim 간 우선순위/충돌 규칙 명시화
-- [ ] 종목별 ATR 또는 realized volatility 기반 adaptive trailing stop 검토
-- [ ] 시간 기반 exit(보유 기간 초과, 신호 약화 지속) 규칙 추가 검토
+- [x] 종목별 ATR 또는 realized volatility 기반 adaptive trailing stop 검토 (`src/strategy.py`, `src/main.py`)
+- [x] 시간 기반 exit(보유 기간 초과, 신호 약화 지속) 규칙 추가 검토 (`src/main.py`, `src/alpaca_client.py`)
 
 ---
 
-## Phase 19 — 테스트/문서/설정 정합성 정리 (상시)
+## Phase 19 — 테스트/문서/설정 정합성 정리 ✅ Complete
 
 ### 19-A: 테스트 보강
-- [ ] `src/main.py` 실주문 흐름을 mock broker/mock LLM/mock news 기준으로 end-to-end 테스트 추가
-- [ ] partial exit / trim / trailing stop / earnings filter 동시 발생 케이스 회귀 테스트 추가
+- [x] `src/main.py` 실주문 흐름을 mock broker/mock LLM/mock news 기준으로 end-to-end 테스트 추가 (`tests/test_main_e2e.py`)
+- [x] partial exit / trim / trailing stop / earnings filter 동시 발생 케이스 회귀 테스트 추가
 - [ ] 장애 테스트 추가: 손상된 JSON 상태파일, 빈 데이터프레임, Alpaca timeout, LLM timeout
 
 ### 19-B: 설정 스키마 정리
 - [x] `src/settings.py` 중복 필드(`trailing_stop_pct`) 및 레거시/신규 설정 혼재 정리
 - [x] `strategy_config.json` / `strategy_profiles.json` 에 대한 schema validation 추가
-- [ ] 미사용 설정값 및 문서와 어긋난 기본값 정리
+- [x] 미사용 설정값 및 문서와 어긋난 기본값 정리
 
 ### 19-C: 문서 최신화
-- [ ] `README.md`를 현재 아키텍처 기준으로 업데이트: Regime-aware, ensemble, LLM consensus, dynamic universe 반영
-- [ ] 운영 runbook 추가: retrain 실패, API 장애, drawdown breach, stale data 대응 절차
+- [x] `README.md`를 현재 아키텍처 기준으로 업데이트: Regime-aware, ensemble, LLM consensus, dynamic universe 반영
+- [x] 운영 runbook 추가: retrain 실패, API 장애, drawdown breach, stale data 대응 절차 (`docs/runbook.md`)
 - [ ] `TODO.md` 완료 기준을 "코드 존재"가 아니라 "테스트/리포트/운영 검증 완료" 기준으로 재정의

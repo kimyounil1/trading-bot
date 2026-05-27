@@ -13,9 +13,10 @@ from src.settings import StrategySettings, validate_settings
 
 def _sample_price_frame(rows: int = 260) -> pd.DataFrame:
     values = np.arange(rows, dtype=float)
+    # Test session date is 2026-05-21, so we use dates ending near that.
     return pd.DataFrame(
         {
-            "date": pd.date_range("2023-01-01", periods=rows),
+            "date": pd.date_range(end="2026-05-20", periods=rows),
             "open": values + 1.0,
             "high": values + 2.0,
             "low": values + 0.5,

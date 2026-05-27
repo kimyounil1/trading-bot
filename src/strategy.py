@@ -28,6 +28,7 @@ def add_indicators(
     df["ma_fast"] = df["close"].rolling(ma_fast).mean()
     df["ma_slow"] = df["close"].rolling(ma_slow).mean()
     df["rsi"] = RSIIndicator(close=df["close"], window=14).rsi()
+    df["atr"] = AverageTrueRange(high=df["high"], low=df["low"], close=df["close"], window=14).average_true_range()
 
     # Legacy aliases
     df["ma20"] = df["ma_fast"]
