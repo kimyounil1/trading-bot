@@ -9,6 +9,8 @@
 
 ## Environment
 - Use Python 3.11+.
+- Prefer the repository virtual environment at `.venv/` for all Python commands.
+- When `.venv` exists, use `.venv/bin/python`, `.venv/bin/pip`, and tools invoked via `.venv/bin/...` by default instead of system Python.
 - Prefer existing project tooling and dependencies.
 - Do not add new production dependencies unless clearly necessary.
 - Ask before adding production dependencies if there is a reasonable no-dependency alternative.
@@ -16,10 +18,10 @@
 ## Common commands
 - Inspect files: `find . -maxdepth 3 -type f | head -100`
 - Search code: `rg "<pattern>"`
-- Run tests when available: `pytest`
+- Run tests when available: `.venv/bin/python -m pytest`
 - Run focused tests for small/local changes.
 - Run broader tests when the change touches shared logic, trading logic, data schemas, or public behavior.
-- For syntax sanity checks, use `python -m compileall <path>`.
+- For syntax sanity checks, use `.venv/bin/python -m compileall <path>`.
 
 ## Coding style
 - Keep functions small and explicit.

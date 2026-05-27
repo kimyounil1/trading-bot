@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import LimitOrderRequest, MarketOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
+from typing import Optional
 from requests.exceptions import RequestException
 
 from src.config import ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_PAPER
@@ -37,6 +40,7 @@ def get_account_summary() -> dict:
         "currency": account.currency,
         "cash": float(account.cash),
         "portfolio_value": float(account.portfolio_value),
+        "last_equity": float(account.last_equity),
         "buying_power": float(account.buying_power),
         "positions_count": len(positions),
     }
@@ -149,9 +153,12 @@ def submit_limit_buy_notional_order(
         raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
 
 
-def close_position_by_symbol(ticker: str):
+def close_position_by_symbol(ticker: str, qty: Optional[float] = None):
     client = get_trading_client()
     try:
+        if qty is not None:
+            from alpaca.trading.requests import ClosePositionRequest
+            return client.close_position(ticker, close_options=ClosePositionRequest(qty=str(qty)))
         return client.close_position(ticker)
     except RequestException as exc:
         raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc

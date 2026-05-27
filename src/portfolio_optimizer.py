@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Mean-Variance Optimization and Black-Litterman portfolio weight computation."""
 
 import numpy as np

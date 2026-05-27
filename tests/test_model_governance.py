@@ -1,0 +1,134 @@
+import tempfile
+import unittest
+from pathlib import Path
+
+import pandas as pd
+
+from src.ml_model import (
+    archive_current_champion,
+    build_model_bundle,
+    build_promotion_report,
+    find_latest_archived_champion,
+    load_model_metadata,
+    restore_archived_champion,
+    save_model_bundle,
+)
+from src.train_ai_model import _evaluate_rollback_need
+
+
+def _sample_training_data() -> dict[str, pd.DataFrame]:
+    return {
+        "AAPL": pd.DataFrame({"date": pd.date_range("2024-01-01", periods=3)}),
+        "MSFT": pd.DataFrame({"date": pd.date_range("2024-01-02", periods=3)}),
+    }
+
+
+class ModelGovernanceTest(unittest.TestCase):
+    def test_build_model_bundle_embeds_metadata(self) -> None:
+        metrics_df = pd.DataFrame(
+            [
+                {"regime": "BULL", "fold": 1, "roc_auc": 0.61},
+                {"regime": "BEAR", "fold": 1, "roc_auc": 0.57},
+            ]
+        )
+
+        bundle = build_model_bundle(
+            trained_models={"BULL": object(), "BEAR": object()},
+            metrics_df=metrics_df,
+            training_data=_sample_training_data(),
+            feature_columns=["feature_a", "feature_b"],
+            prediction_horizon=20,
+            target_return_threshold=0.0,
+        )
+
+        metadata = bundle["metadata"]
+        self.assertEqual(metadata["ticker_count"], 2)
+        self.assertEqual(metadata["feature_set_version"], "features_v2")
+        self.assertEqual(metadata["trained_regimes"], ["BEAR", "BULL"])
+        self.assertAlmostEqual(metadata["oos_metrics"]["avg_roc_auc"], 0.59, places=2)
+        self.assertEqual(metadata["training_window_start"], "2024-01-01")
+        self.assertEqual(metadata["training_window_end"], "2024-01-04")
+
+    def test_build_promotion_report_prefers_stronger_challenger(self) -> None:
+        challenger_metadata = {"oos_metrics": {"avg_roc_auc": 0.63}}
+        champion_metadata = {"oos_metrics": {"avg_roc_auc": 0.60}}
+
+        report = build_promotion_report(challenger_metadata, champion_metadata)
+
+        self.assertEqual(report["decision"], "PROMOTE")
+        self.assertIn("challenger_avg_roc_auc", report["reason"])
+
+    def test_save_model_bundle_persists_metadata_json(self) -> None:
+        bundle = {
+            "models": {"NEUTRAL": "dummy-model"},
+            "feature_columns": ["feature_a"],
+            "prediction_horizon": 5,
+            "target_return_threshold": 0.0,
+            "metadata": {"saved_at": "2026-05-27T00:00:00Z", "oos_metrics": {"avg_roc_auc": 0.55}},
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_path = Path(temp_dir) / "ai_score_model.joblib"
+            metadata_path = Path(temp_dir) / "ai_score_model_metadata.json"
+            save_model_bundle(bundle, model_path=model_path, metadata_path=metadata_path)
+            loaded_metadata = load_model_metadata(metadata_path)
+            self.assertTrue(model_path.exists())
+
+        self.assertEqual(loaded_metadata["saved_at"], "2026-05-27T00:00:00Z")
+        self.assertAlmostEqual(loaded_metadata["oos_metrics"]["avg_roc_auc"], 0.55, places=2)
+
+    def test_archive_and_restore_champion_round_trip(self) -> None:
+        bundle = {
+            "models": {"NEUTRAL": "champion-v1"},
+            "feature_columns": ["feature_a"],
+            "prediction_horizon": 5,
+            "target_return_threshold": 0.0,
+            "metadata": {"saved_at": "2026-05-27T00:00:00Z", "oos_metrics": {"avg_roc_auc": 0.55}},
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            champion_model_path = temp_root / "ai_score_model.joblib"
+            champion_metadata_path = temp_root / "ai_score_model_metadata.json"
+            archive_dir = temp_root / "archive"
+            save_model_bundle(bundle, model_path=champion_model_path, metadata_path=champion_metadata_path)
+
+            archived = archive_current_champion(
+                model_path=champion_model_path,
+                metadata_path=champion_metadata_path,
+                archive_dir=archive_dir,
+            )
+            self.assertIsNotNone(archived)
+            latest_archived = find_latest_archived_champion(archive_dir)
+            self.assertEqual(latest_archived, archived)
+
+            champion_model_path.unlink()
+            champion_metadata_path.unlink()
+            restore_archived_champion(
+                archived_model_path=archived[0],
+                archived_metadata_path=archived[1],
+                model_path=champion_model_path,
+                metadata_path=champion_metadata_path,
+            )
+
+            self.assertTrue(champion_model_path.exists())
+            self.assertEqual(load_model_metadata(champion_metadata_path)["saved_at"], "2026-05-27T00:00:00Z")
+
+    def test_evaluate_rollback_need_flags_breaches(self) -> None:
+        decision = _evaluate_rollback_need(
+            {
+                "source": "logs/validation/oos_validation.csv",
+                "total_return": -0.12,
+                "max_drawdown": -0.25,
+                "win_rate": 0.30,
+            }
+        )
+
+        self.assertTrue(decision["should_rollback"])
+        self.assertIn("total_return", decision["reason"])
+        self.assertIn("win_rate", decision["reason"])
+        self.assertIn("max_drawdown", decision["reason"])
+
+
+if __name__ == "__main__":
+    unittest.main()

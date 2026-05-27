@@ -1,13 +1,23 @@
+from __future__ import annotations
+
 import argparse
+import json
+import os
+from collections import Counter
+from pathlib import Path
 
 import pandas as pd
+from pandas.tseries.offsets import BDay
 
-from src.settings import load_settings
+from src.settings import load_settings, apply_dynamic_profile
 from src.data_loader import load_price_data_batch
 from src.strategy import add_indicators, generate_signal, is_bullish_market_regime
-from src.logger import log_signal, log_order, log_order_status
+from src.logger import log_execution_audit, log_signal, log_order, log_order_status
 from src.risk_manager import (
+    ExitDecision,
     apply_buy_safety_limits,
+    apply_factor_crowding_limits,
+    apply_portfolio_exposure_limits,
     check_additional_buy_allowed,
     check_buy_allowed,
     check_exit_allowed,
@@ -23,10 +33,148 @@ from src.alpaca_client import (
     wait_for_order_status,
 )
 from src.market_clock import get_market_clock
-from src.notifier import notify_order, notify_error, notify_run_summary
+from src.notifier import notify_order, notify_error, notify_run_summary, notify_info
 from src.ml_model import load_ai_score_model, predict_ai_score_from_bundle
 from src.sector import is_sector_allowed
+from src.correlation_guard import is_correlation_allowed
+from src.market_regime import get_current_regime
+from src.earnings import is_earnings_window
+from src.llm_analyst import evaluate_ticker_consensus
+from src.candidate_cache import get_dynamic_universe
+from src.sector_rotation import get_sector_leadership, get_ticker_sector_bonus
 from src.portfolio_optimizer import compute_weights_from_ticker_data
+
+# 트레일링 스탑용 최고점 기록 경로
+PEAKS_PATH = Path("data/trailing_peaks.json")
+
+def _quarantine_corrupt_peaks_file(path: Path) -> None:
+    corrupt_path = path.with_suffix(f"{path.suffix}.corrupt")
+    try:
+        if corrupt_path.exists():
+            corrupt_path.unlink()
+        path.replace(corrupt_path)
+        print(f"Warning: moved corrupt peaks file to {corrupt_path}")
+    except OSError as exc:
+        print(f"Warning: failed to quarantine corrupt peaks file {path}: {exc}")
+
+def _normalize_peaks(payload: object) -> dict[str, float]:
+    if not isinstance(payload, dict):
+        raise ValueError("peaks payload must be a JSON object")
+
+    normalized: dict[str, float] = {}
+    for ticker, value in payload.items():
+        if ticker is None:
+            continue
+        try:
+            normalized[str(ticker).strip().upper()] = float(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"invalid peak value for {ticker!r}: {value!r}") from exc
+    return normalized
+
+def _load_peaks() -> dict[str, float]:
+    if not PEAKS_PATH.exists():
+        return {}
+
+    try:
+        payload = json.loads(PEAKS_PATH.read_text(encoding="utf-8"))
+        return _normalize_peaks(payload)
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        print(f"Warning: failed to load peaks from {PEAKS_PATH}: {exc}")
+        _quarantine_corrupt_peaks_file(PEAKS_PATH)
+        return {}
+
+def _save_peaks(peaks: dict[str, float]) -> None:
+    PEAKS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    normalized = _normalize_peaks(peaks)
+    temp_path = PEAKS_PATH.with_suffix(f"{PEAKS_PATH.suffix}.tmp")
+    serialized = json.dumps(normalized, indent=2, sort_keys=True)
+    temp_path.write_text(serialized, encoding="utf-8")
+    with temp_path.open("r+", encoding="utf-8") as handle:
+        handle.flush()
+        os.fsync(handle.fileno())
+    temp_path.replace(PEAKS_PATH)
+
+def _to_session_date(value: str) -> pd.Timestamp:
+    ts = pd.Timestamp(value)
+    if ts.tzinfo is not None:
+        ts = ts.tz_convert("UTC").tz_localize(None)
+    return ts.normalize()
+
+def _check_price_frame_freshness(raw_df, market_clock) -> tuple[bool, str]:
+    if raw_df is None or raw_df.empty:
+        return False, "price data is empty"
+    if "date" not in raw_df.columns:
+        return False, "price data missing date column"
+
+    date_series = pd.to_datetime(raw_df["date"], errors="coerce").dropna()
+    if date_series.empty:
+        return False, "price data has no valid dates"
+
+    latest_bar_date = date_series.max()
+    if latest_bar_date.tzinfo is not None:
+        latest_bar_date = latest_bar_date.tz_convert("UTC").tz_localize(None)
+    latest_bar_date = latest_bar_date.normalize()
+
+    session_date = _to_session_date(market_clock.timestamp)
+    stale_cutoff = (session_date - BDay(3)).normalize()
+    if latest_bar_date < stale_cutoff:
+        return False, f"stale price data (latest={latest_bar_date.date()}, cutoff={stale_cutoff.date()})"
+
+    if market_clock.is_open and latest_bar_date >= session_date:
+        return False, f"incomplete intraday bar detected (latest={latest_bar_date.date()}, session={session_date.date()})"
+
+    return True, "price data fresh"
+
+
+def _format_llm_verdict(is_ok: bool | None, reason: str = "") -> str:
+    if is_ok is None:
+        return ""
+    verdict = "ACCEPT" if is_ok else "REJECT"
+    return f"{verdict}: {reason}" if reason else verdict
+
+
+def _summarize_run_metrics(
+    live_order_count: int,
+    skipped_reasons: Counter,
+    data_error_count: int,
+    api_error_count: int,
+) -> str:
+    skip_summary = ", ".join(
+        f"{reason}={count}" for reason, count in skipped_reasons.most_common()
+    ) or "none"
+    return (
+        f"orders_submitted={live_order_count}, "
+        f"skips={skip_summary}, "
+        f"data_errors={data_error_count}, "
+        f"api_errors={api_error_count}"
+    )
+
+
+def _resolve_full_exit_reason(
+    *,
+    unrealized_plpc: float,
+    stop_loss_pct: float,
+    take_profit_pct: float,
+    trailing_drawdown: float | None,
+    trailing_stop_pct: float,
+    signal: str,
+    ai_exit_triggered: bool,
+) -> str | None:
+    if stop_loss_pct > 0 and unrealized_plpc <= -stop_loss_pct:
+        return "stop loss triggered"
+    if (
+        trailing_drawdown is not None
+        and trailing_stop_pct > 0
+        and trailing_drawdown >= trailing_stop_pct
+    ):
+        return "trailing stop triggered"
+    if ai_exit_triggered:
+        return "ai exit triggered"
+    if signal == "SELL":
+        return "strategy sell signal"
+    if take_profit_pct > 0 and unrealized_plpc >= take_profit_pct:
+        return "take profit triggered"
+    return None
 from src.macro_loader import load_macro_data
 from src.news_sentiment import get_ticker_sentiment
 
@@ -157,16 +305,47 @@ def main() -> None:
     positions_by_symbol = {
         str(position["symbol"]).upper(): position for position in positions
     }
+    # 다이내믹 유니버스 적용 (Phase 13)
+    original_tickers = list(settings.tickers)
+    if getattr(settings, "dynamic_universe_enabled", False):
+        settings.tickers = get_dynamic_universe(
+            original_tickers, 
+            limit=int(getattr(settings, "dynamic_count", 50))
+        )
+    
     tickers_to_load = list(dict.fromkeys([*settings.tickers, *open_symbols]))
     if getattr(settings, "market_regime_filter_enabled", False):
         tickers_to_load.append(settings.market_regime_ticker)
         tickers_to_load = list(dict.fromkeys(tickers_to_load))
     if getattr(settings, "use_ai_score", False) and "^VIX" not in tickers_to_load:
         tickers_to_load.append("^VIX")
-    ticker_data = load_price_data_batch(tickers_to_load, period="1y")
+    ticker_data = load_price_data_batch(tickers_to_load, period="2y")
     vix_df = ticker_data.get("^VIX")
     spy_df = ticker_data.get("SPY")
-    macro_df = load_macro_data(period="1y") if getattr(settings, "use_ai_score", False) else None
+
+    # 시장 레짐 결정
+    current_regime = get_current_regime(spy_df, vix_df)
+    print(f"Current Market Regime: {current_regime}")
+
+    # 다이내믹 프로필 적용
+    settings, profile_name = apply_dynamic_profile(settings, current_regime)
+    print(f"Applied Strategy Profile: {profile_name}")
+    print(f"  - Max Positions: {settings.max_total_positions}")
+    print(f"  - Position Pct: {settings.max_position_pct:.1%}")
+    print(f"  - Buy Threshold: {settings.ai_score_buy_threshold:.2f}")
+
+    # VIX Panic Mode 알림
+    if vix_df is not None and not vix_df.empty:
+        close_col = "adj_close" if "adj_close" in vix_df.columns else "close"
+        latest_vix = float(vix_df[close_col].iloc[-1])
+        if latest_vix > 30.0:
+            notify_info(
+                "🔥 VIX Panic Mode Detected",
+                f"VIX level: {latest_vix:.2f}\n"
+                f"Market volatility is high. Defensive AI exit logic (threshold=0.45) is active."
+            )
+
+    macro_df = load_macro_data(period="2y") if getattr(settings, "use_ai_score", False) else None
     market_regime_bullish = True
     if getattr(settings, "market_regime_filter_enabled", False):
         market_regime_bullish = is_bullish_market_regime(
@@ -176,7 +355,25 @@ def main() -> None:
         )
 
     cash = account["cash"]
+    # 레버리지 적용 (Phase 13)
+    leverage = float(getattr(settings, "leverage_factor", 1.0))
+    portfolio_value = account["portfolio_value"] * leverage
+    
+    last_equity = account.get("last_equity", account["portfolio_value"])
+    
+    # Drawdown Circuit Breaker: 전일 대비 -15% 이상 하락 시 신규 매수 중단
+    # (주의: 레버리지 사용 시 실질 낙폭이 더 클 수 있으므로 실제 portfolio_value 기준 체크)
+    daily_drawdown = (account["portfolio_value"] - last_equity) / last_equity if last_equity > 0 else 0
+    max_drawdown_allowed = -float(getattr(settings, "max_portfolio_drawdown_pct", 0.15))
+    
+    circuit_breaker_active = daily_drawdown <= max_drawdown_allowed
+    if circuit_breaker_active:
+        print(f"CIRCUIT_BREAKER_ACTIVE: Daily drawdown ({daily_drawdown*100:.2f}%) "
+              f"exceeded threshold ({max_drawdown_allowed*100:.2f}%). "
+              f"New buys will be blocked.")
+
     positions_count = account["positions_count"]
+    current_gross_exposure = sum(float(position["market_value"]) for position in positions)
     orders_submitted = 0
     submitted_notional_today = get_today_buy_notional()
     recent_buy_symbols = get_recent_buy_symbols(
@@ -184,6 +381,10 @@ def main() -> None:
     )
     exit_summary_rows = []
     buy_summary_rows = []
+    skipped_reasons: Counter[str] = Counter()
+    data_error_count = 0
+    api_error_count = 0
+    live_order_count = 0
 
     print("Account loaded from Alpaca paper.")
     print(f"cash={cash:.2f}, positions_count={positions_count}")
@@ -203,17 +404,56 @@ def main() -> None:
     if execute_orders and not market_clock.is_open:
         print("EXECUTION_BLOCKED: market is closed. Dry-run checks will continue.")
 
-    can_submit_orders = execute_orders and market_clock.is_open
+    can_submit_orders = execute_orders and market_clock.is_open and not circuit_breaker_active
+
+    # 트레일링 스탑용 최고가 정보 로드
+    peaks = _load_peaks()
+    price_data_freshness = {
+        ticker: _check_price_frame_freshness(raw_df, market_clock)
+        for ticker, raw_df in ticker_data.items()
+    }
+
+    # 섹터 순환매 분석 (Phase 15-A)
+    top_sectors = []
+    if getattr(settings, "sector_rotation_enabled", False):
+        top_sectors = get_sector_leadership()
 
     print("-" * 80)
 
     # 1) 기존 보유 포지션 청산 조건 먼저 확인
     if positions:
+        print("-" * 80)
         print("Checking open positions for exit conditions...")
+
         for position in positions:
             ticker = str(position["symbol"]).upper()
-
             try:
+                data_fresh, data_reason = price_data_freshness.get(
+                    ticker,
+                    (False, "price data not loaded"),
+                )
+                if not data_fresh:
+                    print(f"{ticker}: SKIP_EXIT - {data_reason}")
+                    exit_summary_rows.append(f"{ticker}: SKIP_EXIT {data_reason}")
+                    skipped_reasons[f"exit:{data_reason}"] += 1
+                    data_error_count += 1
+                    log_execution_audit(
+                        event_type="SKIP_EXIT",
+                        ticker=ticker,
+                        action="CLOSE",
+                        status="SKIPPED",
+                        reason=data_reason,
+                        profile_name=profile_name,
+                        regime=current_regime,
+                    )
+                    continue
+
+                # 최고가 갱신 (트레일링 스탑용)
+                current_price = float(position["current_price"])
+                old_peak = peaks.get(ticker, 0.0)
+                if current_price > old_peak:
+                    peaks[ticker] = current_price
+
                 signal, latest, ai_score = get_signal_for_ticker(
                     ticker,
                     ticker_data[ticker],
@@ -226,7 +466,9 @@ def main() -> None:
                 )
                 unrealized_plpc = float(position["unrealized_plpc"])
 
-                # AI exit: override to SELL if score drops below threshold
+                ai_exit_triggered = False
+                exit_thr = None
+                # AI exit candidate
                 if (
                     getattr(settings, "ai_exit_enabled", False)
                     and signal != "SELL"
@@ -243,12 +485,34 @@ def main() -> None:
                         elif latest_vix > vix_high:
                             exit_thr = float(getattr(settings, "ai_exit_threshold_bear", 0.28))
                     if ai_score < exit_thr:
-                        signal = "SELL"
+                        ai_exit_triggered = True
 
-                exit_decision = check_exit_allowed(
-                    signal=signal,
+                # Trailing Stop (Phase 14-A)
+                peak_price = peaks.get(ticker, 0.0)
+                trailing_pct = float(getattr(settings, "trailing_stop_pct", 0.05))
+                trailing_drawdown = None
+                if peak_price > 0 and current_price < peak_price:
+                    trailing_drawdown = (peak_price - current_price) / peak_price
+
+                full_exit_reason = _resolve_full_exit_reason(
                     unrealized_plpc=unrealized_plpc,
+                    stop_loss_pct=float(getattr(settings, "stop_loss_pct", 0.0)),
+                    take_profit_pct=float(getattr(settings, "take_profit_pct", 0.0)),
+                    trailing_drawdown=trailing_drawdown,
+                    trailing_stop_pct=trailing_pct,
+                    signal=signal,
+                    ai_exit_triggered=ai_exit_triggered,
                 )
+                exit_decision = ExitDecision(
+                    should_exit=full_exit_reason is not None,
+                    reason="",
+                )
+                if full_exit_reason == "trailing stop triggered" and trailing_drawdown is not None:
+                    exit_decision.reason = (
+                        f"trailing stop triggered ({trailing_drawdown*100:.1f}% drop from peak ${peak_price:.2f})"
+                    )
+                elif full_exit_reason is not None:
+                    exit_decision.reason = full_exit_reason
 
                 print(
                     f"{ticker}: position_qty={position['qty']}, "
@@ -264,6 +528,97 @@ def main() -> None:
                     f"reason={exit_decision.reason}"
                 )
 
+                # Partial Profit Taking (Phase 11-A)
+                # 수익률이 take_profit_partial_pct 이상이면 비중의 절반을 매도 (분할 익절)
+                partial_tp_thr = float(getattr(settings, "take_profit_partial_pct", 0.0))
+                if not exit_decision.should_exit and partial_tp_thr > 0 and unrealized_plpc >= partial_tp_thr:
+                    current_qty = float(position["qty"])
+                    if current_qty > 0.1: 
+                        sell_qty = round(current_qty * float(getattr(settings, "partial_exit_ratio", 0.5)), 4)
+                        print(f"  PARTIAL_EXIT_TRIGGERED: {ticker} pnl={unrealized_plpc*100:.2f}% >= {partial_tp_thr*100:.2f}%. Selling {sell_qty}")
+                        if can_submit_orders:
+                            try:
+                                partial_order = close_position_by_symbol(ticker, qty=sell_qty)
+                                live_order_count += 1
+                                log_execution_audit(
+                                    event_type="PARTIAL_EXIT",
+                                    ticker=ticker,
+                                    action="SELL",
+                                    status=str(partial_order.status),
+                                    reason=f"partial take profit ({unrealized_plpc*100:.2f}%)",
+                                    profile_name=profile_name,
+                                    regime=current_regime,
+                                    signal=signal,
+                                    ai_score=ai_score,
+                                    order_id=str(partial_order.id),
+                                    order_type=str(partial_order.type),
+                                    side=str(partial_order.side),
+                                    quantity=sell_qty,
+                                )
+                                notify_info("💰 Partial Profit Taken", f"{ticker}: Sold {sell_qty} shares at +{unrealized_plpc*100:.2f}% profit.")
+                            except Exception as e:
+                                print(f"  Partial exit error for {ticker}: {e}")
+                                api_error_count += 1
+                                log_execution_audit(
+                                    event_type="PARTIAL_EXIT",
+                                    ticker=ticker,
+                                    action="SELL",
+                                    status="ERROR",
+                                    reason=str(e),
+                                    profile_name=profile_name,
+                                    regime=current_regime,
+                                    signal=signal,
+                                    ai_score=ai_score,
+                                    quantity=sell_qty,
+                                )
+
+                # Position Trimming / Rebalancing (Phase 14-B)
+                # 현재 비중이 목표치보다 너무 크면 일부 매도 (20% 초과 시)
+                rebalance_thr = float(getattr(settings, "rebalance_threshold_pct", 0.20))
+                portfolio_val = float(account["portfolio_value"])
+                target_weight = float(settings.max_position_pct)
+                current_weight = float(position["market_value"]) / portfolio_val if portfolio_val > 0 else 0
+
+                if not exit_decision.should_exit and current_weight > target_weight * (1 + rebalance_thr):
+                    excess_value = float(position["market_value"]) - (portfolio_val * target_weight)
+                    if excess_value > 50: # 최소 50달러 이상일 때만 리밸런싱
+                        trim_qty = round(excess_value / current_price, 4)
+                        print(f"  REBALANCE_TRIM: {ticker} weight {current_weight*100:.1f}% > target {target_weight*100:.1f}%. Trimming {trim_qty}")
+                        if can_submit_orders:
+                            try:
+                                trim_order = close_position_by_symbol(ticker, qty=trim_qty)
+                                live_order_count += 1
+                                log_execution_audit(
+                                    event_type="REBALANCE_TRIM",
+                                    ticker=ticker,
+                                    action="SELL",
+                                    status=str(trim_order.status),
+                                    reason=f"rebalance trim (weight={current_weight:.4f})",
+                                    profile_name=profile_name,
+                                    regime=current_regime,
+                                    signal=signal,
+                                    ai_score=ai_score,
+                                    order_id=str(trim_order.id),
+                                    order_type=str(trim_order.type),
+                                    side=str(trim_order.side),
+                                    quantity=trim_qty,
+                                )
+                            except Exception as e:
+                                print(f"  Trim error for {ticker}: {e}")
+                                api_error_count += 1
+                                log_execution_audit(
+                                    event_type="REBALANCE_TRIM",
+                                    ticker=ticker,
+                                    action="SELL",
+                                    status="ERROR",
+                                    reason=str(e),
+                                    profile_name=profile_name,
+                                    regime=current_regime,
+                                    signal=signal,
+                                    ai_score=ai_score,
+                                    quantity=trim_qty,
+                                )
+
                 if not exit_decision.should_exit:
                     continue
 
@@ -273,9 +628,22 @@ def main() -> None:
                         f"  {label}: would CLOSE {ticker} "
                         f"reason='{exit_decision.reason}'"
                     )
+                    skipped_reasons[f"exit:{label.lower()}"] += 1
+                    log_execution_audit(
+                        event_type="SKIP_EXIT",
+                        ticker=ticker,
+                        action="CLOSE",
+                        status="SKIPPED",
+                        reason=f"{label}: {exit_decision.reason}",
+                        profile_name=profile_name,
+                        regime=current_regime,
+                        signal=signal,
+                        ai_score=ai_score,
+                    )
                     continue
 
                 order = close_position_by_symbol(ticker)
+                live_order_count += 1
 
                 log_order(
                     ticker=ticker,
@@ -290,6 +658,20 @@ def main() -> None:
                 print(
                     f"  PAPER_CLOSE_SUBMITTED: {ticker}, "
                     f"order_id={order.id}, status={order.status}"
+                )
+                log_execution_audit(
+                    event_type="FULL_EXIT",
+                    ticker=ticker,
+                    action="SELL",
+                    status=str(order.status),
+                    reason=exit_decision.reason,
+                    profile_name=profile_name,
+                    regime=current_regime,
+                    signal=signal,
+                    ai_score=ai_score,
+                    order_id=str(order.id),
+                    order_type=str(order.type),
+                    side=str(order.side),
                 )
 
                 checked_order = wait_for_order_status(str(order.id))
@@ -308,6 +690,22 @@ def main() -> None:
                     f"filled_qty={checked_order['filled_qty']}, "
                     f"filled_avg_price={checked_order['filled_avg_price']}"
                 )
+                log_execution_audit(
+                    event_type="FULL_EXIT_STATUS",
+                    ticker=ticker,
+                    action="SELL",
+                    status=str(checked_order["status"]),
+                    reason=exit_decision.reason,
+                    profile_name=profile_name,
+                    regime=current_regime,
+                    signal=signal,
+                    ai_score=ai_score,
+                    order_id=str(checked_order["id"]),
+                    order_type=str(checked_order["type"]),
+                    side=str(checked_order["side"]),
+                    filled_qty=checked_order["filled_qty"],
+                    filled_avg_price=checked_order["filled_avg_price"],
+                )
 
                 notify_order(
                     action="CLOSE",
@@ -325,17 +723,45 @@ def main() -> None:
                     positions_count -= 1
 
             except Exception as exc:
-                print(f"{ticker}: EXIT_CHECK_ERROR - {exc}")
                 exit_summary_rows.append(f"{ticker}: EXIT_CHECK_ERROR - {exc}")
+                api_error_count += 1
+                log_execution_audit(
+                    event_type="EXIT_ERROR",
+                    ticker=ticker,
+                    action="CLOSE",
+                    status="ERROR",
+                    reason=str(exc),
+                    profile_name=profile_name,
+                    regime=current_regime,
+                )
                 notify_error(f"{ticker} exit check error", exc)
 
         print("-" * 80)
-
     # 2) 신규 매수 후보 수집 (Pass 1: 신호 생성 + 리스크 검사, 주문 미제출)
     approved_buys: list[dict] = []
 
     for ticker in settings.tickers:
         try:
+            data_fresh, data_reason = price_data_freshness.get(
+                ticker,
+                (False, "price data not loaded"),
+            )
+            if not data_fresh:
+                print(f"{ticker}: SKIP_BUY - {data_reason}")
+                buy_summary_rows.append(f"{ticker}: SKIP_BUY {data_reason}")
+                skipped_reasons[f"buy:{data_reason}"] += 1
+                data_error_count += 1
+                log_execution_audit(
+                    event_type="SKIP_BUY",
+                    ticker=ticker,
+                    action="BUY",
+                    status="SKIPPED",
+                    reason=data_reason,
+                    profile_name=profile_name,
+                    regime=current_regime,
+                )
+                continue
+
             signal, latest, ai_score = get_signal_for_ticker(
                 ticker,
                 ticker_data[ticker],
@@ -344,10 +770,22 @@ def main() -> None:
                 market_regime_bullish=market_regime_bullish,
                 vix_df=vix_df,
                 spy_df=spy_df,
+                macro_df=macro_df,
             )
+
+            # 섹터 로테이션 보너스 (Phase 15-A)
+            if ai_score is not None and top_sectors:
+                bonus = get_ticker_sector_bonus(ticker, top_sectors)
+                if bonus > 0:
+                    ai_score += bonus
+                    # print(f"  SECTOR_BONUS: {ticker} score boosted by {bonus} (in {top_sectors})")
+
+            llm_is_ok = None
+            llm_reason = ""
 
             position = positions_by_symbol.get(ticker)
             if position is not None:
+                # 13-A: 이미 보유 중인 종목이라도 목표 비중에 미달하면 추가 매수 (Averaging up/down)
                 risk = check_additional_buy_allowed(
                     signal=signal,
                     cash=cash,
@@ -357,6 +795,12 @@ def main() -> None:
                 risk_allowed = risk.allowed
                 risk_reason = risk.reason
                 target_amount = risk.target_amount
+                
+                # 추가 매수 시에도 최소 금액(예: 10달러) 이상일 때만 진행
+                if risk_allowed and target_amount < 10.0:
+                    risk_allowed = False
+                    risk_reason = f"additional buy amount too small (${target_amount:.2f})"
+                    target_amount = 0.0
             else:
                 risk = check_buy_allowed(
                     signal=signal,
@@ -404,6 +848,49 @@ def main() -> None:
                     risk_reason = sector_reason
                     target_amount = 0.0
 
+            # 상관관계 필터: 기존 보유 종목과 과도한 상관관계 시 매수 차단
+            if risk_allowed and position is None and getattr(settings, "correlation_guard_enabled", False):
+                corr_ok, corr_reason = is_correlation_allowed(
+                    ticker, open_symbols, ticker_data,
+                    max_corr=float(getattr(settings, "max_correlation_threshold", 0.85)),
+                    lookback_days=int(getattr(settings, "correlation_lookback_days", 60))
+                )
+                if not corr_ok:
+                    risk_allowed = False
+                    risk_reason = corr_reason
+                    target_amount = 0.0
+
+            if risk_allowed and position is None and getattr(settings, "crowding_guard_enabled", False):
+                crowding = apply_factor_crowding_limits(
+                    ticker=ticker,
+                    open_symbols=open_symbols,
+                    ticker_data=ticker_data,
+                )
+                if not crowding.allowed:
+                    risk_allowed = False
+                    risk_reason = crowding.reason
+                    target_amount = 0.0
+
+            # 실적 발표 필터: 실적 발표 전후 변동성 회피
+            if risk_allowed and position is None and getattr(settings, "earnings_filter_enabled", False):
+                in_window, earnings_reason = is_earnings_window(
+                    ticker, pd.Timestamp.now(),
+                    lookback_days=int(getattr(settings, "earnings_lookback_days", 3)),
+                    lookforward_days=int(getattr(settings, "earnings_lookforward_days", 1))
+                )
+                if in_window:
+                    risk_allowed = False
+                    risk_reason = f"earnings filter: {earnings_reason}"
+                    target_amount = 0.0
+
+            # LLM Consensus 필터: 정량적 신호를 뉴스로 정성 검증 (Phase 11-B)
+            if risk_allowed and position is None:
+                llm_is_ok, llm_reason = evaluate_ticker_consensus(ticker)
+                if not llm_is_ok:
+                    risk_allowed = False
+                    risk_reason = f"LLM Reject: {llm_reason}"
+                    target_amount = 0.0
+
             order_amount = min(target_amount, settings.max_test_order_amount)
 
             if risk_allowed:
@@ -417,6 +904,20 @@ def main() -> None:
                 risk_reason = safety.reason if not safety.allowed else risk_reason
                 order_amount = safety.target_amount
 
+            if risk_allowed:
+                exposure = apply_portfolio_exposure_limits(
+                    ticker=ticker,
+                    order_amount=order_amount,
+                    cash=float(cash),
+                    portfolio_value=float(account["portfolio_value"]) * float(getattr(settings, "leverage_factor", 1.0)),
+                    buying_power=float(account.get("buying_power", 0.0)),
+                    current_gross_exposure=current_gross_exposure,
+                    current_position_value=float(position["market_value"]) if position is not None else 0.0,
+                )
+                risk_allowed = exposure.allowed
+                risk_reason = exposure.reason if not exposure.allowed else risk_reason
+                order_amount = exposure.target_amount
+
             log_signal(
                 ticker=ticker,
                 signal=signal,
@@ -424,6 +925,7 @@ def main() -> None:
                 ma20=latest["ma20"],
                 ma50=latest["ma50"],
                 rsi=latest["rsi"],
+                ai_score=ai_score,
             )
 
             print(
@@ -442,6 +944,21 @@ def main() -> None:
                 f"reason={risk_reason}, order=${order_amount:.2f}, "
                 f"ai_score={ai_score}"
             )
+            if not risk_allowed:
+                skipped_reasons[f"buy:{risk_reason}"] += 1
+                log_execution_audit(
+                    event_type="SKIP_BUY",
+                    ticker=ticker,
+                    action="BUY",
+                    status="SKIPPED",
+                    reason=risk_reason,
+                    profile_name=profile_name,
+                    regime=current_regime,
+                    signal=signal,
+                    ai_score=ai_score,
+                    llm_verdict=_format_llm_verdict(llm_is_ok, llm_reason),
+                    notional=order_amount,
+                )
 
             if risk_allowed:
                 approved_buys.append({
@@ -449,11 +966,23 @@ def main() -> None:
                     "order_amount": order_amount,
                     "ai_score": ai_score,
                     "risk_reason": risk_reason,
+                    "signal": signal,
+                    "llm_verdict": _format_llm_verdict(llm_is_ok, llm_reason),
                 })
 
         except Exception as exc:
             print(f"{ticker}: ERROR - {exc}")
             buy_summary_rows.append(f"{ticker}: ERROR - {exc}")
+            api_error_count += 1
+            log_execution_audit(
+                event_type="BUY_ERROR",
+                ticker=ticker,
+                action="BUY",
+                status="ERROR",
+                reason=str(exc),
+                profile_name=profile_name,
+                regime=current_regime,
+            )
             notify_error(f"{ticker} bot error", exc)
 
     # 3) MVO 가중치 적용 (Pass 2: allocation_method에 따라 주문 금액 조정)
@@ -490,12 +1019,28 @@ def main() -> None:
         order_amount = candidate["order_amount"]
         risk_reason = candidate["risk_reason"]
         ai_score = candidate["ai_score"]
+        signal = candidate["signal"]
+        llm_verdict = candidate["llm_verdict"]
 
         if orders_submitted >= settings.max_orders_per_run:
             print("  SKIP_ORDER: max orders per run reached")
             buy_summary_rows.append(
                 f"{ticker}: SKIP_ORDER max orders per run reached, "
                 f"ai_score={ai_score}"
+            )
+            skipped_reasons["buy:max orders per run reached"] += 1
+            log_execution_audit(
+                event_type="SKIP_BUY",
+                ticker=ticker,
+                action="BUY",
+                status="SKIPPED",
+                reason="max orders per run reached",
+                profile_name=profile_name,
+                regime=current_regime,
+                signal=signal,
+                ai_score=ai_score,
+                llm_verdict=llm_verdict,
+                notional=order_amount,
             )
             continue
 
@@ -509,6 +1054,20 @@ def main() -> None:
                 f"{ticker}: {label} would BUY ${order_amount:.2f}, "
                 f"ai_score={ai_score}"
             )
+            skipped_reasons[f"buy:{label.lower()}"] += 1
+            log_execution_audit(
+                event_type="SKIP_BUY",
+                ticker=ticker,
+                action="BUY",
+                status="SKIPPED",
+                reason=label,
+                profile_name=profile_name,
+                regime=current_regime,
+                signal=signal,
+                ai_score=ai_score,
+                llm_verdict=llm_verdict,
+                notional=order_amount,
+            )
             orders_submitted += 1
             submitted_notional_today += order_amount
             continue
@@ -517,6 +1076,7 @@ def main() -> None:
             ticker=ticker,
             notional=order_amount,
         )
+        live_order_count += 1
         orders_submitted += 1
         submitted_notional_today += order_amount
 
@@ -535,6 +1095,22 @@ def main() -> None:
             f"notional=${order_amount:.2f}, "
             f"order_id={order.id}, status={order.status}"
         )
+        log_execution_audit(
+            event_type="BUY_SUBMITTED",
+            ticker=ticker,
+            action="BUY",
+            status=str(order.status),
+            reason=risk_reason,
+            profile_name=profile_name,
+            regime=current_regime,
+            signal=signal,
+            ai_score=ai_score,
+            llm_verdict=llm_verdict,
+            order_id=str(order.id),
+            order_type=str(order.type),
+            side=str(order.side),
+            notional=order_amount,
+        )
 
         checked_order = wait_for_order_status(str(order.id))
         log_order_status(
@@ -551,6 +1127,24 @@ def main() -> None:
             f"  BUY_STATUS_CHECK: status={checked_order['status']}, "
             f"filled_qty={checked_order['filled_qty']}, "
             f"filled_avg_price={checked_order['filled_avg_price']}"
+        )
+        log_execution_audit(
+            event_type="BUY_STATUS",
+            ticker=ticker,
+            action="BUY",
+            status=str(checked_order["status"]),
+            reason=risk_reason,
+            profile_name=profile_name,
+            regime=current_regime,
+            signal=signal,
+            ai_score=ai_score,
+            llm_verdict=llm_verdict,
+            order_id=str(checked_order["id"]),
+            order_type=str(checked_order["type"]),
+            side=str(checked_order["side"]),
+            notional=order_amount,
+            filled_qty=checked_order["filled_qty"],
+            filled_avg_price=checked_order["filled_avg_price"],
         )
 
         notify_order(
@@ -574,10 +1168,19 @@ def main() -> None:
             open_symbols.add(ticker)
             positions_count += 1
         cash -= order_amount
+        current_gross_exposure += order_amount
 
+    # 6) 결과 저장 및 피크 정보 갱신
+    _save_peaks(peaks)
 
-    exit_summary = compact_exit_summary(exit_summary_rows, limit=20)
-    buy_summary = compact_buy_summary(buy_summary_rows, limit=10)
+    metrics_summary = _summarize_run_metrics(
+        live_order_count=live_order_count,
+        skipped_reasons=skipped_reasons,
+        data_error_count=data_error_count,
+        api_error_count=api_error_count,
+    )
+    exit_summary = f"{metrics_summary}\n{compact_exit_summary(exit_summary_rows, limit=20)}"
+    buy_summary = f"{metrics_summary}\n{compact_buy_summary(buy_summary_rows, limit=10)}"
 
     try:
         notify_run_summary(

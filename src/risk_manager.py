@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -168,6 +170,168 @@ def apply_buy_safety_limits(
             )
 
     return RiskDecision(True, "buy safety limits passed", order_amount)
+
+
+def apply_portfolio_exposure_limits(
+    ticker: str,
+    order_amount: float,
+    cash: float,
+    portfolio_value: float,
+    buying_power: float,
+    current_gross_exposure: float,
+    current_position_value: float = 0.0,
+) -> RiskDecision:
+    settings = load_settings()
+
+    if order_amount <= 0:
+        return RiskDecision(False, "target amount is zero or negative", 0.0)
+
+    if portfolio_value <= 0:
+        return RiskDecision(False, "portfolio value is zero or negative", 0.0)
+
+    if buying_power < order_amount:
+        return RiskDecision(
+            False,
+            f"buying power exceeded (required=${order_amount:.2f}, available=${buying_power:.2f})",
+            0.0,
+        )
+
+    max_gross_exposure = portfolio_value * float(getattr(settings, "max_gross_exposure_pct", 1.0))
+    projected_gross_exposure = current_gross_exposure + order_amount
+    if projected_gross_exposure > max_gross_exposure:
+        return RiskDecision(
+            False,
+            f"gross exposure limit exceeded (projected=${projected_gross_exposure:.2f}, max=${max_gross_exposure:.2f})",
+            0.0,
+        )
+
+    min_cash_buffer = portfolio_value * float(getattr(settings, "min_cash_buffer_pct", 0.05))
+    projected_cash = cash - order_amount
+    if projected_cash < min_cash_buffer:
+        return RiskDecision(
+            False,
+            f"cash buffer breached (projected=${projected_cash:.2f}, min=${min_cash_buffer:.2f})",
+            0.0,
+        )
+
+    max_single_name_loss = portfolio_value * float(getattr(settings, "max_single_name_loss_pct", 0.02))
+    stop_loss_pct = float(getattr(settings, "stop_loss_pct", 0.0))
+    projected_position_value = max(current_position_value, 0.0) + order_amount
+    projected_single_name_loss = projected_position_value * stop_loss_pct
+    if projected_single_name_loss > max_single_name_loss:
+        return RiskDecision(
+            False,
+            f"single-name max loss exceeded for {ticker} (projected=${projected_single_name_loss:.2f}, max=${max_single_name_loss:.2f})",
+            0.0,
+        )
+
+    return RiskDecision(True, "portfolio exposure limits passed", order_amount)
+
+
+def _build_crowding_snapshot(
+    df: pd.DataFrame,
+    lookback_days: int,
+    ma_slow: int,
+) -> dict[str, float] | None:
+    if df is None or df.empty:
+        return None
+
+    close_col = "adj_close" if "adj_close" in df.columns else "close"
+    if close_col not in df.columns:
+        return None
+
+    close_series = pd.to_numeric(df[close_col], errors="coerce").dropna()
+    required_rows = max(lookback_days + 1, ma_slow)
+    if len(close_series) < required_rows:
+        return None
+
+    momentum_return = close_series.pct_change(lookback_days).iloc[-1]
+    ma_slow_value = close_series.rolling(ma_slow).mean().iloc[-1]
+    close_value = close_series.iloc[-1]
+    if pd.isna(momentum_return) or pd.isna(ma_slow_value) or ma_slow_value <= 0:
+        return None
+
+    trend_gap = (close_value / ma_slow_value) - 1.0
+    return {
+        "momentum_return": float(momentum_return),
+        "trend_gap": float(trend_gap),
+    }
+
+
+def apply_factor_crowding_limits(
+    ticker: str,
+    open_symbols: set[str],
+    ticker_data: dict[str, pd.DataFrame],
+) -> RiskDecision:
+    settings = load_settings()
+
+    if not open_symbols:
+        return RiskDecision(True, "no open positions to compare")
+
+    lookback_days = int(getattr(settings, "crowding_lookback_days", 60))
+    max_crowded_positions = int(getattr(settings, "crowding_max_positions", 2))
+    momentum_threshold = float(getattr(settings, "crowding_momentum_threshold", 0.15))
+    trend_gap_threshold = float(getattr(settings, "crowding_trend_gap_threshold", 0.05))
+    ma_slow = int(getattr(settings, "ma_slow", 50))
+
+    candidate_snapshot = _build_crowding_snapshot(
+        ticker_data.get(ticker),
+        lookback_days=lookback_days,
+        ma_slow=ma_slow,
+    )
+    if candidate_snapshot is None:
+        return RiskDecision(True, f"insufficient data for {ticker} (skipped crowding check)")
+
+    candidate_has_momentum = candidate_snapshot["momentum_return"] >= momentum_threshold
+    candidate_has_trend = candidate_snapshot["trend_gap"] >= trend_gap_threshold
+    if not candidate_has_momentum and not candidate_has_trend:
+        return RiskDecision(True, "candidate not crowding-sensitive")
+
+    momentum_peers = 0
+    trend_peers = 0
+    for symbol in open_symbols:
+        peer_snapshot = _build_crowding_snapshot(
+            ticker_data.get(symbol),
+            lookback_days=lookback_days,
+            ma_slow=ma_slow,
+        )
+        if peer_snapshot is None:
+            continue
+
+        if candidate_has_momentum and peer_snapshot["momentum_return"] >= momentum_threshold:
+            momentum_peers += 1
+        if candidate_has_trend and peer_snapshot["trend_gap"] >= trend_gap_threshold:
+            trend_peers += 1
+
+    if candidate_has_momentum and momentum_peers >= max_crowded_positions:
+        return RiskDecision(
+            False,
+            (
+                f"momentum crowding limit reached "
+                f"(peers={momentum_peers}, max={max_crowded_positions}, "
+                f"candidate_return={candidate_snapshot['momentum_return']:.2%})"
+            ),
+            0.0,
+        )
+
+    if candidate_has_trend and trend_peers >= max_crowded_positions:
+        return RiskDecision(
+            False,
+            (
+                f"trend crowding limit reached "
+                f"(peers={trend_peers}, max={max_crowded_positions}, "
+                f"candidate_gap={candidate_snapshot['trend_gap']:.2%})"
+            ),
+            0.0,
+        )
+
+    return RiskDecision(
+        True,
+        (
+            f"crowding check passed "
+            f"(momentum_peers={momentum_peers}, trend_peers={trend_peers})"
+        ),
+    )
 
 
 def check_exit_allowed(

@@ -1,14 +1,49 @@
 import csv
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from src.settings import load_settings
+import pandas as pd
+
+from src.features import build_features
+from src.settings import load_settings, save_settings
 from src.data_loader import load_price_data_batch
-from src.ml_model import train_ai_score_model
+from src.ml_model import (
+    CHAMPION_ARCHIVE_DIR,
+    FEATURE_COLUMNS,
+    MODEL_METADATA_PATH,
+    MODEL_PATH,
+    archive_current_champion,
+    build_model_bundle,
+    build_promotion_report,
+    find_latest_archived_champion,
+    load_model_metadata,
+    restore_archived_champion,
+    save_challenger_bundle,
+    save_model_bundle,
+    train_ai_score_model,
+)
 from src.macro_loader import load_macro_data
+from src.notifier import notify_info
+from src.portfolio_backtester import run_portfolio_backtest
 
 VIX_TICKER = "^VIX"
 RETRAIN_LOG_PATH = Path("logs/retrain_history.csv")
+ROLLBACK_REPORT_PATH = Path("logs/ml/model_rollback_report.json")
+OOS_VALIDATION_PATH = Path("logs/validation/oos_validation.csv")
+BASELINE_SUMMARY_PATH = Path("logs/baselines/current_strategy/portfolio_summary.csv")
+FEATURE_STATS_PATH = Path("models/ai_feature_stats.json")
+DRIFT_REPORT_PATH = Path("logs/ml/feature_drift_report.json")
+CALIBRATION_REPORT_PATH = Path("logs/ml/model_calibration_report.json")
+CALIBRATION_BINS_PATH = Path("logs/ml/model_calibration_bins.csv")
+THRESHOLD_RETUNE_REPORT_PATH = Path("logs/ml/threshold_retune_report.json")
+THRESHOLD_RETUNE_RESULTS_PATH = Path("logs/ml/threshold_retune_results.csv")
+ROLLBACK_MIN_TOTAL_RETURN = -0.05
+ROLLBACK_MIN_WIN_RATE = 0.35
+ROLLBACK_MAX_DRAWDOWN = -0.20
+DRIFT_ZSCORE_ALERT_THRESHOLD = 1.5
+BUY_THRESHOLD_GRID = [0.40, 0.45, 0.50, 0.55, 0.60]
+EXIT_THRESHOLD_GRID = [0.20, 0.25, 0.30, 0.35, 0.40, 0.45]
 
 
 def _append_retrain_log(status: str, metrics_df, elapsed_sec: float) -> None:
@@ -20,8 +55,17 @@ def _append_retrain_log(status: str, metrics_df, elapsed_sec: float) -> None:
     if metrics_df is not None and not metrics_df.empty:
         if "roc_auc" in metrics_df.columns:
             avg_roc = float(metrics_df["roc_auc"].mean())
+        # precision이 metrics_df에 없으면 0.0으로 유지 (regime별 CV에서 누락 가능)
         if "precision" in metrics_df.columns:
             avg_precision = float(metrics_df["precision"].mean())
+
+    # ROC-AUC 성능 저하 알림 (평균치 기준)
+    if avg_roc < 0.51 and status == "success":
+        notify_info(
+            "⚠️ AI Model Performance Degradation (Regime-Aware)",
+            f"Average ROC-AUC across regimes: {avg_roc:.4f}\n"
+            f"Retraining completed, but overall model quality may be low."
+        )
 
     row = {
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -36,6 +80,361 @@ def _append_retrain_log(status: str, metrics_df, elapsed_sec: float) -> None:
         if write_header:
             writer.writeheader()
         writer.writerow(row)
+
+
+def _load_recent_performance_snapshot() -> dict | None:
+    if OOS_VALIDATION_PATH.exists():
+        df = pd.read_csv(OOS_VALIDATION_PATH)
+        if not df.empty:
+            row = df.iloc[-1]
+            return {
+                "source": str(OOS_VALIDATION_PATH),
+                "total_return": float(row.get("total_return", 0.0)),
+                "max_drawdown": float(row.get("max_drawdown", 0.0)),
+                "win_rate": float(row.get("win_rate", 0.0)),
+            }
+
+    if BASELINE_SUMMARY_PATH.exists():
+        df = pd.read_csv(BASELINE_SUMMARY_PATH)
+        if not df.empty:
+            row = df.iloc[-1]
+            return {
+                "source": str(BASELINE_SUMMARY_PATH),
+                "total_return": float(row.get("total_return", 0.0)),
+                "max_drawdown": float(row.get("max_drawdown", 0.0)),
+                "win_rate": float(row.get("win_rate", 0.0)),
+            }
+
+    return None
+
+
+def _evaluate_rollback_need(performance: dict | None) -> dict:
+    if performance is None:
+        return {
+            "should_rollback": False,
+            "reason": "no recent performance snapshot available",
+        }
+
+    breaches = []
+    if performance["total_return"] <= ROLLBACK_MIN_TOTAL_RETURN:
+        breaches.append(
+            f"total_return={performance['total_return']:.4f} <= {ROLLBACK_MIN_TOTAL_RETURN:.4f}"
+        )
+    if performance["win_rate"] <= ROLLBACK_MIN_WIN_RATE:
+        breaches.append(
+            f"win_rate={performance['win_rate']:.4f} <= {ROLLBACK_MIN_WIN_RATE:.4f}"
+        )
+    if performance["max_drawdown"] <= ROLLBACK_MAX_DRAWDOWN:
+        breaches.append(
+            f"max_drawdown={performance['max_drawdown']:.4f} <= {ROLLBACK_MAX_DRAWDOWN:.4f}"
+        )
+
+    return {
+        "should_rollback": bool(breaches),
+        "reason": "; ".join(breaches) if breaches else "performance within thresholds",
+        "performance": performance,
+        "thresholds": {
+            "min_total_return": ROLLBACK_MIN_TOTAL_RETURN,
+            "min_win_rate": ROLLBACK_MIN_WIN_RATE,
+            "max_drawdown": ROLLBACK_MAX_DRAWDOWN,
+        },
+    }
+
+
+def _write_rollback_report(payload: dict) -> None:
+    ROLLBACK_REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    ROLLBACK_REPORT_PATH.write_text(
+        json.dumps(payload, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+
+def _build_feature_stats(
+    training_data: dict[str, pd.DataFrame],
+    *,
+    prediction_horizon: int,
+    target_return_threshold: float,
+    vix_df: pd.DataFrame | None,
+    spy_df: pd.DataFrame | None,
+    macro_df: pd.DataFrame | None,
+) -> dict:
+    frames = []
+    for ticker, df in training_data.items():
+        try:
+            feature_df = build_features(
+                df,
+                prediction_horizon=prediction_horizon,
+                target_return_threshold=target_return_threshold,
+                vix_df=vix_df,
+                spy_df=spy_df,
+                macro_df=macro_df,
+            )
+        except ValueError:
+            continue
+        frames.append(feature_df[FEATURE_COLUMNS])
+
+    if not frames:
+        return {
+            "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "feature_stats": {},
+        }
+
+    dataset = pd.concat(frames, ignore_index=True)
+    stats = {}
+    for column in FEATURE_COLUMNS:
+        series = pd.to_numeric(dataset[column], errors="coerce").dropna()
+        if series.empty:
+            continue
+        stats[column] = {
+            "mean": float(series.mean()),
+            "std": float(series.std(ddof=0)),
+            "p10": float(series.quantile(0.10)),
+            "p50": float(series.quantile(0.50)),
+            "p90": float(series.quantile(0.90)),
+            "count": int(series.count()),
+        }
+
+    return {
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "feature_stats": stats,
+    }
+
+
+def _load_feature_stats(path: Path = FEATURE_STATS_PATH) -> dict | None:
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _compare_feature_stats(
+    baseline: dict | None,
+    current: dict,
+    *,
+    zscore_threshold: float = DRIFT_ZSCORE_ALERT_THRESHOLD,
+) -> dict:
+    baseline_stats = (baseline or {}).get("feature_stats", {})
+    current_stats = current.get("feature_stats", {})
+    drifted_features = []
+
+    for feature, current_values in current_stats.items():
+        base_values = baseline_stats.get(feature)
+        if not base_values:
+            continue
+        baseline_std = abs(float(base_values.get("std", 0.0)))
+        if baseline_std <= 1e-12:
+            continue
+        zscore = abs(float(current_values["mean"]) - float(base_values["mean"])) / baseline_std
+        if zscore >= zscore_threshold:
+            drifted_features.append(
+                {
+                    "feature": feature,
+                    "baseline_mean": float(base_values["mean"]),
+                    "current_mean": float(current_values["mean"]),
+                    "baseline_std": baseline_std,
+                    "zscore_shift": float(zscore),
+                }
+            )
+
+    drifted_features.sort(key=lambda item: item["zscore_shift"], reverse=True)
+    return {
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "baseline_generated_at": None if baseline is None else baseline.get("generated_at"),
+        "current_generated_at": current.get("generated_at"),
+        "zscore_alert_threshold": zscore_threshold,
+        "drifted_feature_count": len(drifted_features),
+        "drifted_features": drifted_features,
+    }
+
+
+def _write_feature_stats(stats: dict, path: Path = FEATURE_STATS_PATH) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(stats, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def _write_drift_report(report: dict, path: Path = DRIFT_REPORT_PATH) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def _build_calibration_report(metrics_df: pd.DataFrame) -> tuple[dict, pd.DataFrame]:
+    calibration_rows = metrics_df.attrs.get("calibration_rows", [])
+    calibration_df = pd.DataFrame(calibration_rows)
+    if calibration_df.empty:
+        return {
+            "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "overall_avg_brier_score": 0.0,
+            "regimes": {},
+            "bin_count": 0,
+        }, pd.DataFrame()
+
+    regime_brier = {}
+    if "brier_score" in metrics_df.columns and "regime" in metrics_df.columns:
+        for regime, regime_df in metrics_df.groupby("regime"):
+            regime_brier[str(regime)] = {
+                "avg_brier_score": float(regime_df["brier_score"].mean()),
+                "folds": int(len(regime_df)),
+            }
+
+    calibration_df["prob_bin"] = pd.cut(
+        calibration_df["y_prob"],
+        bins=[i / 10 for i in range(11)],
+        include_lowest=True,
+        duplicates="drop",
+    )
+    bin_rows = (
+        calibration_df.groupby(["regime", "prob_bin"], observed=False)
+        .agg(
+            count=("y_true", "size"),
+            avg_pred=("y_prob", "mean"),
+            actual_rate=("y_true", "mean"),
+        )
+        .reset_index()
+    )
+    bin_rows["prob_bin"] = bin_rows["prob_bin"].astype(str)
+
+    report = {
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "overall_avg_brier_score": float(metrics_df["brier_score"].mean()) if "brier_score" in metrics_df.columns else 0.0,
+        "regimes": regime_brier,
+        "bin_count": int(len(bin_rows)),
+    }
+    return report, bin_rows
+
+
+def _write_calibration_report(report: dict, bins_df: pd.DataFrame) -> None:
+    CALIBRATION_REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    CALIBRATION_REPORT_PATH.write_text(
+        json.dumps(report, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    bins_df.to_csv(CALIBRATION_BINS_PATH, index=False)
+
+
+def _pick_latest_date(ticker_data: dict[str, pd.DataFrame]) -> pd.Timestamp:
+    latest_dates = []
+    for df in ticker_data.values():
+        if df is None or df.empty or "date" not in df.columns:
+            continue
+        series = pd.to_datetime(df["date"], errors="coerce").dropna()
+        if not series.empty:
+            latest_dates.append(series.max())
+    if not latest_dates:
+        raise ValueError("No valid dates found in ticker_data")
+    return max(latest_dates)
+
+
+def _score_threshold_row(row: dict) -> tuple[float, float, float, float]:
+    return (
+        float(row["sharpe_ratio"]),
+        float(row["total_return"]),
+        -abs(float(row["max_drawdown"])),
+        float(row["win_rate"]),
+    )
+
+
+def _run_threshold_retune(
+    settings,
+    ticker_data: dict[str, pd.DataFrame],
+    vix_df: pd.DataFrame | None,
+    macro_df: pd.DataFrame | None,
+) -> tuple[dict, pd.DataFrame]:
+    benchmark_df = (
+        ticker_data.get(settings.market_regime_ticker)
+        if settings.market_regime_filter_enabled
+        else None
+    )
+    relative_strength_benchmark_df = (
+        ticker_data.get(settings.relative_strength_benchmark_ticker)
+        if settings.relative_strength_filter_enabled
+        else None
+    )
+
+    eval_end = _pick_latest_date(ticker_data)
+    eval_start = eval_end - pd.DateOffset(months=6)
+
+    rows = []
+    for buy_threshold in BUY_THRESHOLD_GRID:
+        for exit_threshold in EXIT_THRESHOLD_GRID:
+            result, _, _ = run_portfolio_backtest(
+                ticker_data=ticker_data,
+                benchmark_df=benchmark_df,
+                relative_strength_benchmark_df=relative_strength_benchmark_df,
+                initial_cash=10000.0,
+                max_positions=settings.max_total_positions,
+                target_position_pct=settings.max_position_pct,
+                transaction_cost_pct=0.001,
+                ma_fast=settings.ma_fast,
+                ma_slow=settings.ma_slow,
+                rsi_buy_limit=settings.rsi_buy_limit,
+                use_ai_score=settings.use_ai_score,
+                ai_score_buy_threshold=buy_threshold,
+                market_regime_filter_enabled=settings.market_regime_filter_enabled,
+                market_regime_ma_fast=settings.market_regime_ma_fast,
+                market_regime_ma_slow=settings.market_regime_ma_slow,
+                relative_strength_filter_enabled=settings.relative_strength_filter_enabled,
+                relative_strength_lookback_days=settings.relative_strength_lookback_days,
+                relative_strength_min_excess_return=settings.relative_strength_min_excess_return,
+                volume_filter_enabled=settings.volume_filter_enabled,
+                volume_lookback_days=settings.volume_lookback_days,
+                min_volume_ratio=settings.min_volume_ratio,
+                volatility_filter_enabled=settings.volatility_filter_enabled,
+                volatility_lookback_days=settings.volatility_lookback_days,
+                max_volatility=settings.max_volatility,
+                rank_trend_weight=settings.rank_trend_weight,
+                rank_ai_weight=settings.rank_ai_weight,
+                rank_momentum_weight=settings.rank_momentum_weight,
+                rank_volatility_weight=settings.rank_volatility_weight,
+                ai_exit_enabled=getattr(settings, "ai_exit_enabled", False),
+                ai_exit_threshold=exit_threshold,
+                ai_exit_dynamic_enabled=getattr(settings, "ai_exit_dynamic_enabled", False),
+                ai_exit_vix_low=getattr(settings, "ai_exit_vix_low", 15.0),
+                ai_exit_vix_high=getattr(settings, "ai_exit_vix_high", 25.0),
+                ai_exit_threshold_bull=getattr(settings, "ai_exit_threshold_bull", 0.22),
+                ai_exit_threshold_bear=exit_threshold if getattr(settings, "ai_exit_dynamic_enabled", False) else getattr(settings, "ai_exit_threshold_bear", 0.50),
+                vix_df=vix_df,
+                macro_df=macro_df,
+                evaluation_start_date=eval_start,
+                evaluation_end_date=eval_end,
+            )
+            rows.append(
+                {
+                    "buy_threshold": buy_threshold,
+                    "exit_threshold": exit_threshold,
+                    "evaluation_start": eval_start.strftime("%Y-%m-%d"),
+                    "evaluation_end": eval_end.strftime("%Y-%m-%d"),
+                    "total_return": result.total_return,
+                    "max_drawdown": result.max_drawdown,
+                    "win_rate": result.win_rate,
+                    "trades": result.trades,
+                    "sharpe_ratio": result.sharpe_ratio,
+                }
+            )
+
+    results_df = pd.DataFrame(rows)
+    best_row = max(rows, key=_score_threshold_row)
+    report = {
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "evaluation_start": best_row["evaluation_start"],
+        "evaluation_end": best_row["evaluation_end"],
+        "buy_threshold_grid": BUY_THRESHOLD_GRID,
+        "exit_threshold_grid": EXIT_THRESHOLD_GRID,
+        "best_buy_threshold": best_row["buy_threshold"],
+        "best_exit_threshold": best_row["exit_threshold"],
+        "best_total_return": best_row["total_return"],
+        "best_max_drawdown": best_row["max_drawdown"],
+        "best_win_rate": best_row["win_rate"],
+        "best_sharpe_ratio": best_row["sharpe_ratio"],
+    }
+    return report, results_df
+
+
+def _write_threshold_retune_report(report: dict, results_df: pd.DataFrame) -> None:
+    THRESHOLD_RETUNE_REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    THRESHOLD_RETUNE_REPORT_PATH.write_text(
+        json.dumps(report, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    results_df.to_csv(THRESHOLD_RETUNE_RESULTS_PATH, index=False)
 
 
 def main() -> None:
@@ -75,11 +474,118 @@ def main() -> None:
         macro_df=macro_df,
     )
 
+    baseline_feature_stats = _load_feature_stats()
+    current_feature_stats = _build_feature_stats(
+        training_data=training_data,
+        prediction_horizon=20,
+        target_return_threshold=0.0,
+        vix_df=vix_df,
+        spy_df=spy_df,
+        macro_df=macro_df,
+    )
+    drift_report = _compare_feature_stats(baseline_feature_stats, current_feature_stats)
+    _write_drift_report(drift_report)
+    _write_feature_stats(current_feature_stats)
+    calibration_report, calibration_bins_df = _build_calibration_report(metrics_df)
+    _write_calibration_report(calibration_report, calibration_bins_df)
+
+    if drift_report["drifted_feature_count"] > 0:
+        top_features = ", ".join(
+            f"{item['feature']}({item['zscore_shift']:.2f})"
+            for item in drift_report["drifted_features"][:5]
+        )
+        notify_info(
+            "⚠️ Feature Drift Detected",
+            f"Drifted features: {drift_report['drifted_feature_count']}\n"
+            f"Top shifts: {top_features}\n"
+            f"Report: {DRIFT_REPORT_PATH}"
+        )
+    if calibration_report["overall_avg_brier_score"] > 0.25:
+        notify_info(
+            "⚠️ Calibration Quality Warning",
+            f"Average Brier score: {calibration_report['overall_avg_brier_score']:.4f}\n"
+            f"Report: {CALIBRATION_REPORT_PATH}"
+        )
+
+    threshold_retune_report, threshold_retune_results_df = _run_threshold_retune(
+        settings=settings,
+        ticker_data=training_data,
+        vix_df=vix_df,
+        macro_df=macro_df,
+    )
+    _write_threshold_retune_report(threshold_retune_report, threshold_retune_results_df)
+    settings.ai_score_buy_threshold = float(threshold_retune_report["best_buy_threshold"])
+    if getattr(settings, "ai_exit_dynamic_enabled", False):
+        settings.ai_exit_threshold_bear = float(threshold_retune_report["best_exit_threshold"])
+    else:
+        settings.ai_exit_threshold = float(threshold_retune_report["best_exit_threshold"])
+    save_settings(settings)
+
     output_dir = Path("logs/ml")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     metrics_path = output_dir / "ai_model_metrics.csv"
     metrics_df.to_csv(metrics_path, index=False)
+
+    bundle = build_model_bundle(
+        trained_models=model.models,
+        metrics_df=metrics_df,
+        training_data=training_data,
+        feature_columns=FEATURE_COLUMNS,
+        prediction_horizon=model.prediction_horizon,
+        target_return_threshold=model.target_return_threshold,
+    )
+
+    challenger_model_path, challenger_metadata_path = save_challenger_bundle(bundle)
+    champion_metadata = load_model_metadata()
+    promotion_report = build_promotion_report(
+        challenger_metadata=bundle["metadata"],
+        champion_metadata=champion_metadata,
+    )
+    promotion_report.update(
+        {
+            "challenger_model_path": str(challenger_model_path),
+            "challenger_metadata_path": str(challenger_metadata_path),
+            "champion_model_path": str(MODEL_PATH),
+            "champion_metadata_path": str(MODEL_METADATA_PATH),
+        }
+    )
+    promotion_report_path = output_dir / "model_promotion_report.json"
+    promotion_report_path.write_text(
+        json.dumps(promotion_report, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    if promotion_report["decision"] == "PROMOTE":
+        archived = archive_current_champion()
+        save_model_bundle(bundle)
+        if archived is not None:
+            promotion_report["archived_previous_champion_model_path"] = str(archived[0])
+            promotion_report["archived_previous_champion_metadata_path"] = str(archived[1])
+
+    rollback_report = {
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "promotion_decision": promotion_report["decision"],
+    }
+    if promotion_report["decision"] == "PROMOTE":
+        rollback_report["decision"] = "SKIP_ROLLBACK_AFTER_PROMOTION"
+        rollback_report["reason"] = "new challenger promoted; wait for fresh performance before rollback evaluation"
+    else:
+        rollback_eval = _evaluate_rollback_need(_load_recent_performance_snapshot())
+        rollback_report.update(rollback_eval)
+        if rollback_eval["should_rollback"]:
+            archived = find_latest_archived_champion(CHAMPION_ARCHIVE_DIR)
+            if archived is None:
+                rollback_report["decision"] = "NO_ROLLBACK_AVAILABLE"
+                rollback_report["reason"] = f"{rollback_eval['reason']}; no archived champion available"
+            else:
+                restore_archived_champion(*archived)
+                rollback_report["decision"] = "ROLLBACK_TO_ARCHIVED_CHAMPION"
+                rollback_report["restored_model_path"] = str(archived[0])
+                rollback_report["restored_metadata_path"] = str(archived[1])
+        else:
+            rollback_report["decision"] = "NO_ROLLBACK_NEEDED"
+    _write_rollback_report(rollback_report)
 
     elapsed = time.time() - started_at
     _append_retrain_log("success", metrics_df, elapsed)
@@ -87,8 +593,25 @@ def main() -> None:
     print("AI score model trained.")
     print(f"Model: LightGBM (n_estimators=500, max_depth=6)")
     print(f"Features: {len(model.feature_columns)} ({', '.join(model.feature_columns)})")
-    print(f"Saved model to models/ai_score_model.joblib")
+    print(f"Saved challenger model to {challenger_model_path}")
+    print(f"Saved challenger metadata to {challenger_metadata_path}")
+    print(f"Promotion decision: {promotion_report['decision']}")
+    if promotion_report["decision"] == "PROMOTE":
+        print(f"Promoted challenger to champion at {MODEL_PATH}")
+    else:
+        print(f"Retained existing champion at {MODEL_PATH}")
     print(f"Saved metrics to {metrics_path}")
+    print(f"Saved promotion report to {promotion_report_path}")
+    print(f"Saved rollback report to {ROLLBACK_REPORT_PATH}")
+    print(f"Saved feature drift report to {DRIFT_REPORT_PATH}")
+    print(f"Saved calibration report to {CALIBRATION_REPORT_PATH}")
+    print(f"Saved calibration bins to {CALIBRATION_BINS_PATH}")
+    print(f"Saved threshold retune report to {THRESHOLD_RETUNE_REPORT_PATH}")
+    print(f"Saved threshold retune results to {THRESHOLD_RETUNE_RESULTS_PATH}")
+    print(
+        f"Updated thresholds: buy={settings.ai_score_buy_threshold:.2f}, "
+        f"exit={settings.ai_exit_threshold_bear if getattr(settings, 'ai_exit_dynamic_enabled', False) else settings.ai_exit_threshold:.2f}"
+    )
     print(f"Elapsed: {elapsed:.1f}s")
     print(metrics_df.to_string(index=False))
 

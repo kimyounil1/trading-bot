@@ -1,11 +1,12 @@
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 # 경로 설정
 CONFIG_PATH = Path("config/strategy_config.json")
+PROFILES_PATH = Path("config/strategy_profiles.json")
 
 
 class AllocationType(Enum):
@@ -72,7 +73,6 @@ class StrategySettings(StrategyProfile):
     max_sector_positions: int = 2
     stop_loss_pct: float = 0.05
     take_profit_pct: float = 0.1
-    trailing_stop_pct: Optional[float] = None
     max_test_order_amount: float = 10.0
     max_orders_per_run: int = 1
     max_daily_order_amount: float = 1000.0
@@ -87,9 +87,109 @@ class StrategySettings(StrategyProfile):
     ai_exit_threshold_bear: float = 0.50
     news_sentiment_enabled: bool = False
     news_sentiment_threshold: float = -0.30
+    max_portfolio_drawdown_pct: float = 0.15
+    correlation_guard_enabled: bool = False
+    max_correlation_threshold: float = 0.85
+    correlation_lookback_days: int = 60
+    earnings_filter_enabled: bool = False
+    earnings_lookback_days: int = 3
+    earnings_lookforward_days: int = 1
+    take_profit_partial_pct: float = 0.0
+    partial_exit_ratio: float = 0.5
+    leverage_factor: float = 1.0
+    max_gross_exposure_pct: float = 1.0
+    min_cash_buffer_pct: float = 0.05
+    max_single_name_loss_pct: float = 0.02
+    crowding_guard_enabled: bool = False
+    crowding_lookback_days: int = 60
+    crowding_max_positions: int = 2
+    crowding_momentum_threshold: float = 0.15
+    crowding_trend_gap_threshold: float = 0.05
+    dynamic_universe_enabled: bool = False
+    dynamic_count: int = 50
+    trailing_stop_pct: float = 0.05
+    rebalance_threshold_pct: float = 0.20
+    sector_rotation_enabled: bool = False
+
+
+_STRATEGY_SETTINGS_FIELD_NAMES = {item.name for item in fields(StrategySettings)}
+_PROFILE_OVERRIDE_FIELD_NAMES = _STRATEGY_SETTINGS_FIELD_NAMES - {"name", "tickers"}
+_PROFILES_CONFIG_FIELD_NAMES = {"profiles", "regime_mapping", "manual_override"}
 
 
 DEFAULT_SETTINGS = StrategySettings()
+
+
+def _read_json_object(path: Path) -> Dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON in {path}: {exc}") from exc
+
+    if not isinstance(payload, dict):
+        raise ValueError(f"{path} must contain a top-level JSON object")
+
+    return payload
+
+
+def _validate_strategy_settings_payload(payload: Dict[str, Any], path: Path) -> Dict[str, Any]:
+    unknown_keys = sorted(set(payload) - _STRATEGY_SETTINGS_FIELD_NAMES)
+    if unknown_keys:
+        raise ValueError(f"Unknown keys in {path}: {unknown_keys}")
+
+    tickers = payload.get("tickers")
+    if tickers is not None and (
+        not isinstance(tickers, list) or any(not isinstance(ticker, str) for ticker in tickers)
+    ):
+        raise ValueError(f"{path}: 'tickers' must be a list of strings")
+
+    market_regime_ticker = payload.get("market_regime_ticker")
+    if market_regime_ticker is not None and not isinstance(market_regime_ticker, str):
+        raise ValueError(f"{path}: 'market_regime_ticker' must be a string")
+
+    return payload
+
+
+def _validate_profiles_payload(payload: Dict[str, Any], path: Path) -> Dict[str, Any]:
+    unknown_keys = sorted(set(payload) - _PROFILES_CONFIG_FIELD_NAMES)
+    if unknown_keys:
+        raise ValueError(f"Unknown keys in {path}: {unknown_keys}")
+
+    profiles = payload.get("profiles")
+    if not isinstance(profiles, dict) or not profiles:
+        raise ValueError(f"{path}: 'profiles' must be a non-empty object")
+
+    for profile_name, overrides in profiles.items():
+        if not isinstance(profile_name, str) or not profile_name.strip():
+            raise ValueError(f"{path}: profile names must be non-empty strings")
+        if not isinstance(overrides, dict):
+            raise ValueError(f"{path}: profile '{profile_name}' must be an object")
+        override_unknown = sorted(set(overrides) - _PROFILE_OVERRIDE_FIELD_NAMES)
+        if override_unknown:
+            raise ValueError(
+                f"{path}: profile '{profile_name}' has unknown keys: {override_unknown}"
+            )
+
+    regime_mapping = payload.get("regime_mapping")
+    if not isinstance(regime_mapping, dict) or not regime_mapping:
+        raise ValueError(f"{path}: 'regime_mapping' must be a non-empty object")
+    for regime, profile_name in regime_mapping.items():
+        if not isinstance(regime, str) or not regime.strip():
+            raise ValueError(f"{path}: regime keys must be non-empty strings")
+        if not isinstance(profile_name, str) or profile_name not in profiles:
+            raise ValueError(
+                f"{path}: regime '{regime}' must map to an existing profile name"
+            )
+
+    manual_override = payload.get("manual_override")
+    if manual_override is not None and (
+        not isinstance(manual_override, str) or manual_override not in profiles
+    ):
+        raise ValueError(
+            f"{path}: 'manual_override' must be null or an existing profile name"
+        )
+
+    return payload
 
 
 def validate_settings(settings: StrategySettings) -> StrategySettings:
@@ -112,6 +212,12 @@ def validate_settings(settings: StrategySettings) -> StrategySettings:
         raise ValueError("max_total_positions must be positive")
     if settings.max_sector_positions <= 0:
         raise ValueError("max_sector_positions must be positive")
+    if not 0 <= settings.stop_loss_pct < 1:
+        raise ValueError("stop_loss_pct must be between 0 and 1")
+    if settings.take_profit_pct < 0:
+        raise ValueError("take_profit_pct must be non-negative")
+    if not 0 <= settings.trailing_stop_pct < 1:
+        raise ValueError("trailing_stop_pct must be between 0 and 1")
     if settings.max_orders_per_run <= 0:
         raise ValueError("max_orders_per_run must be positive")
     if settings.max_daily_order_amount <= 0:
@@ -120,26 +226,94 @@ def validate_settings(settings: StrategySettings) -> StrategySettings:
         raise ValueError("max_test_order_amount must be positive")
     if settings.buy_cooldown_days < 0:
         raise ValueError("buy_cooldown_days must be non-negative")
+    if not 0 <= settings.max_portfolio_drawdown_pct < 1:
+        raise ValueError("max_portfolio_drawdown_pct must be between 0 and 1")
+    if not 0 < settings.max_correlation_threshold <= 1:
+        raise ValueError("max_correlation_threshold must be between 0 and 1")
+    if settings.correlation_lookback_days <= 0:
+        raise ValueError("correlation_lookback_days must be positive")
+    if settings.earnings_lookback_days < 0 or settings.earnings_lookforward_days < 0:
+        raise ValueError("earnings window days must be non-negative")
+    if settings.take_profit_partial_pct < 0:
+        raise ValueError("take_profit_partial_pct must be non-negative")
+    if not 0 < settings.partial_exit_ratio <= 1:
+        raise ValueError("partial_exit_ratio must be between 0 and 1")
+    if settings.leverage_factor <= 0:
+        raise ValueError("leverage_factor must be positive")
+    if not 0 < settings.max_gross_exposure_pct <= max(1.0, settings.leverage_factor):
+        raise ValueError("max_gross_exposure_pct must be positive and no greater than leverage_factor")
+    if not 0 <= settings.min_cash_buffer_pct < 1:
+        raise ValueError("min_cash_buffer_pct must be between 0 and 1")
+    if not 0 < settings.max_single_name_loss_pct < 1:
+        raise ValueError("max_single_name_loss_pct must be between 0 and 1")
+    if settings.crowding_lookback_days <= 0:
+        raise ValueError("crowding_lookback_days must be positive")
+    if settings.crowding_max_positions <= 0:
+        raise ValueError("crowding_max_positions must be positive")
+    if settings.crowding_momentum_threshold < 0:
+        raise ValueError("crowding_momentum_threshold must be non-negative")
+    if settings.crowding_trend_gap_threshold < 0:
+        raise ValueError("crowding_trend_gap_threshold must be non-negative")
+    if settings.dynamic_count <= 0:
+        raise ValueError("dynamic_count must be positive")
+    if settings.rebalance_threshold_pct < 0:
+        raise ValueError("rebalance_threshold_pct must be non-negative")
     return settings
 
 
-def load_settings(path: str | Path = CONFIG_PATH) -> StrategySettings:
+def load_settings(path: Union[str, Path] = CONFIG_PATH) -> StrategySettings:
     """Load the active legacy single-strategy config."""
 
     settings_path = Path(path).expanduser().resolve()
-    merged = DEFAULT_SETTINGS.__dict__.copy()
+    merged = asdict(DEFAULT_SETTINGS)
     if settings_path.exists():
-        merged.update(json.loads(settings_path.read_text(encoding="utf-8")))
+        merged.update(_validate_strategy_settings_payload(_read_json_object(settings_path), settings_path))
     return validate_settings(StrategySettings(**merged))
 
 
-def save_settings(settings: StrategySettings, path: str | Path = CONFIG_PATH) -> None:
+def save_settings(settings: StrategySettings, path: Union[str, Path] = CONFIG_PATH) -> None:
     """Save the active legacy single-strategy config."""
 
     settings = validate_settings(settings)
     settings_path = Path(path).expanduser().resolve()
     settings_path.parent.mkdir(parents=True, exist_ok=True)
     settings_path.write_text(json.dumps(asdict(settings), indent=2), encoding="utf-8")
+
+
+def apply_dynamic_profile(
+    settings: StrategySettings, 
+    current_regime: str,
+    profiles_path: Union[str, Path] = PROFILES_PATH
+) -> Tuple[StrategySettings, str]:
+    """시장 레짐 또는 사용자 설정에 따라 전략 프로필을 동적으로 적용한다."""
+    path = Path(profiles_path).expanduser().resolve()
+    if not path.exists():
+        return settings, "DEFAULT (no profiles file)"
+
+    try:
+        data = _validate_profiles_payload(_read_json_object(path), path)
+        profiles = data.get("profiles", {})
+        mapping = data.get("regime_mapping", {})
+        override = data.get("manual_override")
+
+        # 1. 수동 오버라이드 우선, 없으면 레짐 매핑 사용
+        profile_name = override if override else mapping.get(current_regime)
+        if not profile_name or profile_name not in profiles:
+            return settings, f"DEFAULT (profile '{profile_name}' not found)"
+
+        # 2. 설정 덮어쓰기
+        profile_overrides = profiles[profile_name]
+        settings_dict = asdict(settings)
+        settings_dict.update(profile_overrides)
+        
+        # 이름 기록
+        settings_dict["name"] = profile_name
+
+        return validate_settings(StrategySettings(**settings_dict)), profile_name
+
+    except Exception as e:
+        print(f"Warning: Failed to apply dynamic profile: {e}")
+        return settings, f"DEFAULT (error: {e})"
 
 
 @dataclass

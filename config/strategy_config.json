@@ -146,5 +146,20 @@
   "ai_exit_threshold_bull": 0.0,
   "ai_exit_threshold_bear": 0.45,
   "news_sentiment_enabled": true,
-  "news_sentiment_threshold": -0.30
+  "news_sentiment_threshold": -0.3,
+  "max_portfolio_drawdown_pct": 0.15,
+  "correlation_guard_enabled": true,
+  "max_correlation_threshold": 0.85,
+  "correlation_lookback_days": 60,
+  "earnings_filter_enabled": true,
+  "earnings_lookback_days": 3,
+  "earnings_lookforward_days": 1,
+  "take_profit_partial_pct": 0.15,
+  "partial_exit_ratio": 0.5,
+  "leverage_factor": 1.0,
+  "dynamic_universe_enabled": true,
+  "dynamic_count": 50,
+  "trailing_stop_pct": 0.05,
+  "rebalance_threshold_pct": 0.20,
+  "sector_rotation_enabled": true
 }

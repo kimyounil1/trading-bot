@@ -10,6 +10,8 @@ MACRO_TICKERS = {
     "irx": "^IRX",      # 13-week Treasury bill rate
     "dxy": "DX-Y.NYB",  # US Dollar Index
     "gold": "GC=F",     # Gold futures
+    "skew": "^SKEW",    # CBOE SKEW Index (tail risk)
+    "vvix": "^VVIX",    # VIX of VIX (uncertainty in volatility)
 }
 
 MACRO_CACHE_DIR = Path("data/macro")

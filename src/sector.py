@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """섹터 분류 및 포지션 집중도 체크."""
 
 SECTOR_MAP: dict[str, str] = {

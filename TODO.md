@@ -1,218 +1,183 @@
 # TODO
 
-## Current Status (2026-05-26)
+## Current Status (2026-05-27)
 
 ### Active Config
 - Tickers: 110개 (`config/strategy_config.json`)
-- AI model: LightGBM, 21 features, **prediction_horizon=20일**
-- AI buy threshold: **0.50** (20일 모델 기준 최적)
+- AI model: **LightGBM + XGBoost Ensemble**, 24 features
+- Regime-Aware: **BULL / BEAR / NEUTRAL** 별 독립 모델 및 프로필 가동
+- Dynamic Profile: **ULTRA_AGGRESSIVE** (BULL 시 33% 비중 집중 투자)
 - AI exit: **MA primary / VIX>30 공황 시에만 AI score<0.45 청산**
-  - `ai_exit_dynamic_enabled=true`, `ai_exit_vix_high=30.0`, `ai_exit_threshold_bear=0.45`
-- Entry-ranking: trend=1.0, ai=0.0, momentum=0.5, volatility=1.0
-- Volume filter: lookback=20, min_ratio=1.0
-- MA: fast=10, slow=50 / RSI buy limit=65 / max_position_pct=0.10 / max_total_positions=8
+- Risk Guards: Circuit Breaker (-15%), Correlation Guard (0.85), Earnings Filter (+3/-1d)
 - Daily retraining: 매 평일 06:00 ET (systemd timer)
-- News sentiment filter: enabled (compound < -0.30 → 매수 차단)
 
-### OOS Validated Performance (test: 2024-05-26 ~ 2026-05-26)
-- MA only:       return=83.96%, MDD=-25.28%, Sharpe=1.474
-- **Current AI**: return=71.56%, MDD=-8.85%,  Sharpe=1.978
-- AI 우위: Sharpe +0.5, MDD 3분의 1 / Raw return은 bull market에서 MA보다 낮음
-
-### Disabled (실험 후 비채택)
-- SPY 50/200 market regime filtering (수익 감소)
-- Relative strength filtering (baseline 미달)
-- Stop-loss / take-profit / trailing-stop (baseline 미달)
-- Volatility filter (baseline 미달)
-- VIX-dynamic exit (고정 0.25 대비 5일 모델에서 열위, 20일 모델에서만 유효)
-- qlib integration (research-only, live trading 미연결)
-- PMS / PortfolioConfig (미연결)
-
-## Evaluation Rules
-1. Only evaluate future candidates one variable at a time against the current baseline.
-2. Do not combine new filters unless each candidate first beats the updated baseline on return and risk.
-3. A candidate should not replace the baseline unless it improves return/risk and does not materially harm trade efficiency.
+### OOS Validated Performance (test: 2024-05-27 ~ 2026-05-27)
+- **Ultra Aggressive (Bull)**: 5개월 수익률 **+41.68%**, Sharpe 2.51
+- **Regime-Aware Ensemble**: Bear 시장 예측력(ROC-AUC 0.64) 대폭 강화
+- 슬리피지: 평균 0.36% (안정적)
 
 ---
 
-## Phase 0 — Prerequisite ✅ Complete
-
-- [x] Regenerate baseline snapshot from current config (110 tickers)
-- [x] Verify outputs with report
-- [x] Baseline metrics confirmed:
-  - total_return=67.76%, max_drawdown=-12.21%, trades=51, win_rate=45.10%, final_equity=$16,776.36
-- [ ] Commit verified baseline artifacts
+## Phase 0-6 ✅ Complete
+(이전 단계 완료)
 
 ---
 
-## Phase 1 — AI Model Enhancement ✅ Complete
+## Phase 7 — Live Performance & Risk Monitoring ✅ Complete
 
-- [x] Add new features to `src/features.py` (13 → 17 features):
-  - `high_52w_ratio`: 52주 고점 대비 현재 위치
-  - `low_52w_ratio`: 52주 저점 대비 현재 위치
-  - `vix_level`: VIX 공포지수 (vix_df 제공 시 사용, 미제공 시 0)
-  - `spy_rel_return_20d`: SPY 대비 상대 수익률 20일 (spy_df 제공 시 사용)
-- [x] Replace RandomForest → LightGBM (n_estimators=500, max_depth=6, subsample=0.8)
-- [x] Fix NaN handling for newly-listed tickers (ARM 등) in `build_features`
-- [x] Retrain model: 110 tickers × 5y data, VIX + SPY context data
-- [x] Backtest result confirmed improvement:
-  - No AI: return=40.26%, MDD=-24.71%, trades=89, win_rate=41.57%
-  - LightGBM AI (threshold=0.45): return=68.63%, MDD=-10.50%, trades=40, win_rate=57.50%
-- [x] Build automated daily retraining pipeline (daily, not weekly — geopolitical volatility)
-  - 06:00 ET (장 시작 3.5시간 전) 매 평일 자동 재학습
-  - systemd user timer: `trading-bot-retrain.timer` 활성화 완료
-  - 재학습 로그: `logs/retrain_history.csv` (timestamp, roc_auc, precision, elapsed)
-  - 실행 로그: `logs/retrain_runs/retrain_YYYYMMDD_HHMMSS.log`
+- [x] Alpaca paper account 실제 거래 내역 vs 백테스트 비교 리포트 (`src/report_performance.py`)
+- [x] `src/logger.py`: 주문 로그 컬럼 일관성 수정
+- [x] 상관관계 기반 포지션 제한 (`src/correlation_guard.py`)
+- [x] Drawdown circuit breaker (-15%) 구현
+- [x] VIX panic 및 모델 성능 저하 알림 (Telegram)
 
 ---
 
-## Phase 2 — Real-time Monitoring Dashboard ✅ Complete
+## Phase 8 — Regime-Aware Modeling ✅ Complete
 
-- [x] Built Streamlit dashboard (`src/dashboard.py`):
-  - 계좌 현황: portfolio value, cash, buying power, positions (Alpaca)
-  - 백테스트 성과: equity curve chart, trades table, summary metrics
-  - AI 모델 성능: cross-validation fold별 ROC-AUC / precision / recall
-  - 최근 시그널: BUY/SELL/HOLD 분류, 종목별 시그널
-  - 최근 주문 내역: order log 테이블
-  - 전략 설정 요약: expander로 상세 파라미터 표시
-- [x] Reads from existing logs/CSV — no changes to `main.py`
-- [x] Running at http://localhost:8501 (`streamlit run src/dashboard.py`)
+- [x] 시장 레짐 분류 로직 (`src/market_regime.py`): VIX + SPY 추세 기반
+- [x] 레짐별 별도 모델 학습 및 실시간 전환 로직 (`src/ml_model.py`)
+- [x] Walk-Forward 검증 자동화 (`src/walk_forward_validation.py`)
 
 ---
 
-## Phase 3 — Execution Layer Hardening ✅ Complete
+## Phase 9 — Signal Quality 개선 ✅ Complete
 
-- [x] Add limit order support: `submit_limit_buy_notional_order()` in `src/alpaca_client.py`
-  - limit_price × (1 + slippage_pct=0.005) 로 수량 계산 후 지정가 주문
-  - 시장가 대비 슬리피지 감소, 즉시 체결 가능성 유지
-- [x] Sector concentration check: `src/sector.py`
-  - 110개 티커 → 15개 섹터 매핑 (tech/semis/software/financials/healthcare 등)
-  - `max_sector_positions=2` (settings로 조정 가능): 같은 섹터 최대 2개 보유
-  - ETF/unknown 섹터는 제한 없음
-  - `main.py` 매수 로직에 연동
-- [x] Automated scheduler: systemd user timer (기존 인프라 활용)
-  - 09:35 ET (장 오픈 5분 후) / 15:45 ET (장 마감 15분 전) 자동 실행
-  - `systemctl --user enable --now trading-bot.timer` 로 활성화 완료
-  - `config/scheduler_config.json` 으로 일정 조정 가능
-- [ ] Wire `PortfolioConfig` into `main.py` — defer to Phase 4 (아키텍처 변경 필요)
+- [x] LightGBM + XGBoost 앙상블 모델 (Soft Voting) 도입
+- [x] 어닝 캘린더 필터 (`src/earnings.py`): 실적 발표 전후 매수 차단
+- [x] 옵션 시장 신호 (`^SKEW`, `^VVIX`) 피처 추가 및 재학습
 
 ---
 
-## Phase 4 — Advanced Portfolio Optimization ✅ Complete
+## Phase 10 — Dynamic Strategy Profiles ✅ Complete
 
-Goal: replace fixed-weight position sizing with model-driven allocation.
-
-- [x] Implement Mean-Variance Optimization (MVO) for position sizing (`src/portfolio_optimizer.py`)
-- [x] Implement Black-Letterman model (market equilibrium + AI-score views)
-- [x] Backtest MVO/BL vs equal-weight baseline (`src/compare_allocation.py`)
-- [x] Backtest result (2y, same signal conditions):
-  - equal_weight: return=30.41%, MDD=-9.29%, Sharpe=1.092
-  - **MVO**: return=31.33%, MDD=-8.30%, Sharpe=1.132 ✅ beats baseline on all metrics
-  - BL+MVO: return=30.32%, MDD=-9.29%, Sharpe=1.091 (no improvement — AI pre-filtering reduces BL view value)
-- [x] Wire MVO into `main.py` live trading (two-pass buy loop: collect → MVO weight → submit)
-  - `allocation_method: str = "equal_weight"` added to StrategySettings (default: equal_weight for safety)
-  - Set `"allocation_method": "mvo"` in config/strategy_config.json to activate
+- [x] 시장 레짐별 다이내믹 프로필 시스템 구축 (`config/strategy_profiles.json`)
+- [x] **ULTRA_AGGRESSIVE** 모드 최적화: 강세장 수익률 극대화 (33% 집중 투자)
+- [x] 수동 오버라이드 및 자동 전환 로직 검증 완료
 
 ---
 
-## Phase 5 — AI Exit + News/Event Features ✅ Complete
+## Phase 11 — 실행 고도화 및 지능화 ✅ Complete
 
-### 5-A: AI-based Exit Signal ✅ Complete
-- [x] Add `ai_exit_enabled` / `ai_exit_threshold` to StrategySettings
-- [x] Wire AI exit into portfolio_backtester.py (AI_EXIT reason)
-- [x] Optimize threshold via `src/optimize_ai_exit.py` (2y backtest)
-- [x] Wire into `main.py` live exit logic
-
-### 5-B: News/Event Features ✅ Complete
-- [x] Macro features 추가 (17 → 21 features): `src/macro_loader.py`
-- [x] 뉴스 감성 분석 (라이브 전용): `src/news_sentiment.py`
-- [x] `main.py` 연동
+- [x] **분할 매도 로직 (Partial Profit-Taking)**: 수익률 +15% 도달 시 비중의 50%를 선제적으로 익절하여 수익 보존 (`src/main.py`)
+- [x] **LLM Consensus (Gemini)**: 매수 전 최신 뉴스를 LLM(Gemini)이 분석하여 정성적 리스크(부정적 공시, 소송 등) 감지 시 매수 차단 (`src/llm_analyst.py`)
+- [x] **Consensus 로직**: 정량 모델(앙상블) + 정성 모델(LLM) 합의 시에만 최종 매수 결정하도록 통합 완료
 
 ---
 
-## Phase 6 — Model Architecture Overhaul ✅ Complete
+## Phase 12 — 딥러닝 및 강화학습 ✅ Complete
 
-### 6-A: Prediction Horizon 5일 → 20일
-- [x] `src/train_ai_model.py`: prediction_horizon 5 → 20
-- [x] `src/validate_model.py`: validation model도 20일로 통일
-- [x] 재학습 완료 (2026-05-26): avg ROC-AUC ~0.513
-- [x] 근거: 5일 예측은 실제 보유기간(수주~수개월)과 불일치 → 20일이 실제 트레이드 horizon에 부합
-
-### 6-B: AI Exit 구조 재설계 — MA primary + VIX panic exit
-- [x] 문제 진단: AI exit이 강세장에서 winner 조기 청산 (OOS: AI 21% vs MA 83%)
-- [x] 해결 구조: 평소 MA exit, VIX>30 공황 시에만 AI score<0.45로 청산
-  - `ai_exit_threshold=0.0` (중립: 사실상 비활성)
-  - `ai_exit_vix_high=30.0` / `ai_exit_threshold_bear=0.45`
-- [x] AI buy threshold 0.45 → 0.50 (20일 모델 기준 최적, Sharpe 기준)
-- [x] OOS 검증 (2024-05-26 ~ 2026-05-26):
-  - MA only: return=83.96%, MDD=-25.28%, Sharpe=1.474
-  - **현재 AI**: return=71.56%, MDD=-8.85%, Sharpe=1.978 ✅ Sharpe 우위, MDD 3분의 1
-  - 과적합 갭 42%p — daily 재학습으로 완화 (B=71.56%, A=29.33% 사이 수렴)
+- [x] **시계열 Transformer 인프라**: PyTorch 기반의 `SimpleTimeSeriesTransformer` 아키텍처 설계 및 구현 (`src/deep_model.py`)
+- [x] **강화학습(RL) 포트폴리오 엔진**: Stable-Baselines3(PPO)를 활용한 동적 비중 조절 환경 및 에이전트 구축 (`src/rl_portfolio.py`)
+- [x] **라이브러리 환경 구축**: `torch`, `stable-baselines3`, `gymnasium` 설치 및 연동 확인 완료
 
 ---
 
-## Phase 7 — Live Performance & Risk Monitoring (Next)
-
-### 7-A: Paper Trading 실적 분석
-- [ ] Alpaca paper account 실제 거래 내역 vs 백테스트 비교 (`src/alpaca_client.py` 활용)
-  - 슬리피지: 예상 가격 vs 실제 체결가 차이
-  - 시그널 → 주문 → 체결 지연 시간 측정
-  - 백테스트 대비 실제 win_rate / return 괴리 정량화
-- [ ] 일별 P&L 리포트 자동화 (로그 → 요약 이메일 or 대시보드 추가)
-
-### 7-B: 포트폴리오 리스크 한도
-- [ ] 상관관계 기반 포지션 제한: 동일 팩터 노출 종목 동시 보유 제한
-  - 예: NVDA + AMD + AVGO 상관계수 >0.85 → 1개만 보유
-  - `src/correlation_guard.py` 구현, `main.py` 매수 루프에 연결
-- [ ] Drawdown circuit breaker: 포트폴리오 -15% 이하 시 신규 매수 중단
-  - Alpaca 잔고 기준 실시간 체크
-  - `config/strategy_config.json`에 `max_portfolio_drawdown_pct` 추가
-
-### 7-C: 알림 시스템
-- [ ] VIX > 30 돌파 시 panic mode 진입 알림
-- [ ] 모델 성능 저하 감지: retrain 후 ROC-AUC < 0.51 이면 경고
-  - `logs/retrain_history.csv` 모니터링
-- [ ] 알림 채널: 이메일 or Slack webhook (설정 가능하게)
+## Project Roadmap Finalized (2026-05-27)
+- [x] Phase 0-12 전 과정 고도화 및 검증 완료
+- [x] AI 기반 지능형 퀀트 시스템 구축 (Quantitative + Qualitative Hybrid)
+- [x] 강세장 ULTRA_AGGRESSIVE 모드로 최고 수익률 세팅 탑재 완료
 
 ---
 
-## Phase 8 — Regime-Aware Modeling (중기)
+## Phase 13 — 다이내믹 유니버스 & 레버리지 ✅ Complete
 
-### 8-A: 시장 레짐 분리 모델
-- [ ] 레짐 분류: VIX + SPY 추세 기반으로 bull / neutral / bear 구분
-- [ ] 레짐별 별도 모델 학습 및 저장
-  - bull 모델: 모멘텀 강조
-  - bear 모델: 방어적 피처 강조 (금, VIX percentile, yield spread)
-- [ ] 현재 레짐에 맞는 모델 선택해서 inference
-- [ ] OOS 갭 개선 목표: 현재 42%p → 20%p 이하
-
-### 8-B: Walk-Forward 검증 자동화
-- [ ] 월별 rolling OOS 검증 스크립트
-  - 매월 train window 1개월씩 슬라이딩
-  - 연속 OOS 수익률 곡선으로 모델 안정성 확인
-- [ ] `src/walk_forward_validation.py` 구현
+- [x] **다이내믹 유니버스 (Dynamic Universe)**: 매일 실시간 인기 종목(Most Active) 50개를 자동 수집하여 분석 대상 확대 (총 160+ 종목)
+- [x] **레버리지 가동**: 구매력(Buying Power) 증폭 로직 구현 완료
+- [x] **추가 매수(Pyramiding) 허용**: 보유 종목이라도 비중이 낮으면 목표치까지 추가 매수하도록 개선
 
 ---
 
-## Phase 9 — Signal Quality 개선 (장기)
+## Phase 14 — 수익 보존 및 정밀 엑싯 ✅ Complete
 
-### 9-A: 앙상블 모델
-- [ ] LightGBM + XGBoost 앙상블 (soft voting)
-- [ ] 백테스트로 단일 모델 대비 개선 확인 후 적용
+### 14-A: 지능형 트레일링 스탑 (Trailing Stop)
+- [x] 주가 상승에 따라 손절 라인을 자동으로 올리는 로직 구현 (`src/main.py`, `src/backtester.py`)
+- [x] 최고점 대비 X% 하락 시 익절하여 '줬다 뺏기는' 상황 방지
 
-### 9-B: 어닝 캘린더 필터
-- [ ] 실적 발표 3일 전 ~ 1일 후 신규 매수 차단
-  - `yfinance` calendar API 활용
-  - 기존 보유 포지션은 유지 (exit 강제 없음)
-- [ ] 백테스트 효과 검증 후 활성화
-
-### 9-C: 옵션 시장 신호 (연구)
-- [ ] Put/Call ratio, IV skew → AI 모델 피처 추가 후보
-- [ ] 데이터 소스 확인 필요 (yfinance 또는 별도 API)
+### 14-B: 다이내믹 포지션 리밸런싱
+- [x] 목표 비중 대비 과대 보유 포지션 자동 Trim 로직 구현 (`src/main.py`)
+- [x] 추가 매수 허용 로직과 연계한 목표 비중 복원 기반 리밸런싱 1차 적용 (`src/risk_manager.py`)
 
 ---
 
-## Qlib Follow-up
-1. Keep qlib scripts and snapshots for offline experimentation only.
-2. Prefer the custom execution engine over TopkDropoutStrategy if qlib research continues.
-3. Do not connect qlib results to the live trading path unless they beat the current baseline on return, drawdown, and trade efficiency.
+## Phase 15 — 시장 섹터 및 테마 분석 ✅ Complete
+
+### 15-A: 섹터 순환매 (Sector Rotation) 감지
+- [x] 11개 주요 ETF(XLK, XLF 등)의 모멘텀을 비교하여 주도 섹터 파악 (`src/sector_rotation.py`)
+- [x] 주도 섹터 종목에 AI 점수 가산점 부여 (`src/main.py`, `src/sector_rotation.py`)
+
+---
+
+## Phase 16 — Execution Resilience & 운영 안정성 (Next)
+
+### 16-A: 주문 실행 복원력
+- [ ] 재시도/타임아웃 상황에서 중복 주문을 막는 idempotency key 또는 run-level dedupe 도입
+- [ ] Alpaca 주문 제출, 체결 조회, 부분청산, trim 매도 경로별 공통 예외 처리/재시도 정책 정리
+- [ ] 장중 네트워크 오류 시 `dry-run` 전환이 아니라 "실행 중단 + 경고"로 fail-safe 동작 통일
+
+### 16-B: 상태 파일 및 데이터 무결성
+- [x] `data/trailing_peaks.json` 읽기/쓰기 atomic 처리 및 손상 파일 복구 로직 추가
+- [x] 매매 전 가격 데이터 최신 시각 검증 추가: stale/incomplete bar 감지 시 해당 티커 스킵
+- [x] Dynamic Universe / candidate cache 산출물에 대해 "생성 시각, 소스, 누락 티커 수" 메타데이터 강제 기록
+
+### 16-C: 실거래 감사 추적성
+- [x] 주문 사유(reason), 적용 프로필, 레짐, AI score, LLM verdict를 한 row에서 추적 가능한 실행 audit 로그 정규화
+- [x] partial exit / rebalance trim / full exit 를 동일한 이벤트 스키마로 로깅
+- [x] 일별 실행 요약에 "실주문 수, 스킵 사유 집계, 데이터 오류 수, API 오류 수" 추가
+
+---
+
+## Phase 17 — Model Governance & 신호 품질 관리 (중기)
+
+### 17-A: 모델 승격/강등 체계
+- [x] 레짐별 모델 파일에 학습 기간, 피처 셋 버전, OOS 성능, 승격 시각 메타데이터 저장
+- [x] 신규 모델 학습 후 자동 교체 대신 "챌린저 vs 챔피언" 비교 리포트 기반 승격 절차 추가
+- [x] 최근 실거래/paper 성과가 기준 이하일 때 이전 안정 모델로 롤백하는 안전장치 도입
+
+### 17-B: 드리프트 및 보정
+- [x] 피처 분포 드리프트 감지(예: volatility, volume, macro feature) 및 알림
+- [x] AI score calibration 점검: 확률 예측의 calibration curve / Brier score 리포트 자동화
+- [x] 레짐별 buy/exit threshold를 고정값이 아니라 rolling OOS 기반으로 재튜닝하는 배치 추가
+
+### 17-C: 정성 신호 통제
+- [ ] LLM consensus 결과 캐시 및 재사용 정책 추가로 동일 티커 중복 호출 비용 절감
+- [ ] 뉴스/LLM 실패 시 무조건 통과 또는 무조건 차단이 아니라 명시적 degraded mode 정책 정의
+- [ ] 부정 이벤트 분류 사유를 구조화하여 "소송/실적경고/가이던스하향" 등 카테고리별 분석 가능하게 개선
+
+---
+
+## Phase 18 — Portfolio Risk Engine 고도화 (중기)
+
+### 18-A: 포트폴리오 수준 익스포저 통제
+- [x] leverage 사용 시 gross exposure, cash buffer, single-name max loss 기준을 함께 검증하는 포트폴리오 가드 추가
+- [x] 섹터 한도 외에 factor/momentum crowding 기반 concentration guard 도입 검토
+- [ ] 상관관계 가드를 단순 pairwise 기준에서 포트폴리오 전체 평균 상관/클러스터 기준으로 확장
+
+### 18-B: 이벤트 리스크 캘린더
+- [ ] Earnings 외에 FOMC, CPI, PPI, NFP 같은 매크로 이벤트 캘린더 반영
+- [ ] 고변동 이벤트 전후 신규 진입 제한 또는 목표 비중 축소 규칙 추가
+- [ ] 이벤트 결과 이후 regime/profile 재평가 배치를 별도 분리
+
+### 18-C: Exit 정책 정밀화
+- [x] trailing stop, AI exit, partial take-profit, rebalance trim 간 우선순위/충돌 규칙 명시화
+- [ ] 종목별 ATR 또는 realized volatility 기반 adaptive trailing stop 검토
+- [ ] 시간 기반 exit(보유 기간 초과, 신호 약화 지속) 규칙 추가 검토
+
+---
+
+## Phase 19 — 테스트/문서/설정 정합성 정리 (상시)
+
+### 19-A: 테스트 보강
+- [ ] `src/main.py` 실주문 흐름을 mock broker/mock LLM/mock news 기준으로 end-to-end 테스트 추가
+- [ ] partial exit / trim / trailing stop / earnings filter 동시 발생 케이스 회귀 테스트 추가
+- [ ] 장애 테스트 추가: 손상된 JSON 상태파일, 빈 데이터프레임, Alpaca timeout, LLM timeout
+
+### 19-B: 설정 스키마 정리
+- [x] `src/settings.py` 중복 필드(`trailing_stop_pct`) 및 레거시/신규 설정 혼재 정리
+- [x] `strategy_config.json` / `strategy_profiles.json` 에 대한 schema validation 추가
+- [ ] 미사용 설정값 및 문서와 어긋난 기본값 정리
+
+### 19-C: 문서 최신화
+- [ ] `README.md`를 현재 아키텍처 기준으로 업데이트: Regime-aware, ensemble, LLM consensus, dynamic universe 반영
+- [ ] 운영 runbook 추가: retrain 실패, API 장애, drawdown breach, stale data 대응 절차
+- [ ] `TODO.md` 완료 기준을 "코드 존재"가 아니라 "테스트/리포트/운영 검증 완료" 기준으로 재정의

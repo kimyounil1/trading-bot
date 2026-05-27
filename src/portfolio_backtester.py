@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -256,6 +258,8 @@ def run_portfolio_backtest(
     ai_exit_threshold_bear: float = 0.28,
     vix_df: pd.DataFrame | None = None,
     macro_df: pd.DataFrame | None = None,
+    evaluation_start_date: str | pd.Timestamp | None = None,
+    evaluation_end_date: str | pd.Timestamp | None = None,
 ) -> tuple[PortfolioBacktestResult, pd.DataFrame, pd.DataFrame]:
     if relative_strength_lookback_days <= 0:
         raise ValueError("relative_strength_lookback_days must be positive")
@@ -346,6 +350,15 @@ def run_portfolio_backtest(
         )
 
     all_dates = sorted(market_df["date"].unique())
+    trading_dates = all_dates
+    if evaluation_start_date is not None:
+        start_ts = pd.Timestamp(evaluation_start_date)
+        trading_dates = [date for date in trading_dates if pd.Timestamp(date) >= start_ts]
+    if evaluation_end_date is not None:
+        end_ts = pd.Timestamp(evaluation_end_date)
+        trading_dates = [date for date in trading_dates if pd.Timestamp(date) <= end_ts]
+    if not trading_dates:
+        raise ValueError("No dates available inside the requested evaluation window")
 
     # VIX lookup index for dynamic AI exit threshold
     _vix_by_date: dict = {}
@@ -362,7 +375,7 @@ def run_portfolio_backtest(
     trades: list[dict] = []
     equity_rows: list[dict] = []
 
-    for current_date in all_dates:
+    for current_date in trading_dates:
         day_df = market_df[market_df["date"] == current_date].copy()
         day_prices = {
             row["ticker"]: float(row["close"])
@@ -387,15 +400,8 @@ def run_portfolio_backtest(
             gross_return_pct = (close / float(position["entry_price"])) - 1.0
             drawdown_from_high = (close / float(position["highest_price"])) - 1.0
 
-            if stop_loss_pct > 0 and gross_return_pct <= -stop_loss_pct:
-                exit_reason = "STOP_LOSS"
-            elif take_profit_pct > 0 and gross_return_pct >= take_profit_pct:
-                exit_reason = "TAKE_PROFIT"
-            elif trailing_stop_pct > 0 and drawdown_from_high <= -trailing_stop_pct:
-                exit_reason = "TRAILING_STOP"
-            elif bool(row["sell_signal"]):
-                exit_reason = "SELL_SIGNAL"
-            elif ai_exit_enabled:
+            ai_exit_triggered = False
+            if ai_exit_enabled:
                 ai_score_val = pd.to_numeric(row.get("ai_score"), errors="coerce")
                 if not pd.isna(ai_score_val):
                     effective_threshold = ai_exit_threshold
@@ -410,8 +416,18 @@ def run_portfolio_backtest(
                                 effective_threshold = ai_exit_threshold_bull
                             elif float(vix_val) > ai_exit_vix_high:
                                 effective_threshold = ai_exit_threshold_bear
-                    if float(ai_score_val) < effective_threshold:
-                        exit_reason = "AI_EXIT"
+                    ai_exit_triggered = float(ai_score_val) < effective_threshold
+
+            if stop_loss_pct > 0 and gross_return_pct <= -stop_loss_pct:
+                exit_reason = "STOP_LOSS"
+            elif trailing_stop_pct > 0 and drawdown_from_high <= -trailing_stop_pct:
+                exit_reason = "TRAILING_STOP"
+            elif ai_exit_triggered:
+                exit_reason = "AI_EXIT"
+            elif bool(row["sell_signal"]):
+                exit_reason = "SELL_SIGNAL"
+            elif take_profit_pct > 0 and gross_return_pct >= take_profit_pct:
+                exit_reason = "TAKE_PROFIT"
 
             if exit_reason is not None:
                 position = positions.pop(ticker)

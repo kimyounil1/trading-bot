@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import json
 from pathlib import Path
@@ -6,7 +8,13 @@ import pandas as pd
 
 from src.generate_qlib_snapshot import main as generate_qlib_snapshot_main
 from src.ml_model import load_ai_score_model
-from src.settings import DEFAULT_SETTINGS, StrategySettings, validate_settings
+from src.settings import (
+    DEFAULT_SETTINGS,
+    StrategySettings,
+    _read_json_object,
+    _validate_strategy_settings_payload,
+    validate_settings,
+)
 from src.strategy import add_indicators
 
 
@@ -88,7 +96,7 @@ def load_strategy_settings_from_json(path: str | Path) -> StrategySettings:
     settings_path = Path(path).expanduser().resolve()
     merged = DEFAULT_SETTINGS.__dict__.copy()
     if settings_path.exists():
-        merged.update(json.loads(settings_path.read_text(encoding="utf-8")))
+        merged.update(_validate_strategy_settings_payload(_read_json_object(settings_path), settings_path))
     return validate_settings(StrategySettings(**merged))
 
 

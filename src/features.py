@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import pandas as pd
 from ta.momentum import RSIIndicator
 from ta.trend import MACD
@@ -27,6 +29,10 @@ FEATURE_COLUMNS = [
     "dxy_20d_return",
     "gold_20d_return",
     "vix_percentile_52w",
+    # Options market signals (Phase 9-C)
+    "skew_level",
+    "vvix_level",
+    "vvix_20d_return",
 ]
 
 REQUIRED_PRICE_COLUMNS = {"date", "high", "low", "close", "volume"}
@@ -152,10 +158,21 @@ def build_features(
             df["gold_20d_return"] = mac["gold_close"].pct_change(20).values
         else:
             df["gold_20d_return"] = 0.0
+            
+        # Options market signals
+        df["skew_level"] = mac["skew_close"].values if "skew_close" in mac.columns else 100.0
+        df["vvix_level"] = mac["vvix_close"].values if "vvix_close" in mac.columns else 90.0
+        if "vvix_close" in mac.columns:
+            df["vvix_20d_return"] = mac["vvix_close"].pct_change(20).values
+        else:
+            df["vvix_20d_return"] = 0.0
     else:
         df["yield_spread_10y3m"] = 0.0
         df["dxy_20d_return"] = 0.0
         df["gold_20d_return"] = 0.0
+        df["skew_level"] = 100.0
+        df["vvix_level"] = 90.0
+        df["vvix_20d_return"] = 0.0
 
     df["future_return"] = df["close"].shift(-prediction_horizon) / df["close"] - 1.0
     df["target"] = (df["future_return"] > target_return_threshold).astype(int)

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Live news sentiment using yfinance + VADER. Used for buy filtering only (not training)."""
 
 import yfinance as yf
