@@ -22,6 +22,7 @@
 - Run focused tests for small/local changes.
 - Run broader tests when the change touches shared logic, trading logic, data schemas, or public behavior.
 - For syntax sanity checks, use `.venv/bin/python -m compileall <path>`.
+- Run the Gemini CLI Review Harness after changing agent instructions, workflow docs, skills, or guardrails: `bash scripts/run_gemini_review_harness.sh`.
 
 ## Coding style
 - Keep functions small and explicit.
@@ -84,6 +85,17 @@ Ask the user only before:
 - After editing, show the changed files and the reason for each change.
 - If tests are not run, explain why.
 - Never claim tests passed unless they were actually executed.
+
+## Gemini CLI Review Harness
+- Gemini CLI is the primary implementation agent; Codex is the reviewer, verifier, and planning agent unless the user explicitly asks Codex to implement fixes.
+- The review harness lives in `docs/gemini_codex_harness.md` and `codex_harness/agent_contract.json`.
+- Gemini work review eval cases live in `codex_harness/evals/gemini_review_requests.jsonl`.
+- This harness evaluates how Codex reviews Gemini's diffs, chooses verification, respects guardrails, and produces follow-up plans. It is separate from trading runtime tests.
+- After Gemini finishes implementation work, run `bash scripts/run_gemini_post_workflow.sh` to collect diffs, test logs, a Codex review packet, and a draft `NEXT_TODO.md` under `reports/agent_pipeline/<run_id>/`.
+- For a full local Gemini -> test packet -> Codex review -> Gemini TODO loop, use `.venv/bin/python scripts/agent_orchestrator.py --task "..." --run-gemini --run-codex-review`.
+- When changing `AGENTS.md`, `GEMINI.md`, skills, workflow docs, guardrails, handoff rules, or eval cases, run `bash scripts/run_gemini_review_harness.sh`.
+- **README Maintenance**: During review, verify if `README.md` or other docs need updates based on Gemini's changes. If missing, flag this and include the required text in the next plan.
+- Before final reporting on broad agent-harness work, prefer `bash scripts/codex_pre_final_check.sh` so the report includes harness status and current git status.
 
 ## Context management
 - Keep responses concise.
