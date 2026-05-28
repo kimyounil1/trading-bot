@@ -1,0 +1,25 @@
+$ codex --ask-for-approval never --sandbox read-only review /home/kimyo/trading-bot/reports/agent_pipeline/drill_slippage_scoped_02/review_packet.md
+exit_code=1
+
+## stdout
+
+
+## stderr
+OpenAI Codex v0.134.0
+--------
+workdir: /home/kimyo/trading-bot
+model: gpt-5.4
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019e6dd7-cec0-7fe0-b983-adfd7c3a9418
+--------
+user
+/home/kimyo/trading-bot/reports/agent_pipeline/drill_slippage_scoped_02/review_packet.md
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+ERROR: Your workspace is out of credits. Ask your workspace owner to refill in order to continue.
+codex
+Review was interrupted. Please re-run /review and wait for it to complete.
+ERROR: Your workspace is out of credits. Ask your workspace owner to refill in order to continue.

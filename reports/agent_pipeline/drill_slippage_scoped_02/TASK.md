@@ -1,0 +1,1 @@
+src/report_performance.py 파일에 대해서만 실제 체결 가격과 시그널 가격 간의 슬리피지 분석(USD 비용 계산 포함) 로직을 추가하고 관련된 부분만 테스트하라. 절대 src/main.py, src/correlation_guard.py 등 트레이딩 코어 로직이나 요구사항(requirements.txt)을 수정하지 마라. 오직 슬리피지 리포팅 기능에만 집중할 것.

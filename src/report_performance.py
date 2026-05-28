@@ -6,11 +6,18 @@ from src.alpaca_client import get_account_summary, get_positions_summary
 from src.config import SIGNAL_LOG_PATH, ORDER_LOG_PATH
 
 
-def analyze_slippage():
+def analyze_slippage(signals_path=None, orders_path=None):
     """signals log와 orders log를 결합하여 슬리피지를 분석한다."""
+    
+    # 인자가 제공되지 않으면 기본 경로 사용
+    if signals_path is None:
+        signals_path = SIGNAL_LOG_PATH
+    if orders_path is None:
+        orders_path = ORDER_LOG_PATH
+        
     try:
-        signals_df = pd.read_csv(SIGNAL_LOG_PATH)
-        orders_df = pd.read_csv(ORDER_LOG_PATH)
+        signals_df = pd.read_csv(signals_path)
+        orders_df = pd.read_csv(orders_path)
     except FileNotFoundError:
         print("Log files not found.")
         return
@@ -69,13 +76,22 @@ def analyze_slippage():
         return
 
     merged["slippage_pct"] = (merged["filled_avg_price"] - merged["close"]) / merged["close"] * 100
+
+    # 슬리피지 USD 비용 계산
+    merged["filled_qty"] = pd.to_numeric(merged["filled_qty"], errors="coerce")
+    merged["slippage_usd"] = (merged["filled_avg_price"] - merged["close"]) * merged["filled_qty"]
     
     # BUY는 높은 가격에 체결되면 슬리피지 발생 (+), SELL은 낮은 가격에 체결되면 발생 (-)
     # 편의상 절대값이나 방향성을 고려해 출력
     print("\n=== Slippage Analysis (Actual vs Signal Price) ===")
-    summary = merged.groupby("ticker")["slippage_pct"].agg(["mean", "min", "max", "count"])
+    summary = merged.groupby("ticker").agg(
+        avg_slippage_pct=("slippage_pct", "mean"),
+        total_slippage_usd=("slippage_usd", "sum"),
+        trades=("ticker", "count")
+    )
     print(summary.to_string())
     print(f"\nOverall Average Slippage: {merged['slippage_pct'].mean():.4f}%")
+    print(f"Total Slippage Cost: ${merged['slippage_usd'].sum():.2f}")
 
 
 def report_account_performance():

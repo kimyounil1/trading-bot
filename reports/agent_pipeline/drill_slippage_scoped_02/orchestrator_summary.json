@@ -1,0 +1,10 @@
+{
+  "run_id": "drill_slippage_scoped_02",
+  "output_dir": "/home/kimyo/trading-bot/reports/agent_pipeline/drill_slippage_scoped_02",
+  "gemini_exit_code": 0,
+  "post_workflow_exit_code": 127,
+  "codex_review_exit_code": 1,
+  "review_packet": "/home/kimyo/trading-bot/reports/agent_pipeline/drill_slippage_scoped_02/review_packet.md",
+  "draft_todo": "/home/kimyo/trading-bot/reports/agent_pipeline/drill_slippage_scoped_02/NEXT_TODO.md",
+  "codex_todo": null
+}

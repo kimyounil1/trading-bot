@@ -1,0 +1,8 @@
+$ bash scripts/run_gemini_post_workflow.sh
+exit_code=127
+
+## stdout
+
+
+## stderr
+bash: scripts/run_gemini_post_workflow.sh: No such file or directory
