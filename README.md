@@ -32,7 +32,9 @@ trading-bot/
 ├── data/               # 피크 정보, LLM 캐시, 트레일링 스탑 데이터
 ├── logs/               # 실행 감사(Audit), 주문, 신호 로그 (CSV)
 ├── models/             # 학습된 레짐별 AI 모델 파일
-├── scripts/            # 실행 및 서비스 등록 쉘 스크립트
+├── scripts/            # 실행, 서비스 등록 및 에이전트 오케스트레이터
+│   ├── agent_orchestrator.py # Gemini-Codex 자동화 루프 실행기
+│   └── run_bot_once.sh     # 봇 단발성 실행 쉘 스크립트
 ├── src/                # 핵심 로직 (Python 3.12)
 │   ├── main.py         # 메인 트레이딩 루프
 │   ├── alpaca_client.py # Alpaca API 고도화 (Retry/Idempotency)
@@ -41,6 +43,16 @@ trading-bot/
 │   └── correlation_guard.py # 포트폴리오 상관관계 관리
 └── tests/              # 유닛 및 E2E 테스트 스위트
 ```
+
+## 🤖 AI Agent Harness (Autonomous Loop)
+
+본 프로젝트는 코드 구현뿐만 아니라 유지보수 및 리뷰 과정에도 AI 에이전트를 활용합니다.
+
+- **Gemini CLI**: 주 구현 에이전트로, `GEMINI.md` 규칙에 따라 코드를 작성하고 테스트를 수행합니다.
+- **Codex Reviewer**: 리뷰 및 계획 에이전트로, `AGENTS.md` 지침에 따라 Gemini의 결과물을 검증하고 다음 할 일을 수립합니다.
+- **Bounded Loop**: `agent_orchestrator.py`를 통해 "구현 -> 검증 -> 리뷰 -> 피드백 반영"의 과정을 자동화하여 코드의 안정성을 극대화합니다.
+
+상세한 에이전트 협업 구조 및 사용법은 [docs/gemini_codex_harness.md](docs/gemini_codex_harness.md)를 참고하세요.
 
 ## 🛠 시작하기
 
