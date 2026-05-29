@@ -87,5 +87,103 @@ class TestExecutionResilience(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("Auto-Rejected", reason)
 
+    def test_corrupted_peaks_json(self):
+        import tempfile
+        from pathlib import Path
+        from src.main import _load_peaks
+        import src.main
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_file = Path(tmpdir) / "trailing_peaks.json"
+            
+            orig_path = src.main.PEAKS_PATH
+            src.main.PEAKS_PATH = temp_file
+            
+            try:
+                # Write corrupted JSON
+                temp_file.write_text("invalid json format {", encoding="utf-8")
+                
+                # Load peaks (should handle error, quarantine file, and return empty dict)
+                peaks = _load_peaks()
+                self.assertEqual(peaks, {})
+                
+                # Verify quarantine
+                corrupt_file = temp_file.with_suffix(".json.corrupt")
+                self.assertTrue(corrupt_file.exists())
+                self.assertFalse(temp_file.exists())
+            finally:
+                src.main.PEAKS_PATH = orig_path
+
+    def test_empty_dataframe_handling(self):
+        import pandas as pd
+        from src.main import _check_price_frame_freshness
+        from types import SimpleNamespace
+        
+        market_clock = SimpleNamespace(is_open=True, timestamp=pd.Timestamp("2026-05-29 10:00:00"))
+        
+        # 1. None dataframe
+        fresh, reason = _check_price_frame_freshness(None, market_clock)
+        self.assertFalse(fresh)
+        self.assertEqual(reason, "price data is empty")
+        
+        # 2. Empty DataFrame
+        df_empty = pd.DataFrame()
+        fresh, reason = _check_price_frame_freshness(df_empty, market_clock)
+        self.assertFalse(fresh)
+        self.assertEqual(reason, "price data is empty")
+        
+        # 3. Missing date column
+        df_no_date = pd.DataFrame({"close": [100.0]})
+        fresh, reason = _check_price_frame_freshness(df_no_date, market_clock)
+        self.assertFalse(fresh)
+        self.assertEqual(reason, "price data missing date column")
+        
+        # 4. Invalid dates
+        df_invalid_date = pd.DataFrame({"date": ["not-a-date"], "close": [100.0]})
+        fresh, reason = _check_price_frame_freshness(df_invalid_date, market_clock)
+        self.assertFalse(fresh)
+        self.assertEqual(reason, "price data has no valid dates")
+
+    @patch("src.main.get_account_summary")
+    @patch("src.main.notify_error")
+    def test_alpaca_timeout_failure_stops_execution(self, mock_notify, mock_get_account):
+        from src.main import main
+        from argparse import Namespace
+        
+        # Mock ConnectionError on account summary retrieval
+        mock_get_account.side_effect = ConnectionError("Alpaca Connection Timeout")
+        
+        # Set execute mode to True so it fails safe instead of fallback
+        with patch("src.main.parse_args") as mock_args, \
+             patch("src.main.load_settings") as mock_settings:
+            
+            mock_args.return_value = Namespace(execute=True)
+            mock_settings.return_value = SimpleNamespace(
+                tickers=["AAPL"],
+                dynamic_universe_enabled=False,
+                sector_rotation_enabled=False,
+                use_ai_score=False,
+                market_regime_filter_enabled=False
+            )
+            
+            # Should raise ConnectionError
+            with self.assertRaises(ConnectionError):
+                main()
+
+    @patch("src.llm_analyst.genai.GenerativeModel")
+    @patch("yfinance.Ticker")
+    def test_llm_degraded_mode_pass(self, mock_yf, mock_model):
+        from src.llm_analyst import evaluate_ticker_consensus
+        
+        # Mock API timeout/exception on ticker loading
+        mock_yf.side_effect = Exception("Gemini/YFinance Timeout")
+        
+        settings = SimpleNamespace(llm_degraded_mode="PASS", llm_cache_enabled=False)
+        
+        # Should auto-approve on degraded PASS policy
+        ok, reason = evaluate_ticker_consensus("AAPL", settings=settings)
+        self.assertTrue(ok)
+        self.assertIn("Auto-Approved", reason)
+
 if __name__ == "__main__":
     unittest.main()

@@ -29,7 +29,7 @@ def create_log_files(tmp_path):
         "notional": [1000, 1000],
         "order_id": ["order1", "order2"],
         "status": ["filled", "filled"],
-        "side": ["buy", "sell"],
+        "side": ["OrderSide.BUY", "OrderSide.SELL"],
         "order_type": ["market", "market"],
         "filled_qty": [10, 5],
         "filled_avg_price": [101.0, 199.0],
@@ -50,14 +50,14 @@ def test_analyze_slippage_with_usd_cost(mock_stdout, create_log_files):
     output = mock_stdout.getvalue()
     
     # Check for TICKER1 (buy) slippage: (101 - 100) * 10 = 10
-    # Check for TICKER2 (sell) slippage: (199 - 200) * 5 = -5
-    # Total slippage: 10 + (-5) = 5
+    # Check for TICKER2 (sell) slippage: (200 - 199) * 5 = 5
+    # Total slippage: 10 + 5 = 15
 
-    assert "Total Slippage Cost: $5.00" in output
+    assert "Total Slippage Cost: $15.00" in output
     assert "TICKER1" in output
     assert "TICKER2" in output
     # Check for the summary table values
     # For TICKER1, total_slippage_usd is 10.0
-    # For TICKER2, total_slippage_usd is -5.0
+    # For TICKER2, total_slippage_usd is 5.0
     assert "10.0" in output
-    assert "-5.0" in output
+    assert "5.0" in output

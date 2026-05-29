@@ -1,6 +1,7 @@
 """실제 거래 내역과 백테스트 결과를 비교 분석하는 스크립트."""
 
 import pandas as pd
+import numpy as np
 from datetime import datetime, timedelta
 from src.alpaca_client import get_account_summary, get_positions_summary
 from src.config import SIGNAL_LOG_PATH, ORDER_LOG_PATH
@@ -75,13 +76,17 @@ def analyze_slippage(signals_path=None, orders_path=None):
         # 시간을 좀 더 넓게 잡아보자 (5분 내외)
         return
 
-    merged["slippage_pct"] = (merged["filled_avg_price"] - merged["close"]) / merged["close"] * 100
+    merged["side_lower"] = merged["side"].astype(str).str.lower()
+    # Handle both plain "sell" and Enum string representation "orderside.sell"
+    sign = np.where(merged["side_lower"].str.contains("sell", na=False), -1, 1)
+
+    merged["slippage_pct"] = sign * (merged["filled_avg_price"] - merged["close"]) / merged["close"] * 100
 
     # 슬리피지 USD 비용 계산
     merged["filled_qty"] = pd.to_numeric(merged["filled_qty"], errors="coerce")
-    merged["slippage_usd"] = (merged["filled_avg_price"] - merged["close"]) * merged["filled_qty"]
+    merged["slippage_usd"] = sign * (merged["filled_avg_price"] - merged["close"]) * merged["filled_qty"]
     
-    # BUY는 높은 가격에 체결되면 슬리피지 발생 (+), SELL은 낮은 가격에 체결되면 발생 (-)
+    # BUY는 높은 가격에 체결되면 슬리피지 발생 (+), SELL은 낮은 가격에 체결되면 발생 (+)
     # 편의상 절대값이나 방향성을 고려해 출력
     print("\n=== Slippage Analysis (Actual vs Signal Price) ===")
     summary = merged.groupby("ticker").agg(

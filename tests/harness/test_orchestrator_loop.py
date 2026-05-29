@@ -32,9 +32,8 @@ def test_parse_args_custom():
 
 def test_refuse_yolo_mode():
     with patch("sys.argv", ["orchestrator.py", "--gemini-approval-mode", "yolo"]):
-        with pytest.raises(SystemExit) as excinfo:
-            main()
-        assert excinfo.value.code == 2
+        code = main()
+        assert code == 2
 
 def test_check_stop_conditions_max_files(tmp_path):
     changed_files = tmp_path / "changed_files.txt"
@@ -48,7 +47,7 @@ def test_check_stop_conditions_mixed_artifacts(tmp_path):
     changed_files.write_text("src/main.py\nmodels/model.joblib")
     
     reason = check_stop_conditions(tmp_path, max_changed_files=10, history=[])
-    assert "Generated artifacts mixed with code changes" in reason
+    assert "Generated artifacts detected in diff" in reason
 
 def test_check_stop_conditions_sensitive_files(tmp_path):
     changed_files = tmp_path / "changed_files.txt"
@@ -98,6 +97,9 @@ def test_scoped_review_command_construction(mock_run, tmp_path, mock_report_root
         assert "review" in args
         assert any("review_packet.md" in arg for arg in args)
         assert "--uncommitted" not in args
+        # Check that reasoning effort defaults to low
+        assert "-c" in args
+        assert any("model_reasoning_effort=\"low\"" in arg for arg in args)
 
 @patch("scripts.agent_orchestrator.run_command")
 def test_max_iterations_behavior(mock_run, tmp_path, mock_report_root):

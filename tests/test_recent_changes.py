@@ -6,7 +6,7 @@ import pandas as pd
 
 from src.data_loader import load_price_data_batch
 from src.features import build_features
-from src.ml_model import SklearnModelWrapper
+from src.ml_model import RegimeAwareModelWrapper
 from src.portfolio_backtester import _prepare_ticker_frame
 
 
@@ -59,8 +59,8 @@ class RecentChangesTest(unittest.TestCase):
                 "feature_b": [4.0, 5.0, 6.0],
             }
         )
-        wrapper = SklearnModelWrapper(
-            DummyClassifier(),
+        wrapper = RegimeAwareModelWrapper(
+            {"NEUTRAL": DummyClassifier()},
             ["feature_a", "feature_b"],
             prediction_horizon=5,
             target_return_threshold=0.0,

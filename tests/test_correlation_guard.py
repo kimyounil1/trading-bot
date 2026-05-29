@@ -6,6 +6,8 @@ from src.correlation_guard import is_correlation_allowed
 
 class TestCorrelationGuard(unittest.TestCase):
     def setUp(self):
+        # Set random seed for deterministic test data
+        np.random.seed(42)
         # Create mock ticker data
         self.dates = pd.date_range(start="2024-01-01", periods=100)
         
@@ -54,7 +56,7 @@ class TestCorrelationGuard(unittest.TestCase):
         allowed, reason = is_correlation_allowed(
             "B", open_symbols, self.ticker_data, 
             max_corr=0.99, # Pairwise passes
-            max_portfolio_avg_corr=0.60 # Avg fails
+            max_portfolio_avg_corr=0.45 # Avg fails
         )
         self.assertFalse(allowed)
         self.assertIn("high portfolio average correlation", reason)

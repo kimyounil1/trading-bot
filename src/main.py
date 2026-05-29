@@ -322,18 +322,97 @@ def main() -> None:
         )
     
     tickers_to_load = list(dict.fromkeys([*settings.tickers, *open_symbols]))
-    if getattr(settings, "market_regime_filter_enabled", False):
-        tickers_to_load.append(settings.market_regime_ticker)
-        tickers_to_load = list(dict.fromkeys(tickers_to_load))
-    if getattr(settings, "use_ai_score", False) and "^VIX" not in tickers_to_load:
+    # Always include SPY and ^VIX for live market regime calculation
+    if "SPY" not in tickers_to_load:
+        tickers_to_load.append("SPY")
+    if "^VIX" not in tickers_to_load:
         tickers_to_load.append("^VIX")
-    ticker_data = load_price_data_batch(tickers_to_load, period="2y")
-    vix_df = ticker_data.get("^VIX")
+    if getattr(settings, "market_regime_filter_enabled", False):
+        regime_ticker = getattr(settings, "market_regime_ticker", "SPY")
+        if regime_ticker not in tickers_to_load:
+            tickers_to_load.append(regime_ticker)
+    tickers_to_load = list(dict.fromkeys(tickers_to_load))
+    try:
+        ticker_data = load_price_data_batch(tickers_to_load, period="2y")
+    except Exception as e:
+        print(f"Warning: Failed to load batch price data: {e}. Retrying tickers individually to isolate failures...")
+        ticker_data = {}
+        for ticker in tickers_to_load:
+            try:
+                single_data = load_price_data_batch([ticker], period="2y")
+                ticker_data.update(single_data)
+            except Exception as single_err:
+                print(f"Warning: Failed to load data for {ticker}: {single_err}")
+    
+    # SPY와 ^VIX 데이터를 로드한다. (실패 시에도 전체 봇 실행이 중단되지 않도록 별도 예외 처리)
+    # 레짐 연산은 항상 SPY와 ^VIX를 기준으로 수행한다.
     spy_df = ticker_data.get("SPY")
+    vix_df = ticker_data.get("^VIX")
+    
+    if spy_df is None or spy_df.empty or vix_df is None or vix_df.empty:
+        try:
+            missing_tickers = []
+            if spy_df is None or spy_df.empty:
+                missing_tickers.append("SPY")
+            if vix_df is None or vix_df.empty:
+                missing_tickers.append("^VIX")
+            print(f"Fetching context tickers separately (None or empty in batch): {missing_tickers}")
+            context_data = load_price_data_batch(missing_tickers, period="2y")
+            if spy_df is None or spy_df.empty:
+                spy_df = context_data.get("SPY")
+                if spy_df is not None and not spy_df.empty:
+                    ticker_data["SPY"] = spy_df
+            if vix_df is None or vix_df.empty:
+                vix_df = context_data.get("^VIX")
+                if vix_df is not None and not vix_df.empty:
+                    ticker_data["^VIX"] = vix_df
+        except Exception as e:
+            print(f"Warning: Failed to load market-context data (SPY/^VIX): {e}")
 
-    # 시장 레짐 결정
-    current_regime = get_current_regime(spy_df, vix_df)
-    print(f"Current Market Regime: {current_regime}")
+    # 시장 레짐 결정 (실시간 데이터로 항상 우선 계산, 실패 시 캐시 파일 안전 폴백)
+    current_regime = None
+    state_path = Path("data/market_regime_state.json")
+    
+    # 1. 실시간 데이터 기반 계산 시도
+    if spy_df is not None and not spy_df.empty and vix_df is not None and not vix_df.empty:
+        try:
+            current_regime = get_current_regime(spy_df, vix_df)
+            print(f"Calculated Market Regime (Live): {current_regime}")
+        except Exception as e:
+            print(f"Warning: Failed to calculate live market regime: {e}")
+
+    # 2. 실시간 계산 실패 시 캐시에서 최근 유효한 레짐 폴백 로드
+    if not current_regime:
+        if state_path.exists():
+            try:
+                state_data = json.loads(state_path.read_text(encoding="utf-8"))
+                # 역사적 시뮬레이션 데이터 차단 및 최근 24시간 이내의 캐시만 유효한 것으로 판단
+                updated_at = datetime.fromisoformat(state_data.get("updated_at", ""))
+                is_historical = state_data.get("is_historical", False)
+                market_date_str = state_data.get("market_date")
+                
+                is_stale_market_date = False
+                if market_date_str:
+                    try:
+                        # 캐시 생성일(updated_at) 대비 market_date가 5일을 초과해 오래되었는지 검사 (주말/공휴일 허용)
+                        market_date = datetime.fromisoformat(market_date_str.split("T")[0]).date()
+                        if (updated_at.date() - market_date).days > 5:
+                            is_stale_market_date = True
+                            print(f"Warning: Stale market date in cached regime (relative to write time): {market_date_str}")
+                    except Exception as parse_err:
+                        print(f"Warning: Failed to parse market_date from cache: {parse_err}")
+                
+                # 96시간(4일) 이내의 캐시까지 유효한 것으로 판단 (주말/휴일 고려)
+                if not is_historical and not is_stale_market_date and (datetime.now() - updated_at).total_seconds() < 345600:
+                    current_regime = state_data.get("regime")
+                    print(f"Loaded Market Regime from state file (Fallback): {current_regime}")
+            except Exception as e:
+                print(f"Warning: Failed to load fallback market regime from state file: {e}")
+
+    # 3. 모든 시도 실패 시 기본값 지정
+    if not current_regime:
+        current_regime = "NEUTRAL"
+        print(f"Warning: All regime calculations failed. Falling back to default: {current_regime}")
 
     # 다이내믹 프로필 적용
     settings, profile_name = apply_dynamic_profile(settings, current_regime)
@@ -356,11 +435,20 @@ def main() -> None:
     macro_df = load_macro_data(period="2y") if getattr(settings, "use_ai_score", False) else None
     market_regime_bullish = True
     if getattr(settings, "market_regime_filter_enabled", False):
-        market_regime_bullish = is_bullish_market_regime(
-            ticker_data[settings.market_regime_ticker],
-            ma_fast=settings.market_regime_ma_fast,
-            ma_slow=settings.market_regime_ma_slow,
-        )
+        regime_df = ticker_data.get(settings.market_regime_ticker)
+        if regime_df is not None and not regime_df.empty:
+            try:
+                market_regime_bullish = is_bullish_market_regime(
+                    regime_df,
+                    ma_fast=settings.market_regime_ma_fast,
+                    ma_slow=settings.market_regime_ma_slow,
+                )
+            except Exception as e:
+                print(f"Warning: Failed to calculate bullish market regime trend: {e}. Failing closed.")
+                market_regime_bullish = False
+        else:
+            print("Warning: Missing or empty regime benchmark data. Failing closed.")
+            market_regime_bullish = False
 
     cash = account["cash"]
     # 레버리지 적용 (Phase 13)
