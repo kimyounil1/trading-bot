@@ -1,8 +1,6 @@
-# GEMINI.md
+# CURSOR.md
 
-> **Primary implementer:** use [`CURSOR.md`](CURSOR.md) for Cursor (IDE). This file applies to **Gemini CLI** only (optional legacy headless implementer via `--run-gemini`).
-
-Behavioral guidelines to reduce common LLM coding mistakes and ensure the Trading Bot's reliability. These rules govern how **Gemini CLI** operates within this workspace when used as a headless implementation agent.
+Behavioral guidelines to reduce common LLM coding mistakes and ensure the Trading Bot's reliability. These rules govern how **Cursor** (primary interactive implementation agent) operates in this workspace.
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trading applications, security and correctness are paramount.
 
@@ -59,32 +57,60 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ---
 
-## 5. Codex Review Handoff
-**Leave enough evidence for a separate reviewer to validate your work.**
+## 5. Codex / AGY Review Handoff
 
-After completing Gemini CLI implementation work, include:
+After completing Cursor implementation work, leave enough evidence for separate reviewers.
+
+Include:
 - changed files and why each changed;
 - tests or commands actually run;
 - tests not run and why;
 - known residual risks or assumptions;
-- any areas where Codex should review carefully.
+- areas Codex should review carefully;
+- areas AGY should review if architecture, strategy, or risk logic changed.
 
-Codex reviews with `docs/agent_review_harness.md`. Do not edit the tree while Codex reviews unless explicitly asked.
+Codex reviews with `docs/agent_review_harness.md` and `AGENTS.md` (review-only section).
 
 When the implementation pass is complete, run:
-```bash
-bash scripts/run_cursor_post_workflow.sh
-```
-Then use `reports/agent_pipeline/<run_id>/NEXT_TODO.codex.md` after Codex review as the next work queue.
 
-For a headless Gemini ↔ Codex loop:
+```bash
+RUN_ID=cursor_$(date +%Y%m%dT%H%M%S) bash scripts/run_cursor_post_workflow.sh
+```
+
+Then ask Codex to review:
+
+```text
+reports/agent_pipeline/<run_id>/review_packet.md
+```
+
+Use `NEXT_TODO.codex.md` (or Codex's rewritten `NEXT_TODO.md`) as the next work queue.
+
+**Review-only (no headless implementer):**
+
+```bash
+.venv/bin/python scripts/agent_orchestrator.py --run-codex-review --scoped-review
+```
+
+**Optional legacy headless implementer (Gemini CLI):**
+
 ```bash
 .venv/bin/python scripts/agent_orchestrator.py --task-file <task.md> --run-gemini --run-codex-review
 ```
 
-Only one implementer (Cursor **or** Gemini CLI) may edit the branch at a time. See `CURSOR.md` § Multi-Agent Working Tree Rule.
+## 6. Multi-Agent Working Tree Rule
 
-### 6. Automatic Documentation Maintenance
+Only one implementation agent may edit the working tree at a time.
+
+Default:
+- **Cursor** edits (primary).
+- **Codex** reviews in read-only mode.
+- **AGY** reviews in read-only or plan-only mode.
+- **Gemini CLI** is optional legacy headless implementer; do not run it on the same branch while Cursor is editing.
+
+Codex or AGY may implement fixes only when explicitly asked, and preferably on a separate branch.
+Never let multiple agents edit the same branch concurrently.
+
+### 7. Automatic Documentation Maintenance
 **Keep the entry point (README.md) synchronized with code changes.**
 
 - After completing a feature or changing a workflow, assess if `README.md` needs an update.
@@ -108,3 +134,10 @@ Only one implementer (Cursor **or** Gemini CLI) may edit the branch at a time. S
 - **Correlation Guard**: Enabled via `correlation_guard_enabled` in config.
 - **Performance Reporting**: Run `PYTHONPATH=. .venv/bin/python src/report_performance.py` for slippage and P&L analysis.
 - **Fault Injection**: Any new risk logic or API interaction must be tested against `tests/harness/test_fault_injection.py`.
+
+## Task Ownership Labels (with Gemini CLI)
+
+When splitting work across agents, label tasks in `TODO.md` or task files:
+- `[Cursor]` — main integration, `main.py`, orders, portfolio/risk guards.
+- `[Gemini]` — isolated modules, tests, docs, CMS (headless via `--run-gemini`).
+- `[Either]` — README or non-risk utilities (still only one implementer at a time).

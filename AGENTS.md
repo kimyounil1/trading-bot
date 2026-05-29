@@ -86,16 +86,29 @@ Ask the user only before:
 - If tests are not run, explain why.
 - Never claim tests passed unless they were actually executed.
 
-## Gemini CLI Review Harness
-- Gemini CLI is the primary implementation agent; Codex is the reviewer, verifier, and planning agent unless the user explicitly asks Codex to implement fixes.
-- The review harness lives in `docs/gemini_codex_harness.md` and `codex_harness/agent_contract.json`.
-- Gemini work review eval cases live in `codex_harness/evals/gemini_review_requests.jsonl`.
-- This harness evaluates how Codex reviews Gemini's diffs, chooses verification, respects guardrails, and produces follow-up plans. It is separate from trading runtime tests.
-- After Gemini finishes implementation work, run `bash scripts/run_gemini_post_workflow.sh` to collect diffs, test logs, a Codex review packet, and a draft `NEXT_TODO.md` under `reports/agent_pipeline/<run_id>/`.
-- For a full local Gemini -> test packet -> Codex review -> Gemini TODO loop, use `.venv/bin/python scripts/agent_orchestrator.py --task "..." --run-gemini --run-codex-review`.
-- When changing `AGENTS.md`, `GEMINI.md`, skills, workflow docs, guardrails, handoff rules, or eval cases, run `bash scripts/run_gemini_review_harness.sh`.
-- **README Maintenance**: During review, verify if `README.md` or other docs need updates based on Gemini's changes. If missing, flag this and include the required text in the next plan.
-- Before final reporting on broad agent-harness work, prefer `bash scripts/codex_pre_final_check.sh` so the report includes harness status and current git status.
+## Cursor / Codex / AGY Review Harness
+- **Cursor IDE** is the primary interactive implementation environment. Follow `CURSOR.md` when implementing in Cursor.
+- **Codex** is the default reviewer, verifier, and planning agent unless the user explicitly asks Codex to implement fixes.
+- **AGY** is an optional secondary reviewer for architecture, strategy, risk, and alternative designs (`AGY.md`).
+- **Gemini CLI** is an optional legacy headless implementer (`--run-gemini`); do not run it on the same branch while Cursor is editing.
+- The review harness lives in `docs/agent_review_harness.md` and `codex_harness/agent_contract.json` (when present).
+- After Cursor (or any single implementer) finishes work, run `bash scripts/run_cursor_post_workflow.sh` to collect diffs, test logs, a Codex review packet, and a draft `NEXT_TODO.md` under `reports/agent_pipeline/<run_id>/`.
+- For **review-only** after Cursor edits: `.venv/bin/python scripts/agent_orchestrator.py --run-codex-review --scoped-review`.
+- For legacy headless implement + review: `.venv/bin/python scripts/agent_orchestrator.py --task "..." --run-gemini --run-codex-review`.
+- When changing `AGENTS.md`, `CURSOR.md`, `AGY.md`, `GEMINI.md`, workflow docs, guardrails, handoff rules, or eval cases, run `bash scripts/run_gemini_review_harness.sh` (legacy script name).
+- **README Maintenance**: During review, verify if `README.md` needs updates. If missing, flag and include required text in the next plan.
+- Before final reporting on broad agent-harness work, prefer `bash scripts/codex_pre_final_check.sh` when available.
+
+### Multi-agent working tree rule
+Only one implementation agent may edit the working tree at a time. Default: Cursor edits; Codex reviews read-only; AGY reviews read-only or plan-only. Codex or AGY may implement fixes only when explicitly asked, preferably on a separate branch.
+
+### Codex (review-only)
+When reviewing implementation work:
+1. Read `reports/agent_pipeline/<run_id>/review_packet.md` when available.
+2. Lead with high-risk findings (orders, positions, risk guards, data schemas).
+3. Verify test claims; run focused safe checks when appropriate.
+4. Do not edit files during review unless explicitly asked to fix.
+5. End with `# NEXT_TODO` (or `# NEXT_TODO for Cursor`) suitable for the next implementer.
 
 ## Context management
 - Keep responses concise.

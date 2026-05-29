@@ -33,7 +33,8 @@ trading-bot/
 ├── logs/               # 실행 감사(Audit), 주문, 신호 로그 (CSV)
 ├── models/             # 학습된 레짐별 AI 모델 파일
 ├── scripts/            # 실행, 서비스 등록 및 에이전트 오케스트레이터
-│   ├── agent_orchestrator.py # Gemini-Codex 자동화 루프 실행기
+│   ├── agent_orchestrator.py # Codex 리뷰 / optional Gemini CLI 루프
+│   ├── run_cursor_post_workflow.sh # Cursor 구현 후 리뷰 패킷 수집
 │   └── run_bot_once.sh     # 봇 단발성 실행 쉘 스크립트
 ├── src/                # 핵심 로직 (Python 3.12)
 │   ├── main.py         # 메인 트레이딩 루프
@@ -44,15 +45,25 @@ trading-bot/
 └── tests/              # 유닛 및 E2E 테스트 스위트
 ```
 
-## 🤖 AI Agent Harness (Autonomous Loop)
+## 🤖 AI Agent Harness (Cursor-First)
 
-본 프로젝트는 코드 구현뿐만 아니라 유지보수 및 리뷰 과정에도 AI 에이전트를 활용합니다.
+코드 구현·리뷰는 **Cursor-first** 워크플로를 사용합니다.
 
-- **Gemini CLI**: 주 구현 에이전트로, `GEMINI.md` 규칙에 따라 코드를 작성하고 테스트를 수행합니다.
-- **Codex Reviewer**: 리뷰 및 계획 에이전트로, `AGENTS.md` 지침에 따라 Gemini의 결과물을 검증하고 다음 할 일을 수립합니다.
-- **Bounded Loop**: `agent_orchestrator.py`를 통해 "구현 -> 검증 -> 리뷰 -> 피드백 반영"의 과정을 자동화하여 코드의 안정성을 극대화합니다.
+| 역할 | 담당 | 규칙 문서 |
+|------|------|-----------|
+| **Cursor** | 메인 구현 (WSL Remote IDE) | [`CURSOR.md`](CURSOR.md) |
+| **Codex** | read-only 리뷰, 검증, `NEXT_TODO` | [`AGENTS.md`](AGENTS.md) |
+| **AGY** | (선택) 설계·전략·리스크 2차 검토 | [`AGY.md`](AGY.md) |
+| **Gemini CLI** | (선택) headless 구현 (`--run-gemini`) | [`GEMINI.md`](GEMINI.md) |
 
-상세한 에이전트 협업 구조 및 사용법은 [docs/gemini_codex_harness.md](docs/gemini_codex_harness.md)를 참고하세요.
+**평소 흐름**
+
+1. Cursor에서 구현 및 `pytest` 실행
+2. `RUN_ID=my_feature bash scripts/run_cursor_post_workflow.sh` 로 리뷰 패킷 생성
+3. `.venv/bin/python scripts/agent_orchestrator.py --run-codex-review --scoped-review` 로 Codex 리뷰
+4. 전략/리스크 대형 변경 시 AGY 추가 검토
+
+상세: [docs/agent_review_harness.md](docs/agent_review_harness.md) (구 [gemini_codex_harness.md](docs/gemini_codex_harness.md))
 
 ## 🛠 시작하기
 

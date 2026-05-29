@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Gemini CLI -> harness -> Codex review orchestration.
+"""Agent review orchestration (Cursor-first, optional Gemini CLI implementer).
 
-This script intentionally keeps agent execution opt-in. By default it prints the
-commands it would run. Use --run-gemini and/or --run-codex-review to execute the
-corresponding agent step.
+Default usage: implement in Cursor, then --run-codex-review only.
+Optional: --run-gemini for legacy headless Gemini CLI implementation.
+
+This script does not invoke Cursor automatically. It collects review packets and
+can run Codex in read-only mode against them.
 """
 
 from __future__ import annotations
@@ -24,7 +26,7 @@ REPORT_ROOT = ROOT / "reports" / "agent_pipeline"
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run the Gemini -> Codex review pipeline for this repository."
+        description="Run the agent review pipeline (Cursor-first; optional --run-gemini)."
     )
     task = parser.add_mutually_exclusive_group()
     task.add_argument("--task", help="Task prompt to give Gemini CLI.")
@@ -71,6 +73,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--gemini-model", help="Optional Gemini model name.")
     parser.add_argument("--codex-model", help="Optional Codex model name.")
+    parser.add_argument(
+        "--codex-reasoning-effort",
+        default="low",
+        choices=["low", "medium", "high"],
+        help="Reasoning effort for Codex model. Default 'low' to save tokens.",
+    )
     parser.add_argument(
         "--codex-timeout-seconds",
         type=int,
@@ -157,15 +165,18 @@ run, tests not run, assumptions, and areas Codex should review carefully.
 
 
 def codex_prompt(packet_path: Path, todo_path: Path) -> str:
-    return f"""Review Gemini CLI's work using this packet:
+    return f"""Review the implementation work using this packet:
 {packet_path}
 
+Follow AGENTS.md (Codex review-only section) and docs/agent_review_harness.md.
 You are the reviewer/planner, not the implementation agent. Do not edit files.
 Lead with findings, verify the test logs, identify residual risk, and produce a
-Gemini-ready next plan.
+concrete next plan for Cursor (or Gemini CLI if the packet says implementation_agent=gemini).
+
+Label tasks with [Cursor], [Gemini], or [Either] when helpful.
 
 At the end, include a section titled exactly:
-# NEXT_TODO for Gemini CLI
+# NEXT_TODO
 
 That section should be suitable to save as:
 {todo_path}
@@ -280,8 +291,12 @@ def main() -> int:
 
         env = os.environ.copy()
         env["RUN_ID"] = iteration_run_id
+        if args.run_gemini:
+            env["IMPLEMENTATION_AGENT"] = "gemini"
+        else:
+            env.setdefault("IMPLEMENTATION_AGENT", "cursor")
         post_code = run_command(
-            ["bash", "scripts/run_gemini_post_workflow.sh"],
+            ["bash", "scripts/run_cursor_post_workflow.sh"],
             log_path=out_dir / "post_workflow_command.log",
             env=env,
             dry_run=args.dry_run,
@@ -319,6 +334,9 @@ def main() -> int:
             if args.codex_model:
                 codex_args.extend(["--model", args.codex_model])
             
+            # Pass reasoning effort override to Codex (defaults to 'low' to save tokens)
+            codex_args.extend(["-c", f"model_reasoning_effort=\"{args.codex_reasoning_effort}\""])
+            
             try:
                 codex_code = run_command(
                     codex_args,
@@ -341,10 +359,15 @@ def main() -> int:
             if codex_code == 0 and codex_output.exists():
                 # Extract TODO for next iteration
                 review_content = codex_output.read_text(encoding="utf-8")
-                if "# NEXT_TODO for Gemini CLI" in review_content:
-                    todo_content = review_content.split("# NEXT_TODO for Gemini CLI")[-1].strip()
+                todo_marker = None
+                for marker in ("# NEXT_TODO\n", "# NEXT_TODO for Cursor\n", "# NEXT_TODO for Gemini CLI\n"):
+                    if marker in review_content:
+                        todo_marker = marker
+                        break
+                if todo_marker:
+                    todo_content = review_content.split(todo_marker)[-1].strip()
                     codex_todo.write_text(todo_content, encoding="utf-8")
-                    task_text = todo_content # Feed into next iteration
+                    task_text = todo_content  # Feed into next iteration
                 else:
                     # If no NEXT_TODO section, we might want to stop or use the whole output
                     codex_todo.write_text(review_content, encoding="utf-8")

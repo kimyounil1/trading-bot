@@ -1,5 +1,37 @@
 # TODO
 
+## Definition of Done (완료 기준)
+본 프로젝트의 모든 TODO 항목은 단순히 **"코드 작성/존재"**만으로 완료 처리하지 않으며, 다음 **3가지 검증 조건**을 모두 충족해야 완료(`[x]`)로 표시합니다:
+1. **코드 구현 (Code Existence)**: 요구사항에 부합하는 소스 코드가 스타일 가이드를 준수하여 작성되어야 함.
+2. **테스트 검증 (Test Verification)**: 신규 기능 및 수정 본에 대한 단위/통합 테스트 코드가 작성되어야 하며, 전체 pytest Suite가 100% 통과해야 함.
+3. **운영 및 보고서 검증 (Operations & Report Validation)**: 
+   - 필요 시 백테스트 실행 및 성능 요약 리포트(P&L, 슬리피지 등)를 자동으로 생성하거나 확인해야 함.
+   - `bash scripts/run_cursor_post_workflow.sh` 후 Codex 리뷰를 통해 오류나 경고가 없이 **APPROVED**를 획득해야 함.
+
+---
+
+## Agent Workflow (Cursor-First)
+
+| 역할 | 담당 | 문서 |
+|------|------|------|
+| **Cursor** | 메인 구현·통합·`main.py`/주문·리스크 | `CURSOR.md` |
+| **Codex** | read-only 리뷰·테스트 검증·`NEXT_TODO` | `AGENTS.md`, `docs/agent_review_harness.md` |
+| **AGY** | (선택) 설계·전략·리스크·대안 검토 | `AGY.md` |
+| **Gemini CLI** | (선택) headless 슬라이스 구현 | `GEMINI.md`, `--run-gemini` |
+
+**규칙:** 한 브랜치에서 구현 에이전트는 동시에 하나만 (Cursor **또는** Gemini CLI).
+
+**작업 라벨:** 신규 Phase 항목에 `[Cursor]` / `[Gemini]` / `[Either]` 를 붙여 분담.
+
+**리뷰 패킷:**
+
+```bash
+RUN_ID=phase20_a bash scripts/run_cursor_post_workflow.sh
+.venv/bin/python scripts/agent_orchestrator.py --run-id phase20_a --run-codex-review --scoped-review
+```
+
+---
+
 ## Current Status (2026-05-27)
 
 ### Active Config
@@ -157,7 +189,7 @@
 ### 18-B: 이벤트 리스크 캘린더
 - [x] Earnings 외에 FOMC, CPI, PPI, NFP 같은 매크로 이벤트 캘린더 반영 (`src/macro_events.py`)
 - [x] 고변동 이벤트 전후 신규 진입 제한 또는 목표 비중 축소 규칙 추가 (`src/main.py`)
-- [ ] 이벤트 결과 이후 regime/profile 재평가 배치를 별도 분리
+- [x] 이벤트 결과 이후 regime/profile 재평가 배치를 별도 분리 (`src/reappraise_regime.py`)
 
 ### 18-C: Exit 정책 정밀화
 - [x] trailing stop, AI exit, partial take-profit, rebalance trim 간 우선순위/충돌 규칙 명시화
@@ -171,7 +203,7 @@
 ### 19-A: 테스트 보강
 - [x] `src/main.py` 실주문 흐름을 mock broker/mock LLM/mock news 기준으로 end-to-end 테스트 추가 (`tests/test_main_e2e.py`)
 - [x] partial exit / trim / trailing stop / earnings filter 동시 발생 케이스 회귀 테스트 추가
-- [ ] 장애 테스트 추가: 손상된 JSON 상태파일, 빈 데이터프레임, Alpaca timeout, LLM timeout
+- [x] 장애 테스트 추가: 손상된 JSON 상태파일, 빈 데이터프레임, Alpaca timeout, LLM timeout
 
 ### 19-B: 설정 스키마 정리
 - [x] `src/settings.py` 중복 필드(`trailing_stop_pct`) 및 레거시/신규 설정 혼재 정리
@@ -181,4 +213,4 @@
 ### 19-C: 문서 최신화
 - [x] `README.md`를 현재 아키텍처 기준으로 업데이트: Regime-aware, ensemble, LLM consensus, dynamic universe 반영
 - [x] 운영 runbook 추가: retrain 실패, API 장애, drawdown breach, stale data 대응 절차 (`docs/runbook.md`)
-- [ ] `TODO.md` 완료 기준을 "코드 존재"가 아니라 "테스트/리포트/운영 검증 완료" 기준으로 재정의
+- [x] TODO.md 완료 기준을 "코드 존재"가 아니라 "테스트/리포트/운영 검증 완료" 기준으로 재정의
