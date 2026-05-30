@@ -47,17 +47,18 @@ from src.portfolio_backtester import (
 VIX_TICKER = "^VIX"
 RETRAIN_LOG_PATH = Path("logs/retrain_history.csv")
 ROLLBACK_REPORT_PATH = Path("logs/ml/model_rollback_report.json")
-OOS_VALIDATION_PATH = Path("logs/validation/oos_validation.csv")
-BASELINE_SUMMARY_PATH = Path("logs/baselines/current_strategy/portfolio_summary.csv")
+from src.model_governance import (
+    evaluate_rollback_need as _evaluate_rollback_need,
+    load_recent_performance_snapshot as _load_recent_performance_snapshot,
+    resolve_rollback_decision,
+)
+
 FEATURE_STATS_PATH = Path("models/ai_feature_stats.json")
 DRIFT_REPORT_PATH = Path("logs/ml/feature_drift_report.json")
 CALIBRATION_REPORT_PATH = DEFAULT_ML_OUTPUT_DIR / CALIBRATION_REPORT_FILENAME
 CALIBRATION_BINS_PATH = DEFAULT_ML_OUTPUT_DIR / CALIBRATION_BINS_FILENAME
 THRESHOLD_RETUNE_REPORT_PATH = Path("logs/ml/threshold_retune_report.json")
 THRESHOLD_RETUNE_RESULTS_PATH = Path("logs/ml/threshold_retune_results.csv")
-ROLLBACK_MIN_TOTAL_RETURN = -0.05
-ROLLBACK_MIN_WIN_RATE = 0.35
-ROLLBACK_MAX_DRAWDOWN = -0.20
 DRIFT_ZSCORE_ALERT_THRESHOLD = 1.5
 BUY_THRESHOLD_GRID = [0.40, 0.45, 0.50, 0.55, 0.60]
 EXIT_THRESHOLD_GRID = [0.20, 0.25, 0.30, 0.35, 0.40, 0.45]
@@ -97,65 +98,6 @@ def _append_retrain_log(status: str, metrics_df, elapsed_sec: float) -> None:
         if write_header:
             writer.writeheader()
         writer.writerow(row)
-
-
-def _load_recent_performance_snapshot() -> dict | None:
-    if OOS_VALIDATION_PATH.exists():
-        df = pd.read_csv(OOS_VALIDATION_PATH)
-        if not df.empty:
-            row = df.iloc[-1]
-            return {
-                "source": str(OOS_VALIDATION_PATH),
-                "total_return": float(row.get("total_return", 0.0)),
-                "max_drawdown": float(row.get("max_drawdown", 0.0)),
-                "win_rate": float(row.get("win_rate", 0.0)),
-            }
-
-    if BASELINE_SUMMARY_PATH.exists():
-        df = pd.read_csv(BASELINE_SUMMARY_PATH)
-        if not df.empty:
-            row = df.iloc[-1]
-            return {
-                "source": str(BASELINE_SUMMARY_PATH),
-                "total_return": float(row.get("total_return", 0.0)),
-                "max_drawdown": float(row.get("max_drawdown", 0.0)),
-                "win_rate": float(row.get("win_rate", 0.0)),
-            }
-
-    return None
-
-
-def _evaluate_rollback_need(performance: dict | None) -> dict:
-    if performance is None:
-        return {
-            "should_rollback": False,
-            "reason": "no recent performance snapshot available",
-        }
-
-    breaches = []
-    if performance["total_return"] <= ROLLBACK_MIN_TOTAL_RETURN:
-        breaches.append(
-            f"total_return={performance['total_return']:.4f} <= {ROLLBACK_MIN_TOTAL_RETURN:.4f}"
-        )
-    if performance["win_rate"] <= ROLLBACK_MIN_WIN_RATE:
-        breaches.append(
-            f"win_rate={performance['win_rate']:.4f} <= {ROLLBACK_MIN_WIN_RATE:.4f}"
-        )
-    if performance["max_drawdown"] <= ROLLBACK_MAX_DRAWDOWN:
-        breaches.append(
-            f"max_drawdown={performance['max_drawdown']:.4f} <= {ROLLBACK_MAX_DRAWDOWN:.4f}"
-        )
-
-    return {
-        "should_rollback": bool(breaches),
-        "reason": "; ".join(breaches) if breaches else "performance within thresholds",
-        "performance": performance,
-        "thresholds": {
-            "min_total_return": ROLLBACK_MIN_TOTAL_RETURN,
-            "min_win_rate": ROLLBACK_MIN_WIN_RATE,
-            "max_drawdown": ROLLBACK_MAX_DRAWDOWN,
-        },
-    }
 
 
 def _write_rollback_report(payload: dict) -> None:
@@ -705,28 +647,12 @@ def main() -> None:
             promotion_report["archived_previous_champion_model_path"] = str(archived[0])
             promotion_report["archived_previous_champion_metadata_path"] = str(archived[1])
 
-    rollback_report = {
-        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "promotion_decision": promotion_report["decision"],
-    }
-    if promotion_report["decision"] == "PROMOTE":
-        rollback_report["decision"] = "SKIP_ROLLBACK_AFTER_PROMOTION"
-        rollback_report["reason"] = "new challenger promoted; wait for fresh performance before rollback evaluation"
-    else:
-        rollback_eval = _evaluate_rollback_need(_load_recent_performance_snapshot())
-        rollback_report.update(rollback_eval)
-        if rollback_eval["should_rollback"]:
-            archived = find_latest_archived_champion(CHAMPION_ARCHIVE_DIR)
-            if archived is None:
-                rollback_report["decision"] = "NO_ROLLBACK_AVAILABLE"
-                rollback_report["reason"] = f"{rollback_eval['reason']}; no archived champion available"
-            else:
-                restore_archived_champion(*archived)
-                rollback_report["decision"] = "ROLLBACK_TO_ARCHIVED_CHAMPION"
-                rollback_report["restored_model_path"] = str(archived[0])
-                rollback_report["restored_metadata_path"] = str(archived[1])
-        else:
-            rollback_report["decision"] = "NO_ROLLBACK_NEEDED"
+    archived = find_latest_archived_champion(CHAMPION_ARCHIVE_DIR)
+    rollback_report = resolve_rollback_decision(
+        promotion_report["decision"],
+        _load_recent_performance_snapshot(),
+        archived,
+    )
     _write_rollback_report(rollback_report)
 
     elapsed = time.time() - started_at

@@ -15,7 +15,7 @@ from src.ml_model import (
     save_model_bundle,
 )
 from src.portfolio_backtest_validation import PortfolioBacktestThresholds
-from src.train_ai_model import _evaluate_rollback_need
+from src.model_governance import evaluate_rollback_need as _evaluate_rollback_need
 
 
 def _good_ml_quality_reports() -> tuple[dict, dict]:

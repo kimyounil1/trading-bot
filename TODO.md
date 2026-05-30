@@ -92,7 +92,7 @@ RUN_ID=phase20_a bash scripts/run_cursor_post_workflow.sh
 - [x] `[Cursor]` Walk-forward fold별 ROC-AUC 편차 분석 및 calibration 리포트 **생성 경로** 구현
 - [x] `[AGY]` calibration/Brier 리포트 출력에 대한 pytest + fold별 메트릭 CSV 스키마 회귀 테스트
 - [x] `[Cursor]` 챔피언 승격: `train_ai_model` 메트릭 + 포트폴리오 백테스트 **둘 다** 통과해야 교체
-- [ ] `[AGY]` 승격/롤백 decision path mock 테스트 (챌린저 거절·롤백 시나리오)
+- [x] `[AGY]` 승격/롤백 decision path mock 테스트 (챌린저 거절·롤백 시나리오)
 - [ ] `[Cursor]` (선택) Transformer / RL: live 연동 **또는** “research-only” 명시
 
 ---
