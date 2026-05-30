@@ -1,0 +1,23 @@
+{
+  "AAPL_2026-05-28": {
+    "is_approved": true,
+    "category": "None",
+    "reason": "No material risk",
+    "category_reason": "No material risk",
+    "timestamp": "2026-05-28T10:00:00"
+  },
+  "MSFT_2026-05-28": {
+    "is_approved": false,
+    "category": "Guidance",
+    "reason": "Weak guidance",
+    "category_reason": "[Guidance] Weak guidance",
+    "timestamp": "2026-05-28T11:00:00"
+  },
+  "AAPL_2026-05-29": {
+    "is_approved": true,
+    "category": "None",
+    "reason": "Reused",
+    "category_reason": "Reused",
+    "timestamp": "2026-05-29T09:00:00"
+  }
+}

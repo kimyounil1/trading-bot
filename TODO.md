@@ -93,7 +93,7 @@ RUN_ID=phase20_a bash scripts/run_cursor_post_workflow.sh
 - [x] `[AGY]` calibration/Brier 리포트 출력에 대한 pytest + fold별 메트릭 CSV 스키마 회귀 테스트
 - [x] `[Cursor]` 챔피언 승격: `train_ai_model` 메트릭 + 포트폴리오 백테스트 **둘 다** 통과해야 교체
 - [x] `[AGY]` 승격/롤백 decision path mock 테스트 (챌린저 거절·롤백 시나리오)
-- [ ] `[Cursor]` (백로그) Transformer / RL: live 미사용 — research-only 명시만 필요 시
+- [x] `[Cursor]` Transformer / RL research-only — `docs/RESEARCH_MODELS.md`
 
 ---
 
@@ -106,8 +106,8 @@ RUN_ID=phase20_a bash scripts/run_cursor_post_workflow.sh
 
 ---
 
-## Phase 23 — (백로그) 전략·리스크 `[AGY]` 검토 후 착수
+## Phase 23 — 전략·리스크 리포트
 
-- [ ] Factor/crowding guard 실거래 영향도 백테스트
-- [ ] Leverage 사용 시 stress scenario (gap down, correlation spike)
-- [ ] LLM consensus 비용·캐시 hit rate 모니터링
+- [x] `[Cursor]` Factor/crowding guard 백테스트 영향도 — `src/guard_impact_report.py`, backtester `crowding_guard_enabled`
+- [x] `[Cursor]` Leverage stress (gap down, correlation spike) — `src/leverage_stress_report.py`
+- [x] `[AGY]` LLM cache hit rate 모니터링 — `src/llm_cache_report.py`, `tests/test_llm_cache_report_schema.py`

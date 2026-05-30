@@ -20,3 +20,10 @@
 | 19 | Tests & docs | E2E tests, schema validation, `docs/runbook.md` |
 
 **Milestone (2026-05-27):** Phase 0–19 closed per Definition of Done (code + pytest + runbook).
+
+| Phase | Theme | Key deliverables |
+|-------|--------|------------------|
+| 20 | Portfolio validation | Promotion gates (OOS P&L/Sharpe), weekly slippage report, portfolio pytest gates |
+| 21 | Model quality | ML quality/calibration reports, dual promotion gates, rollback mocks |
+| 22 | Ops observability | Daily audit summary, retrain Telegram paths, macro/earnings skip rates |
+| 23 | Risk reports | Crowding guard backtest impact, leverage stress scenarios, LLM cache monitoring |

@@ -9,6 +9,7 @@ from src.strategy import add_indicators, build_market_regime_frame
 from src.features import FEATURE_COLUMNS, build_features
 from src.ml_model import load_ai_score_model
 from src.portfolio_optimizer import compute_candidate_weights
+from src.risk_manager import apply_factor_crowding_limits
 
 
 @dataclass
@@ -260,6 +261,7 @@ def run_portfolio_backtest(
     macro_df: pd.DataFrame | None = None,
     evaluation_start_date: str | pd.Timestamp | None = None,
     evaluation_end_date: str | pd.Timestamp | None = None,
+    crowding_guard_enabled: bool = False,
 ) -> tuple[PortfolioBacktestResult, pd.DataFrame, pd.DataFrame]:
     if relative_strength_lookback_days <= 0:
         raise ValueError("relative_strength_lookback_days must be positive")
@@ -531,6 +533,15 @@ def run_portfolio_backtest(
 
                 if close <= 0:
                     continue
+
+                if crowding_guard_enabled:
+                    crowding = apply_factor_crowding_limits(
+                        ticker=ticker,
+                        open_symbols=set(positions.keys()),
+                        ticker_data=ticker_data,
+                    )
+                    if not crowding.allowed:
+                        continue
 
                 if total_to_deploy is not None:
                     target_value = total_to_deploy * alloc_weights.get(

@@ -72,6 +72,12 @@
   ```
   산출물: `logs/slippage_reports/latest_summary.json` (타이머 설치: `bash scripts/install_slippage_report_timer.sh`)
 - **월간**: `data/llm_cache.json` 및 오래된 로그 파일 정리 (용량 관리).
+- **리스크 리포트 (수동/주간)**:
+  ```bash
+  bash scripts/run_guard_impact_report.sh      # logs/guard_impact/latest_summary.json
+  bash scripts/run_leverage_stress_report.sh   # logs/leverage_stress/latest_summary.json
+  bash scripts/run_llm_cache_report.sh         # logs/llm_monitoring/latest_summary.json
+  ```
 
 ---
 
