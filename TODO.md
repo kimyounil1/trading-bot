@@ -37,6 +37,22 @@ RUN_ID=<pass_id> bash scripts/run_pass_complete.sh "무엇을 했는지 한 줄"
 | **AGY** | **`[AGY]` 테스트·하네스** + (선택) 전략·리스크 검토 (~15–25%) |
 | **Gemini CLI** | 레거시·문서만 (~0–5%, Flash급 — 테스트 금지) |
 
+### 멀티 계정·토큰 균형 (운영 의도)
+
+Cursor / AGY / Codex를 **서로 다른 구독·계정**으로 쓰는 경우, 작업을 고르게 나누는 것이 맞습니다.
+
+| 계정 | 패스당 역할 | 토큰을 쓰는 타이밍 |
+|------|-------------|-------------------|
+| **Cursor** | `src/` 구현·통합·설정·리뷰 반영 | 기능 개발 턴 |
+| **AGY** | `[AGY]` pytest·fixture·harness만 | Cursor 커밋 직후 **별도 AGY 세션** |
+| **Codex** | scoped 리뷰·`NEXT_TODO` | `run_pass_complete.sh` 1~2회/패스 |
+
+**균형 목표 (주간, `agent_workload_report.py`):** 구현 라인 ~**55–65% Cursor**, 테스트 라인 ~**20–30% AGY**, 리뷰 ~**15–20% Codex** (Codex는 커밋 수보다 **호출 횟수**로 보면 됨).
+
+**AGY 세션 생략 가능:** `main.py`/주문 경로 변경 없음, 테스트 추가 ≤2파일, harness만 — 단, **이번 주 AGY 비중이 목표보다 10%p 이상 낮으면** 다음 `[AGY]` 항목은 AGY 세션으로 처리.
+
+**중복 금지:** 같은 테스트를 Cursor·AGY **둘 다** 작성하지 않음 (한 패스 = 한 구현 계정 + 한 테스트 계정).
+
 **패스 마감 (필수):** Cursor 구현 → **AGY 테스트** → `bash scripts/run_pass_complete.sh` → **`NEXT_TODO.codex.md` 확인** → Cursor 수정.
 
 **작업량 집계:** `PYTHONPATH=. .venv/bin/python scripts/agent_workload_report.py --record`  
@@ -63,7 +79,8 @@ RUN_ID=phase20_a bash scripts/run_cursor_post_workflow.sh
 
 ## Phase 20 — Portfolio validation & 벤치마크 정합성
 
-- [ ] `[Cursor]` post-workflow/CI 훅에서 `portfolio_summary.csv` 임계값(벤치마크 대비, max DD) 체크 연동
+- [x] `[Cursor]` post-workflow/CI 훅에서 `portfolio_summary.csv` 임계값(벤치마크 대비, max DD) 체크 연동
+- [ ] `[AGY]` `tests/test_portfolio_backtest_gate.py` — `prompts/agy/phase20_portfolio_gate.md`
 - [ ] `[Cursor]` retrain 후 **포트폴리오 수준** 승격 기준을 AUC 단독이 아닌 OOS P&L·Sharpe와 연동
 - [ ] `[Cursor]` `report_performance.py` paper vs signal 슬리피지 주간 자동화(스크립트 또는 timer)
 - [x] `[AGY]` portfolio backtest golden test: fixture equity/trades vs `logs/portfolio_backtest/` 스키마·핵심 메트릭 회귀

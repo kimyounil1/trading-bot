@@ -84,6 +84,8 @@ If Codex fails (credits/CLI), fix and re-run with `SKIP_PYTEST=1` after local py
 
 Legacy (packet only, no Codex): `bash scripts/run_cursor_post_workflow.sh`
 
+**Cursor automation:** apply project skill `.cursor/skills/pass-complete/SKILL.md` at the end of every implementation pass (replaces Gemini CLI auto-calling the orchestrator).
+
 **Review-only (no headless implementer):**
 
 ```bash

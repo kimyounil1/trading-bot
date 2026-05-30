@@ -10,7 +10,7 @@ Rules for **AGY** (Antigravity / stronger Gemini-tier assistant). AGY is **not**
 |-------|------|-------------------------|
 | **Cursor** | Primary implementation: `main.py`, orders, integration, config wiring | ~60–70% |
 | **Codex** | Read-only review, test verification, `NEXT_TODO` per pass | ~15–20% |
-| **AGY** | **Tests & harness** (`[AGY]` slices); optional architecture/strategy/risk review | ~15–25% |
+| **AGY** | **Tests & harness** (`[AGY]` slices); optional architecture/strategy/risk review | ~20–30% (별도 AGY 계정·쿼터) |
 | **Gemini CLI** | Legacy, low-risk only (`--run-gemini`); avoid for tests | ~0–5% |
 
 ## When to Involve AGY (review)

@@ -92,8 +92,9 @@ Ask the user only before:
 - **AGY** owns **`[AGY]` test and harness slices** (preferred over Gemini CLI); optional reviewer for architecture, strategy, and risk (`AGY.md`).
 - **Gemini CLI** is legacy headless (`--run-gemini`), **docs/low-risk only** — weaker default model than AGY; do not use for pytest or trading paths.
 - The review harness lives in `docs/agent_review_harness.md` and `codex_harness/agent_contract.json` (when present).
-- After Cursor (or any single implementer) finishes work, run `bash scripts/run_cursor_post_workflow.sh` to collect diffs, test logs, a Codex review packet, and a draft `NEXT_TODO.md` under `reports/agent_pipeline/<run_id>/`.
-- For **review-only** after Cursor edits: `.venv/bin/python scripts/agent_orchestrator.py --run-codex-review --scoped-review`.
+- After Cursor + `[AGY]` tests, run **`bash scripts/run_pass_complete.sh`** (preferred) or follow project skill `.cursor/skills/pass-complete/SKILL.md`.
+- Legacy packet-only: `bash scripts/run_cursor_post_workflow.sh` (insufficient alone for Definition of Done).
+- For **review-only** without the wrapper: `.venv/bin/python scripts/agent_orchestrator.py --run-id <id> --run-codex-review --scoped-review --ignore-artifacts`.
 - For legacy headless implement + review: `.venv/bin/python scripts/agent_orchestrator.py --task "..." --run-gemini --run-codex-review`.
 - When changing `AGENTS.md`, `CURSOR.md`, `AGY.md`, `GEMINI.md`, workflow docs, guardrails, handoff rules, or eval cases, run `bash scripts/run_gemini_review_harness.sh` (legacy script name).
 - **README Maintenance**: During review, verify if `README.md` needs updates. If missing, flag and include required text in the next plan.
