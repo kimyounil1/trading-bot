@@ -59,12 +59,20 @@
 
 ## 📈 3. 주기적 점검 사항 (Maintenance)
 
-- **일간**: Telegram 요약 리포트를 통해 실주문 수 및 스킵 사유 집계 확인.
+- **일간·주간 ops 배치** (권장):
+  ```bash
+  bash scripts/run_ops_reports.sh              # audit + LLM cache
+  bash scripts/run_ops_reports.sh --weekly     # + slippage
+  bash scripts/run_ops_reports.sh --heavy      # + guard impact + leverage stress
+  ```
+  타이머 일괄 설치: `bash scripts/install_ops_report_timers.sh`  
+  (슬리피지 주간 타이머는 별도: `bash scripts/install_slippage_report_timer.sh`)
+- **일간**: Telegram 요약 + audit JSON
   ```bash
   bash scripts/run_daily_audit_summary.sh
-  # 특정일: bash scripts/run_daily_audit_summary.sh --date 2026-05-30
   ```
-  산출물: `logs/audit_daily/latest_summary.json`, `audit_YYYYMMDD.json` (`logs/execution_audit.csv` 기준)
+  산출물: `logs/audit_daily/latest_summary.json` (`logs/execution_audit.csv` 기준)  
+  CI smoke: `PYTHONPATH=. .venv/bin/python scripts/check_audit_daily_summary.py`
 - **주간**: paper 체결 vs 시그널 슬리피지 자동 리포트
   ```bash
   bash scripts/run_weekly_slippage_report.sh

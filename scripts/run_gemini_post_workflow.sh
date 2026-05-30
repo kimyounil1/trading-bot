@@ -44,6 +44,14 @@ echo "Running runtime tests..."
   tests/test_report_performance.py \
   tests/test_reappraise_regime.py \
   tests/test_portfolio_backtest_golden.py \
+  tests/test_portfolio_backtest_gate.py \
+  tests/test_daily_audit_summary.py \
+  tests/test_daily_audit_summary_schema.py \
+  tests/test_retrain_notifications.py \
+  tests/test_llm_cache_report_schema.py \
+  tests/test_leverage_stress_report.py \
+  tests/test_guard_impact_report.py \
+  tests/test_check_audit_daily_summary.py \
   > "$OUT_DIR/runtime_harness.log" 2>&1
 RUNTIME_EXIT=$?
 
@@ -54,6 +62,16 @@ if [ -f logs/portfolio_backtest/portfolio_summary.csv ]; then
     >> "$OUT_DIR/review_harness.log" 2>&1 || GATE_EXIT=$?
 else
   echo "skip: logs/portfolio_backtest/portfolio_summary.csv not found" \
+    >> "$OUT_DIR/review_harness.log"
+fi
+
+echo "Running audit daily summary smoke (if output exists)..."
+AUDIT_GATE_EXIT=0
+if [ -f logs/audit_daily/latest_summary.json ]; then
+  PYTHONPATH=. .venv/bin/python scripts/check_audit_daily_summary.py \
+    >> "$OUT_DIR/review_harness.log" 2>&1 || AUDIT_GATE_EXIT=$?
+else
+  echo "skip: logs/audit_daily/latest_summary.json not found" \
     >> "$OUT_DIR/review_harness.log"
 fi
 
@@ -92,10 +110,11 @@ echo -e "# NEXT_TODO\n\n- [ ] Codex review pending for implementation agent: $IM
 echo "Creating summary.json..."
 cat <<EOF > "$OUT_DIR/summary.json"
 {
-  "overall_status": "$([ $HARNESS_EXIT -eq 0 ] && [ $RUNTIME_EXIT -eq 0 ] && [ $GATE_EXIT -eq 0 ] && echo "pass" || echo "fail")",
+  "overall_status": "$([ $HARNESS_EXIT -eq 0 ] && [ $RUNTIME_EXIT -eq 0 ] && [ $GATE_EXIT -eq 0 ] && [ $AUDIT_GATE_EXIT -eq 0 ] && echo "pass" || echo "fail")",
   "gemini_review_harness_exit_code": $HARNESS_EXIT,
   "runtime_harness_exit_code": $RUNTIME_EXIT,
-  "portfolio_gate_exit_code": $GATE_EXIT
+  "portfolio_gate_exit_code": $GATE_EXIT,
+  "audit_daily_gate_exit_code": $AUDIT_GATE_EXIT
 }
 EOF
 

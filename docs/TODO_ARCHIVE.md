@@ -22,7 +22,9 @@
 | 21 | Model quality | ML quality/calibration reports, dual promotion gates, rollback mocks |
 | 22 | Ops observability | Daily audit summary, retrain Telegram paths, macro/earnings skip rates |
 | 23 | Risk reports | Crowding backtest impact, leverage stress, LLM cache monitoring |
+| 24 | Ops automation | `run_ops_reports.sh`, systemd timers, post-workflow audit smoke |
 
 **Milestones**
 - **2026-05-27:** Phase 0–19 closed (code + pytest + runbook).
 - **2026-05-30:** Phase 20–23 closed; champion model git-untracked (`models/*.joblib` local-only).
+- **2026-05-30:** Phase 24 closed; ops report batch + CI pytest/gates.

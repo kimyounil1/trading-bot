@@ -1,0 +1,12 @@
+{
+  "timezone": "America/New_York",
+  "daily_audit": {
+    "on_calendar": "Mon-Fri 21:30:00"
+  },
+  "weekly_llm_cache": {
+    "on_calendar": "Sun 17:00:00"
+  },
+  "weekly_slippage": {
+    "use_slippage_report_config": true
+  }
+}

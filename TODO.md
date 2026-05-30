@@ -48,7 +48,7 @@ RUN_ID=<pass_id> bash scripts/run_pass_complete.sh "한 줄 요약"
 | **관측** | 일별 audit, 주간 slippage, guard/leverage/LLM cache 리포트 스크립트 (`docs/runbook.md`) |
 | **비활성** | `deep_model.py`, `rl_portfolio.py` — `docs/RESEARCH_MODELS.md` |
 
-**완료 로드맵:** Phase 0–23 → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
+**완료 로드맵:** Phase 0–24 → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
 
 **우선순위 가이드 (2026 Q2)**
 1. **운영 자동화** — 리포트·audit 타이머, 단일 ops 진입점
@@ -58,16 +58,7 @@ RUN_ID=<pass_id> bash scripts/run_pass_complete.sh "한 줄 요약"
 
 ---
 
-## Phase 24 — 운영 자동화 & CI
-
-- [ ] `[Cursor]` 일별 audit / 주간 slippage / LLM cache 리포트용 systemd timer (또는 `install_*_timer.sh` 패턴 통일)
-- [ ] `[Cursor]` `scripts/run_ops_reports.sh` — audit + slippage + llm_cache (+ 선택 guard/stress) 일괄 실행
-- [ ] `[AGY]` `run_pass_complete.sh` 기본 pytest subset에 Phase 22–23 테스트 경로 추가
-- [ ] `[Cursor]` post-workflow에 `logs/audit_daily/latest_summary.json` 존재·스키마 smoke (선택)
-
----
-
-## Phase 25 — 신호·승격 품질 (알파)
+## Phase 25 — 신호·승격 품질 (알파) ← **다음**
 
 - [ ] `[AGY]` walk-forward fold 편차 원인 분석 노트 + 재현 스크립트 (리포트만, 전략 변경 최소)
 - [ ] `[Cursor]` promotion 게이트 임계값(config) 문서화 + `logs/ml/model_promotion_report.json` 대시보드/요약 CLI
@@ -101,9 +92,8 @@ RUN_ID=<pass_id> bash scripts/run_pass_complete.sh "한 줄 요약"
 RUN_ID=phase24_ops bash scripts/run_pass_complete.sh "작업 요약"
 
 # 운영 리포트 (수동)
-bash scripts/run_daily_audit_summary.sh
-bash scripts/run_weekly_slippage_report.sh
-bash scripts/run_llm_cache_report.sh
+bash scripts/run_ops_reports.sh
+bash scripts/run_ops_reports.sh --weekly
 bash scripts/run_guard_impact_report.sh    # 무거움 — 주간 권장
 bash scripts/run_leverage_stress_report.sh --leverage 2.0
 

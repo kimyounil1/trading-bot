@@ -37,7 +37,14 @@ else
     tests/test_report_performance.py \
     tests/test_reappraise_regime.py \
     tests/test_portfolio_backtest_golden.py \
-    tests/test_portfolio_backtest_gate.py
+    tests/test_portfolio_backtest_gate.py \
+    tests/test_daily_audit_summary.py \
+    tests/test_daily_audit_summary_schema.py \
+    tests/test_retrain_notifications.py \
+    tests/test_llm_cache_report_schema.py \
+    tests/test_leverage_stress_report.py \
+    tests/test_guard_impact_report.py \
+    tests/test_check_audit_daily_summary.py
 fi
 
 echo "=== [2/3] Codex review via orchestrator (post-workflow + scoped review) ==="
