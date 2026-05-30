@@ -26,6 +26,12 @@ from src.ml_model import (
     train_ai_score_model,
 )
 from src.macro_loader import load_macro_data
+from src.ml_quality_report import (
+    CALIBRATION_BINS_FILENAME,
+    CALIBRATION_REPORT_FILENAME,
+    DEFAULT_ML_OUTPUT_DIR,
+    write_ml_quality_reports,
+)
 from src.retrain_holdout import (
     exclude_holdout_from_ticker_data,
     portfolio_holdout_window,
@@ -45,8 +51,8 @@ OOS_VALIDATION_PATH = Path("logs/validation/oos_validation.csv")
 BASELINE_SUMMARY_PATH = Path("logs/baselines/current_strategy/portfolio_summary.csv")
 FEATURE_STATS_PATH = Path("models/ai_feature_stats.json")
 DRIFT_REPORT_PATH = Path("logs/ml/feature_drift_report.json")
-CALIBRATION_REPORT_PATH = Path("logs/ml/model_calibration_report.json")
-CALIBRATION_BINS_PATH = Path("logs/ml/model_calibration_bins.csv")
+CALIBRATION_REPORT_PATH = DEFAULT_ML_OUTPUT_DIR / CALIBRATION_REPORT_FILENAME
+CALIBRATION_BINS_PATH = DEFAULT_ML_OUTPUT_DIR / CALIBRATION_BINS_FILENAME
 THRESHOLD_RETUNE_REPORT_PATH = Path("logs/ml/threshold_retune_report.json")
 THRESHOLD_RETUNE_RESULTS_PATH = Path("logs/ml/threshold_retune_results.csv")
 ROLLBACK_MIN_TOTAL_RETURN = -0.05
@@ -265,60 +271,6 @@ def _write_feature_stats(stats: dict, path: Path = FEATURE_STATS_PATH) -> None:
 def _write_drift_report(report: dict, path: Path = DRIFT_REPORT_PATH) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
-
-
-def _build_calibration_report(metrics_df: pd.DataFrame) -> tuple[dict, pd.DataFrame]:
-    calibration_rows = metrics_df.attrs.get("calibration_rows", [])
-    calibration_df = pd.DataFrame(calibration_rows)
-    if calibration_df.empty:
-        return {
-            "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "overall_avg_brier_score": 0.0,
-            "regimes": {},
-            "bin_count": 0,
-        }, pd.DataFrame()
-
-    regime_brier = {}
-    if "brier_score" in metrics_df.columns and "regime" in metrics_df.columns:
-        for regime, regime_df in metrics_df.groupby("regime"):
-            regime_brier[str(regime)] = {
-                "avg_brier_score": float(regime_df["brier_score"].mean()),
-                "folds": int(len(regime_df)),
-            }
-
-    calibration_df["prob_bin"] = pd.cut(
-        calibration_df["y_prob"],
-        bins=[i / 10 for i in range(11)],
-        include_lowest=True,
-        duplicates="drop",
-    )
-    bin_rows = (
-        calibration_df.groupby(["regime", "prob_bin"], observed=False)
-        .agg(
-            count=("y_true", "size"),
-            avg_pred=("y_prob", "mean"),
-            actual_rate=("y_true", "mean"),
-        )
-        .reset_index()
-    )
-    bin_rows["prob_bin"] = bin_rows["prob_bin"].astype(str)
-
-    report = {
-        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "overall_avg_brier_score": float(metrics_df["brier_score"].mean()) if "brier_score" in metrics_df.columns else 0.0,
-        "regimes": regime_brier,
-        "bin_count": int(len(bin_rows)),
-    }
-    return report, bin_rows
-
-
-def _write_calibration_report(report: dict, bins_df: pd.DataFrame) -> None:
-    CALIBRATION_REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CALIBRATION_REPORT_PATH.write_text(
-        json.dumps(report, indent=2, sort_keys=True),
-        encoding="utf-8",
-    )
-    bins_df.to_csv(CALIBRATION_BINS_PATH, index=False)
 
 
 def _pick_latest_date(ticker_data: dict[str, pd.DataFrame]) -> pd.Timestamp:
@@ -620,11 +572,19 @@ def main() -> None:
         spy_df=spy_df,
         macro_df=macro_df,
     )
+    output_dir = DEFAULT_ML_OUTPUT_DIR
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     drift_report = _compare_feature_stats(baseline_feature_stats, current_feature_stats)
     _write_drift_report(drift_report)
     _write_feature_stats(current_feature_stats)
-    calibration_report, calibration_bins_df = _build_calibration_report(metrics_df)
-    _write_calibration_report(calibration_report, calibration_bins_df)
+    quality_paths = write_ml_quality_reports(output_dir, metrics_df)
+    calibration_report = json.loads(
+        quality_paths["calibration_report"].read_text(encoding="utf-8")
+    )
+    stability_report = json.loads(
+        quality_paths["fold_stability"].read_text(encoding="utf-8")
+    )
 
     if drift_report["drifted_feature_count"] > 0:
         top_features = ", ".join(
@@ -643,6 +603,13 @@ def main() -> None:
             f"Average Brier score: {calibration_report['overall_avg_brier_score']:.4f}\n"
             f"Report: {CALIBRATION_REPORT_PATH}"
         )
+    if stability_report.get("high_variance_warning"):
+        roc = stability_report.get("roc_auc", {})
+        notify_info(
+            "⚠️ Fold ROC-AUC Variance Warning",
+            f"ROC-AUC std={roc.get('std')} (threshold={stability_report.get('roc_auc_std_warn_threshold')})\n"
+            f"Report: {quality_paths['fold_stability']}",
+        )
 
     threshold_retune_report, threshold_retune_results_df = _run_threshold_retune(
         settings=settings,
@@ -657,9 +624,6 @@ def main() -> None:
     else:
         settings.ai_exit_threshold = float(threshold_retune_report["best_exit_threshold"])
     save_settings(settings)
-
-    output_dir = Path("logs/ml")
-    output_dir.mkdir(parents=True, exist_ok=True)
 
     metrics_path = output_dir / "ai_model_metrics.csv"
     metrics_df.to_csv(metrics_path, index=False)
@@ -716,6 +680,9 @@ def main() -> None:
         challenger_portfolio=challenger_portfolio,
         champion_portfolio=champion_portfolio,
         require_portfolio_oos=settings.use_ai_score,
+        fold_stability_report=stability_report,
+        calibration_report=calibration_report,
+        require_ml_quality=True,
     )
     promotion_report.update(
         {
@@ -779,6 +746,8 @@ def main() -> None:
     print(f"Saved promotion report to {promotion_report_path}")
     print(f"Saved rollback report to {ROLLBACK_REPORT_PATH}")
     print(f"Saved feature drift report to {DRIFT_REPORT_PATH}")
+    print(f"Saved fold metrics to {quality_paths['fold_metrics']}")
+    print(f"Saved fold stability report to {quality_paths['fold_stability']}")
     print(f"Saved calibration report to {CALIBRATION_REPORT_PATH}")
     print(f"Saved calibration bins to {CALIBRATION_BINS_PATH}")
     print(f"Saved threshold retune report to {THRESHOLD_RETUNE_REPORT_PATH}")

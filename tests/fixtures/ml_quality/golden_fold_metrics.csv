@@ -1,0 +1,5 @@
+regime,fold,roc_auc,brier_score,test_size,walk_forward_fold,walk_forward_period
+BULL,1,0.52,0.22,100,,
+BULL,2,0.53,0.24,100,,
+BEAR,1,0.51,0.28,80,,
+BEAR,2,0.52,0.26,80,,

@@ -323,7 +323,12 @@ def build_promotion_report(
     champion_portfolio: dict[str, Any] | None = None,
     portfolio_thresholds: Any | None = None,
     require_portfolio_oos: bool = True,
+    fold_stability_report: dict[str, Any] | None = None,
+    calibration_report: dict[str, Any] | None = None,
+    require_ml_quality: bool = True,
+    ml_quality_criteria: Any | None = None,
 ) -> dict[str, Any]:
+    from src.ml_quality_report import evaluate_ml_quality_promotion_gates
     from src.portfolio_backtest_validation import (
         PortfolioBacktestThresholds,
         check_portfolio_summary_thresholds,
@@ -337,6 +342,14 @@ def build_promotion_report(
         else None
     )
     auc_ok = champion_metadata is None or challenger_auc > champion_auc
+
+    ml_quality_eval = evaluate_ml_quality_promotion_gates(
+        challenger_metadata,
+        fold_stability_report,
+        calibration_report,
+        criteria=ml_quality_criteria,
+    )
+    ml_quality_ok = ml_quality_eval["passed"] if require_ml_quality else True
 
     portfolio_gate = None
     portfolio_gate_ok = True
@@ -362,7 +375,7 @@ def build_promotion_report(
                     challenger_portfolio, champion_portfolio
                 )
 
-    promote = auc_ok and portfolio_gate_ok and portfolio_vs_ok
+    promote = auc_ok and ml_quality_ok and portfolio_gate_ok and portfolio_vs_ok
 
     reasons: list[str] = []
     if champion_metadata is None:
@@ -371,6 +384,8 @@ def build_promotion_report(
         reasons.append(
             f"challenger_avg_roc_auc={challenger_auc:.4f} vs champion_avg_roc_auc={champion_auc:.4f}"
         )
+    if require_ml_quality and not ml_quality_ok:
+        reasons.append("training metrics gates failed: " + "; ".join(ml_quality_eval["failures"]))
     if require_portfolio_oos and challenger_portfolio is None:
         reasons.append("missing challenger portfolio OOS evaluation")
     elif require_portfolio_oos and portfolio_gate is not None and not portfolio_gate_ok:
@@ -390,9 +405,9 @@ def build_promotion_report(
 
     if promote:
         reason = (
-            "no existing champion; challenger passes portfolio OOS gates"
+            "no existing champion; challenger passes training metrics and portfolio OOS gates"
             if champion_metadata is None
-            else "challenger passes AUC and portfolio OOS criteria"
+            else "challenger passes AUC, training metrics, and portfolio OOS criteria"
         )
     else:
         reason = "; ".join(reasons) if reasons else "challenger retained"
@@ -403,6 +418,8 @@ def build_promotion_report(
         "champion_avg_roc_auc": champion_auc,
         "challenger_avg_roc_auc": challenger_auc,
         "auc_gate_passed": auc_ok,
+        "ml_quality_gate_passed": ml_quality_ok,
+        "ml_quality_gate_failures": ml_quality_eval.get("failures", []),
         "portfolio_gate_passed": portfolio_gate_ok,
         "portfolio_vs_champion_passed": portfolio_vs_ok,
         "decision": "PROMOTE" if promote else "RETAIN_CHAMPION",

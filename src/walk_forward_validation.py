@@ -11,6 +11,7 @@ import numpy as np
 from src.settings import load_settings
 from src.data_loader import load_price_data_batch
 from src.ml_model import train_ai_score_model
+from src.ml_quality_report import evaluate_walk_forward_oos_metrics, write_ml_quality_reports
 from src.portfolio_backtester import run_portfolio_backtest, build_ai_score_frames
 from src.macro_loader import load_macro_data
 
@@ -73,7 +74,8 @@ def main():
     print(f"Generated {len(folds)} validation folds.\n")
 
     results = []
-    
+    fold_metrics_frames: list[pd.DataFrame] = []
+
     # 3. 각 Fold별 학습 및 검증
     for i, fold in enumerate(folds, 1):
         t_start, t_end = fold["test_start"], fold["test_end"]
@@ -96,6 +98,11 @@ def main():
         macro_train = _filter_by_date(macro_all, fold["train_start"], fold["train_end"])
         macro_test = _filter_by_date(macro_all, fold["test_start"], fold["test_end"])
 
+        lookback_start = fold["test_start"] - pd.DateOffset(days=400)
+        vix_with_lookback = _filter_by_date(vix_all, lookback_start, fold["test_end"])
+        spy_with_lookback = _filter_by_date(spy_all, lookback_start, fold["test_end"])
+        macro_with_lookback = _filter_by_date(macro_all, lookback_start, fold["test_end"])
+
         # 모델 학습
         print(f"  Training model...")
         model, _ = train_ai_score_model(
@@ -105,16 +112,31 @@ def main():
             spy_df=spy_train,
             macro_df=macro_train,
         )
+        period_label = f"{fold['test_start'].date()} ~ {fold['test_end'].date()}"
+        print(f"  Evaluating OOS classification metrics on test window...")
+        fold_metrics_df = evaluate_walk_forward_oos_metrics(
+            model,
+            all_ticker_data,
+            test_start=fold["test_start"],
+            test_end=fold["test_end"],
+            vix_df=vix_with_lookback,
+            spy_df=spy_with_lookback,
+            macro_df=macro_with_lookback,
+        )
+        if not fold_metrics_df.empty:
+            fold_metrics_df = fold_metrics_df.copy()
+            fold_metrics_df["walk_forward_fold"] = i
+            fold_metrics_df["walk_forward_period"] = period_label
+            fold_metrics_frames.append(fold_metrics_df)
 
         # AI 스코어 계산을 위한 데이터 준비 (피처 생성용 룩백 데이터 포함)
-        lookback_start = fold["test_start"] - pd.DateOffset(days=400) # 넉넉하게 400일
-        test_data_with_lookback = {t: _filter_by_date(df, lookback_start, fold["test_end"]) 
-                                   for t, df in all_ticker_data.items()}
-        test_data_with_lookback = {t: df for t, df in test_data_with_lookback.items() if len(df) > 272}
-
-        vix_with_lookback = _filter_by_date(vix_all, lookback_start, fold["test_end"])
-        spy_with_lookback = _filter_by_date(spy_all, lookback_start, fold["test_end"])
-        macro_with_lookback = _filter_by_date(macro_all, lookback_start, fold["test_end"])
+        test_data_with_lookback = {
+            t: _filter_by_date(df, lookback_start, fold["test_end"])
+            for t, df in all_ticker_data.items()
+        }
+        test_data_with_lookback = {
+            t: df for t, df in test_data_with_lookback.items() if len(df) > 272
+        }
 
         # AI 스코어 계산
         print(f"  Calculating AI scores...")
@@ -173,6 +195,19 @@ def main():
     # 4. 종합 결과 출력 및 저장
     res_df = pd.DataFrame(results)
     res_df.to_csv(output_dir / "walk_forward_results.csv", index=False)
+
+    if fold_metrics_frames:
+        combined_metrics = pd.concat(fold_metrics_frames, ignore_index=True)
+        calibration_rows: list[dict] = []
+        for frame in fold_metrics_frames:
+            calibration_rows.extend(frame.attrs.get("calibration_rows", []))
+        combined_metrics.attrs["calibration_rows"] = calibration_rows
+        quality_paths = write_ml_quality_reports(
+            output_dir, combined_metrics, file_prefix="walk_forward"
+        )
+        print(f"Saved walk-forward fold metrics to {quality_paths['fold_metrics']}")
+        print(f"Saved walk-forward fold stability to {quality_paths['fold_stability']}")
+        print(f"Saved walk-forward calibration to {quality_paths['calibration_report']}")
     
     print("=" * 72)
     print("Walk-Forward Validation Summary")

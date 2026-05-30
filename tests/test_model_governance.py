@@ -18,6 +18,17 @@ from src.portfolio_backtest_validation import PortfolioBacktestThresholds
 from src.train_ai_model import _evaluate_rollback_need
 
 
+def _good_ml_quality_reports() -> tuple[dict, dict]:
+    return (
+        {
+            "high_variance_warning": False,
+            "roc_auc": {"std": 0.01, "mean": 0.52},
+            "roc_auc_std_warn_threshold": 0.05,
+        },
+        {"overall_avg_brier_score": 0.20, "bin_count": 2, "regimes": {}},
+    )
+
+
 def _sample_training_data() -> dict[str, pd.DataFrame]:
     return {
         "AAPL": pd.DataFrame({"date": pd.date_range("2024-01-01", periods=3)}),
@@ -59,6 +70,7 @@ class ModelGovernanceTest(unittest.TestCase):
             challenger_metadata,
             champion_metadata,
             require_portfolio_oos=False,
+            require_ml_quality=False,
         )
 
         self.assertEqual(report["decision"], "PROMOTE")
@@ -80,16 +92,20 @@ class ModelGovernanceTest(unittest.TestCase):
             "sharpe_ratio": 1.1,
         }
 
+        stability, calibration = _good_ml_quality_reports()
         report = build_promotion_report(
             challenger_metadata,
             champion_metadata,
             challenger_portfolio=weak_portfolio,
             champion_portfolio=strong_portfolio,
             portfolio_thresholds=PortfolioBacktestThresholds(max_drawdown_floor=-0.20),
+            fold_stability_report=stability,
+            calibration_report=calibration,
         )
 
         self.assertEqual(report["decision"], "RETAIN_CHAMPION")
         self.assertTrue(report["auc_gate_passed"])
+        self.assertTrue(report["ml_quality_gate_passed"])
         self.assertFalse(report["portfolio_gate_passed"])
 
     def test_build_promotion_report_promotes_on_auc_and_portfolio(self) -> None:
@@ -108,16 +124,49 @@ class ModelGovernanceTest(unittest.TestCase):
             "sharpe_ratio": 0.9,
         }
 
+        stability, calibration = _good_ml_quality_reports()
         report = build_promotion_report(
             challenger_metadata,
             champion_metadata,
             challenger_portfolio=challenger_portfolio,
             champion_portfolio=champion_portfolio,
+            fold_stability_report=stability,
+            calibration_report=calibration,
         )
 
         self.assertEqual(report["decision"], "PROMOTE")
+        self.assertTrue(report["ml_quality_gate_passed"])
+        self.assertTrue(report["portfolio_gate_passed"])
         self.assertTrue(report["portfolio_vs_champion_passed"])
         self.assertTrue(portfolio_oos_beats_champion(challenger_portfolio, champion_portfolio))
+
+    def test_build_promotion_report_rejects_poor_training_metrics(self) -> None:
+        challenger_metadata = {"oos_metrics": {"avg_roc_auc": 0.63}}
+        champion_metadata = {"oos_metrics": {"avg_roc_auc": 0.60}}
+        stability = {
+            "high_variance_warning": True,
+            "roc_auc": {"std": 0.12},
+            "roc_auc_std_warn_threshold": 0.05,
+        }
+        calibration = {"overall_avg_brier_score": 0.20, "bin_count": 1}
+        challenger_portfolio = {
+            "total_return": 0.12,
+            "benchmark_return": 0.10,
+            "max_drawdown": -0.08,
+            "sharpe_ratio": 1.2,
+        }
+
+        report = build_promotion_report(
+            challenger_metadata,
+            champion_metadata,
+            challenger_portfolio=challenger_portfolio,
+            fold_stability_report=stability,
+            calibration_report=calibration,
+            require_portfolio_oos=True,
+        )
+
+        self.assertEqual(report["decision"], "RETAIN_CHAMPION")
+        self.assertFalse(report["ml_quality_gate_passed"])
 
     def test_save_model_bundle_persists_metadata_json(self) -> None:
         bundle = {
