@@ -50,6 +50,11 @@ SECTOR_MAP: dict[str, str] = {
     "PLD": "realestate", "AMT": "realestate", "EQIX": "realestate",
     # 광의 ETF (분산된 것으로 간주)
     "SPY": "etf", "QQQ": "etf", "DIA": "etf", "IWM": "etf", "VTI": "etf",
+    # Leveraged / inverse ETFs (sector cap skipped; see instrument_meta gates)
+    "TQQQ": "leveraged_etf", "SQQQ": "leveraged_etf", "QLD": "leveraged_etf", "QID": "leveraged_etf",
+    "UPRO": "leveraged_etf", "SPXU": "leveraged_etf", "SSO": "leveraged_etf", "SDS": "leveraged_etf",
+    "SOXL": "leveraged_etf", "SOXS": "leveraged_etf", "TECL": "leveraged_etf", "TECS": "leveraged_etf",
+    "FAS": "leveraged_etf", "FAZ": "leveraged_etf", "TNA": "leveraged_etf", "TZA": "leveraged_etf",
 }
 
 DEFAULT_MAX_SECTOR_POSITIONS = 2
@@ -79,7 +84,7 @@ def is_sector_allowed(
     """
     sector = get_sector(ticker)
 
-    if sector in ("etf", "unknown"):
+    if sector in ("etf", "leveraged_etf", "unknown"):
         return True, "sector check skipped"
 
     count = count_sector_positions(open_symbols, sector)

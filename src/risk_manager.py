@@ -27,6 +27,8 @@ def check_buy_allowed(
     signal: str,
     cash: float,
     current_positions_count: int,
+    *,
+    ticker: str | None = None,
 ) -> RiskDecision:
     settings = load_settings()
 
@@ -39,7 +41,13 @@ def check_buy_allowed(
     if cash <= 0:
         return RiskDecision(False, "cash is zero or negative")
 
-    target_amount = cash * settings.max_position_pct
+    position_pct = float(settings.max_position_pct)
+    if ticker:
+        from src.instrument_meta import adjust_position_cap_for_instrument
+
+        position_pct = adjust_position_cap_for_instrument(position_pct, ticker)
+
+    target_amount = cash * position_pct
 
     if target_amount <= 0:
         return RiskDecision(False, "target amount is zero or negative")
@@ -226,6 +234,43 @@ def apply_portfolio_exposure_limits(
         )
 
     return RiskDecision(True, "portfolio exposure limits passed", order_amount)
+
+
+def apply_effective_leverage_exposure_limits(
+    ticker: str,
+    order_amount: float,
+    portfolio_value: float,
+    positions_by_symbol: dict[str, dict],
+) -> RiskDecision:
+    """Cap sum(market_value * |leverage_multiple|) including the proposed buy."""
+    settings = load_settings()
+
+    if order_amount <= 0:
+        return RiskDecision(False, "target amount is zero or negative", 0.0)
+
+    if portfolio_value <= 0:
+        return RiskDecision(False, "portfolio value is zero or negative", 0.0)
+
+    from src.instrument_meta import current_effective_leverage_exposure, get_instrument
+
+    current_effective = current_effective_leverage_exposure(positions_by_symbol)
+    multiple = get_instrument(ticker).abs_multiple
+    projected = current_effective + (order_amount * multiple)
+    max_effective = portfolio_value * float(
+        getattr(settings, "max_effective_leverage_exposure_pct", 1.25)
+    )
+    if projected > max_effective:
+        return RiskDecision(
+            False,
+            (
+                "effective leverage exposure limit exceeded "
+                f"(projected=${projected:.2f}, max=${max_effective:.2f}, "
+                f"multiple={multiple:.1f})"
+            ),
+            0.0,
+        )
+
+    return RiskDecision(True, "effective leverage exposure ok", order_amount)
 
 
 def _build_crowding_snapshot(

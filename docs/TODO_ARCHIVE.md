@@ -25,6 +25,7 @@
 | 24 | Ops automation | `run_ops_reports.sh`, systemd timers, post-workflow audit smoke |
 | 25 | Alpha / promotion quality | Fold variance report, promotion summary CLI, benchmark gap, champion governance |
 | 26 | Live alignment (paper) | Crowding go/no-go, execution vs slippage diff, leverage/LLM cache alerts |
+| 27 | Universe + instrument meta | Master CSV, UNIVERSE_PROFILE, leveraged ETF registry and buy gates |
 
 **Milestones**
 - **2026-05-27:** Phase 0–19 closed (code + pytest + runbook).
@@ -32,3 +33,4 @@
 - **2026-05-30:** Phase 24 closed; ops report batch + CI pytest/gates.
 - **2026-05-30:** Phase 25 closed; promotion docs/CLI, fold variance, benchmark gap decomposition.
 - **2026-05-30:** Phase 26 closed; paper crowding gate, execution alignment, stress/cache Telegram alerts.
+- **2026-05-30:** Phase 27 closed; universe master/smoke/research profiles, instrument registry, leverage ETF gates.

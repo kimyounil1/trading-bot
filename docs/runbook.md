@@ -49,7 +49,30 @@
     2. 포트폴리오 구성 종목의 개별 리스크(실적 악화 등) 재평가.
     3. 시장이 안정되었다고 판단되면 `config/strategy_config.json`의 `max_portfolio_drawdown_pct`를 일시적으로 상향 조정하여 가드 해제 가능.
 
-### 2.4 데이터 최신성(Stale Data) 오류
+### 2.4 유니버스 프로필 (`UNIVERSE_PROFILE`)
+
+| 프로필 | 스캔 풀 | 용도 |
+|--------|---------|------|
+| `paper` (기본) | `config/strategy_config.json` tickers | 운영·기본 백테스트 |
+| `smoke` | `config/universe_smoke.json` (~11종) | pytest·빠른 로컬 검증 |
+| `research` | `config/universe_master.csv` (~259종) | 넓은 스캔·retrain 데이터 풀 |
+
+```bash
+# master CSV 일괄 캐시 (로컬, 시간 소요)
+UNIVERSE_PROFILE=research PYTHONPATH=. .venv/bin/python -c "
+from src.settings import load_settings
+from src.data_loader import load_price_data_batch
+s = load_settings()
+load_price_data_batch(s.tickers, period='2y')
+print(len(s.tickers), 'tickers cached')
+"
+```
+
+**레버리지 ETF vs 마진 레버리지**
+- **레버리지 ETF** (`TQQQ`, `SOXL` 등): `config/instrument_registry.json` + `allow_leveraged_etfs` (기본 `false`). 유효 노출 = `Σ(market_value × |multiple|)` ≤ `max_effective_leverage_exposure_pct × portfolio`. 고 VIX 시 차단: `block_leveraged_etfs_vix_above` (기본 28).
+- **마진 `leverage_factor`**: 계좌 배수 — ETF 메타와 별도. paper 실험은 TODO 백로그.
+
+### 2.5 데이터 최신성(Stale Data) 오류
 - **현상**: `SKIP_BUY - stale price data` 로그 발생.
 - **대응**:
     1. 특정 종목의 거래 정지 여부 확인.

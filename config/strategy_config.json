@@ -159,6 +159,10 @@
   "leverage_factor": 1.0,
   "dynamic_universe_enabled": true,
   "dynamic_count": 50,
+  "allow_leveraged_etfs": false,
+  "max_leveraged_etf_positions": 1,
+  "max_effective_leverage_exposure_pct": 1.25,
+  "block_leveraged_etfs_vix_above": 28.0,
   "trailing_stop_pct": 0.05,
   "rebalance_threshold_pct": 0.20,
   "sector_rotation_enabled": true

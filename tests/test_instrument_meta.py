@@ -1,0 +1,73 @@
+"""Instrument registry and leverage gates ([AGY])."""
+
+import pandas as pd
+
+from src.instrument_meta import (
+    check_instrument_buy_allowed,
+    clear_instrument_registry_cache,
+    get_instrument,
+    load_instrument_registry,
+)
+from src.risk_manager import apply_effective_leverage_exposure_limits
+
+
+def setup_function() -> None:
+    clear_instrument_registry_cache()
+
+
+def test_registry_marks_tqqq_leveraged():
+    meta = get_instrument("TQQQ")
+    assert meta.is_leveraged_etf
+    assert meta.abs_multiple == 3.0
+
+
+def test_leveraged_buy_blocked_by_default():
+    allowed, reason = check_instrument_buy_allowed("TQQQ", set())
+    assert allowed is False
+    assert "allow_leveraged_etfs=false" in reason
+
+
+def test_leveraged_buy_allowed_when_enabled_and_vix_low():
+    vix = pd.DataFrame({"close": [20.0]})
+    allowed, _ = check_instrument_buy_allowed(
+        "TQQQ",
+        set(),
+        allow_leveraged_etfs=True,
+        max_leveraged_etf_positions=1,
+        block_leveraged_etfs_vix_above=28.0,
+        vix_df=vix,
+    )
+    assert allowed is True
+
+
+def test_leveraged_buy_blocked_when_vix_high():
+    vix = pd.DataFrame({"close": [35.0]})
+    allowed, reason = check_instrument_buy_allowed(
+        "SOXL",
+        set(),
+        allow_leveraged_etfs=True,
+        block_leveraged_etfs_vix_above=28.0,
+        vix_df=vix,
+    )
+    assert allowed is False
+    assert "VIX" in reason
+
+
+def test_effective_leverage_exposure_cap():
+    positions = {
+        "AAPL": {"market_value": 4000.0},
+        "TQQQ": {"market_value": 3000.0},
+    }
+    decision = apply_effective_leverage_exposure_limits(
+        ticker="NVDA",
+        order_amount=2000.0,
+        portfolio_value=10000.0,
+        positions_by_symbol=positions,
+    )
+    assert decision.allowed is False
+
+
+def test_registry_loads():
+    reg = load_instrument_registry()
+    assert "SPY" in reg
+    assert reg["SPY"].kind == "etf"

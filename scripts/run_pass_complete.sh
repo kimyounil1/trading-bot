@@ -48,6 +48,8 @@ else
     tests/test_crowding_paper_gate.py \
     tests/test_execution_alignment_report.py \
     tests/test_llm_cache_alerts.py \
+    tests/test_universe_loader.py \
+    tests/test_instrument_meta.py \
     tests/test_guard_impact_report.py \
     tests/test_check_audit_daily_summary.py \
     tests/test_fold_variance_report.py \

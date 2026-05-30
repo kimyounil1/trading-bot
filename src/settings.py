@@ -109,6 +109,10 @@ class StrategySettings(StrategyProfile):
     crowding_trend_gap_threshold: float = 0.05
     dynamic_universe_enabled: bool = False
     dynamic_count: int = 50
+    allow_leveraged_etfs: bool = False
+    max_leveraged_etf_positions: int = 1
+    max_effective_leverage_exposure_pct: float = 1.25
+    block_leveraged_etfs_vix_above: float = 28.0
     trailing_stop_pct: float = 0.05
     adaptive_trailing_stop_enabled: bool = False
     atr_multiplier: float = 3.0
@@ -271,6 +275,12 @@ def validate_settings(settings: StrategySettings) -> StrategySettings:
         raise ValueError("crowding_trend_gap_threshold must be non-negative")
     if settings.dynamic_count <= 0:
         raise ValueError("dynamic_count must be positive")
+    if settings.max_leveraged_etf_positions <= 0:
+        raise ValueError("max_leveraged_etf_positions must be positive")
+    if settings.max_effective_leverage_exposure_pct <= 0:
+        raise ValueError("max_effective_leverage_exposure_pct must be positive")
+    if settings.block_leveraged_etfs_vix_above < 0:
+        raise ValueError("block_leveraged_etfs_vix_above must be non-negative")
     if settings.rebalance_threshold_pct < 0:
         raise ValueError("rebalance_threshold_pct must be non-negative")
     return settings
@@ -279,10 +289,17 @@ def validate_settings(settings: StrategySettings) -> StrategySettings:
 def load_settings(path: Union[str, Path] = CONFIG_PATH) -> StrategySettings:
     """Load the active legacy single-strategy config."""
 
+    from src.universe_loader import resolve_scan_tickers
+
     settings_path = Path(path).expanduser().resolve()
     merged = asdict(DEFAULT_SETTINGS)
     if settings_path.exists():
-        merged.update(_validate_strategy_settings_payload(_read_json_object(settings_path), settings_path))
+        payload = _validate_strategy_settings_payload(_read_json_object(settings_path), settings_path)
+        base_tickers = payload.get("tickers", merged.get("tickers"))
+        payload["tickers"] = resolve_scan_tickers(list(base_tickers))
+        merged.update(payload)
+    else:
+        merged["tickers"] = resolve_scan_tickers(list(merged["tickers"]))
     return validate_settings(StrategySettings(**merged))
 
 

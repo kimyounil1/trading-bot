@@ -1,0 +1,16 @@
+{
+  "description": "CI / pytest scan universe (10-15 names); set UNIVERSE_PROFILE=smoke",
+  "tickers": [
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "GOOGL",
+    "AMZN",
+    "META",
+    "AMD",
+    "TSLA",
+    "JPM",
+    "SPY",
+    "QQQ"
+  ]
+}

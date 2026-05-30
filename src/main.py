@@ -18,6 +18,7 @@ from src.risk_manager import (
     ExitDecision,
     apply_buy_safety_limits,
     apply_factor_crowding_limits,
+    apply_effective_leverage_exposure_limits,
     apply_portfolio_exposure_limits,
     check_additional_buy_allowed,
     check_buy_allowed,
@@ -37,6 +38,7 @@ from src.alpaca_client import (
 from src.market_clock import get_market_clock
 from src.notifier import notify_order, notify_error, notify_run_summary, notify_info
 from src.ml_model import load_ai_score_model, predict_ai_score_from_bundle
+from src.instrument_meta import check_instrument_buy_allowed, format_audit_reason
 from src.sector import is_sector_allowed
 from src.correlation_guard import is_correlation_allowed
 from src.market_regime import get_current_regime
@@ -950,6 +952,7 @@ def main() -> None:
                     signal=signal,
                     cash=cash,
                     current_positions_count=positions_count,
+                    ticker=ticker,
                 )
                 risk_allowed = risk.allowed
                 risk_reason = risk.reason
@@ -990,6 +993,26 @@ def main() -> None:
                 if not sector_ok:
                     risk_allowed = False
                     risk_reason = sector_reason
+                    target_amount = 0.0
+
+            if risk_allowed and position is None:
+                inst_ok, inst_reason = check_instrument_buy_allowed(
+                    ticker,
+                    open_symbols,
+                    allow_leveraged_etfs=bool(
+                        getattr(settings, "allow_leveraged_etfs", False)
+                    ),
+                    max_leveraged_etf_positions=int(
+                        getattr(settings, "max_leveraged_etf_positions", 1)
+                    ),
+                    block_leveraged_etfs_vix_above=float(
+                        getattr(settings, "block_leveraged_etfs_vix_above", 0.0)
+                    ),
+                    vix_df=vix_df,
+                )
+                if not inst_ok:
+                    risk_allowed = False
+                    risk_reason = inst_reason
                     target_amount = 0.0
 
             # 상관관계 필터: 기존 보유 종목과 과도한 상관관계 시 매수 차단
@@ -1069,6 +1092,17 @@ def main() -> None:
                 risk_reason = exposure.reason if not exposure.allowed else risk_reason
                 order_amount = exposure.target_amount
 
+            if risk_allowed:
+                leverage_cap = apply_effective_leverage_exposure_limits(
+                    ticker=ticker,
+                    order_amount=order_amount,
+                    portfolio_value=float(account["portfolio_value"]),
+                    positions_by_symbol=positions_by_symbol,
+                )
+                risk_allowed = leverage_cap.allowed
+                risk_reason = leverage_cap.reason if not leverage_cap.allowed else risk_reason
+                order_amount = leverage_cap.target_amount
+
             log_signal(
                 ticker=ticker,
                 signal=signal,
@@ -1102,7 +1136,7 @@ def main() -> None:
                     ticker=ticker,
                     action="BUY",
                     status="SKIPPED",
-                    reason=risk_reason,
+                    reason=format_audit_reason(risk_reason, ticker),
                     profile_name=profile_name,
                     regime=current_regime,
                     signal=signal,

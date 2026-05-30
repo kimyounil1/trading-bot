@@ -42,7 +42,8 @@ RUN_ID=<phase>_final bash scripts/run_pass_complete.sh "Phase N complete"
 
 | 영역 | 상태 |
 |------|------|
-| **유니버스** | 110 tickers + dynamic universe (`config/strategy_config.json`) |
+| **유니버스** | `UNIVERSE_PROFILE` paper/smoke/research; master **259** (`config/universe_master.csv`) |
+| **종목 메타** | `instrument_registry.json` — 레버리지 ETF 기본 매수 차단 (`allow_leveraged_etfs: false`) |
 | **챔피언 모델** | LGBM+XGB, 로컬 `models/ai_score_model.joblib` (git 미추적) |
 | **최근 retrain** | `logs/retrain_history.csv` — fold ROC-AUC ~0.45–0.55, 평균 ~0.51 근처 |
 | **포트폴리오 백테스트** | return **+50.7%** vs bench **+58.2%**, max DD **-10.2%**, 42 trades (`logs/portfolio_backtest/`) |
@@ -50,19 +51,19 @@ RUN_ID=<phase>_final bash scripts/run_pass_complete.sh "Phase N complete"
 | **관측** | 일별 audit, 주간 slippage, guard/leverage/LLM cache 리포트 스크립트 (`docs/runbook.md`) |
 | **비활성** | `deep_model.py`, `rl_portfolio.py` — `docs/RESEARCH_MODELS.md` |
 
-**완료 로드맵:** Phase 0–26 → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
+**완료 로드맵:** Phase 0–27 → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
 
 **우선순위 가이드 (2026 Q2)**
-1. **운영 자동화** — 리포트·audit 타이머, 단일 ops 진입점
+1. **백로그** — 마진 레버리지 paper, crowding 라이브, DL/RL
 2. **알파·승격 품질** — 벤치마크 underperform, fold 편차 완화
-3. **라이브 정합** — paper vs 백테스트·슬리피지 드리프트 (live 미사용이어도 paper 기준 유지)
-4. **백로그** — 레버리지 실거래, DL/RL 연구
+3. **라이브 정합** — paper vs 백테스트·슬리피지 드리프트
+4. **백로그** — 마진 레버리지 paper, DL/RL 연구
 
 ---
 
 ## Backlog (우선순위 낮음 · live 미사용 시 보류 가능) ← **다음**
 
-- [ ] `[Cursor]` 레버리지 > 1.0 paper 소액 실험 + stress 게이트 연동
+- [ ] `[Cursor]` 레버리지 > 1.0 **마진** paper 소액 실험 + stress 게이트 (Phase 27 instrument 레이어 이후)
 - [ ] `[AGY]` Factor/crowding guard **라이브** 영향도 (백테스트 리포트 vs audit 스킵 로그 대조)
 - [ ] `[Cursor]` Transformer / RL — `docs/RESEARCH_MODELS.md` 실험 브랜치만 (프로덕션 연동 없음)
 - [ ] `[Cursor]` Streamlit CMS에 ops 리포트 latest_summary 뷰어
@@ -74,6 +75,10 @@ RUN_ID=<phase>_final bash scripts/run_pass_complete.sh "Phase N complete"
 ```bash
 # 패스 마감
 RUN_ID=phase24_ops bash scripts/run_pass_complete.sh "작업 요약"
+
+# 유니버스 프로필 (기본 paper = strategy_config tickers)
+UNIVERSE_PROFILE=smoke .venv/bin/python -m src.run_portfolio_backtest   # 빠른 스모크
+UNIVERSE_PROFILE=research .venv/bin/python -m src.main --dry-run      # master 259종 스캔
 
 # 운영 리포트 (수동)
 bash scripts/run_ops_reports.sh
