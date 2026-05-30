@@ -91,6 +91,22 @@ def parse_args() -> argparse.Namespace:
         help="Allow Codex review when models/logs are in the diff (pass closure).",
     )
     parser.add_argument(
+        "--balanced-pass",
+        action="store_true",
+        help="Run AGY pytest slice, then post-workflow + Codex scoped review.",
+    )
+    parser.add_argument(
+        "--agy-prompt",
+        type=Path,
+        default=Path("prompts/agy/phase20_portfolio_gate.md"),
+        help="AGY task file copied into the run directory (with --balanced-pass).",
+    )
+    parser.add_argument(
+        "--agy-test-paths",
+        default="tests/test_portfolio_backtest_gate.py",
+        help="Comma-separated pytest paths for the AGY slice.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print planned commands without running Gemini, Codex, or tests.",
@@ -267,6 +283,30 @@ def main() -> int:
     if args.gemini_approval_mode == "yolo":
         print("Refusing Gemini yolo mode in this orchestrator.", file=sys.stderr)
         return 2
+
+    if args.balanced_pass:
+        args.run_codex_review = True
+        args.ignore_artifacts = True
+        pre_dir = REPORT_ROOT / (args.run_id or dt.datetime.now().strftime("%Y%m%dT%H%M%S"))
+        pre_dir.mkdir(parents=True, exist_ok=True)
+        if args.agy_prompt.is_file():
+            (pre_dir / "AGY_TASK.md").write_text(
+                args.agy_prompt.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+        agy_env = os.environ.copy()
+        agy_env["AGY_PROMPT"] = str(args.agy_prompt)
+        agy_env["AGY_TEST_PATHS"] = args.agy_test_paths.replace(",", " ")
+        print("--- Balanced pass: AGY pytest slice ---")
+        agy_code = run_command(
+            ["bash", "scripts/run_agy_slice.sh"],
+            log_path=pre_dir / "agy_slice.log",
+            env=agy_env,
+            dry_run=args.dry_run,
+        )
+        if agy_code != 0:
+            print(f"AGY slice failed with exit code {agy_code}", file=sys.stderr)
+            return agy_code
+        os.environ.setdefault("IMPLEMENTATION_AGENT", "cursor+agy")
 
     history: list[dict] = []
     

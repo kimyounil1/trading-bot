@@ -36,7 +36,8 @@ else
   PYTHONPATH=. .venv/bin/python -m pytest -q \
     tests/test_report_performance.py \
     tests/test_reappraise_regime.py \
-    tests/test_portfolio_backtest_golden.py
+    tests/test_portfolio_backtest_golden.py \
+    tests/test_portfolio_backtest_gate.py
 fi
 
 echo "=== [2/3] Codex review via orchestrator (post-workflow + scoped review) ==="

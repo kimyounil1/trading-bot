@@ -24,12 +24,12 @@ Cursor added (do not modify unless tests require it):
 PYTHONPATH=. .venv/bin/python -m pytest tests/test_portfolio_backtest_gate.py -q
 ```
 
-## After commit
+## After tests exist
 
-Tell user to run in Cursor terminal:
+Orchestrator (Cursor terminal):
 
 ```bash
-RUN_ID=phase20_portfolio_gate SKIP_PYTEST=1 bash scripts/run_pass_complete.sh
+RUN_ID=phase20_portfolio_gate bash scripts/run_balanced_pass.sh
 ```
 
 Commit message must include `[agy]`.

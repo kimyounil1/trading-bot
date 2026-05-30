@@ -28,11 +28,18 @@ In this repo **Cursor** implements, **AGY** owns `[AGY]` tests, **Codex** review
 
 1. Choose `RUN_ID` (e.g. `phase20_ci`, `cursor_$(date +%Y%m%dT%H%M%S)`).
 
-2. Run pass closure:
+2. Run **balanced pass** (AGY pytest + orchestrator + Codex) — preferred:
 
 ```bash
 cd <repo-root>
-RUN_ID=<run_id> bash scripts/run_pass_complete.sh "<one-line summary of this pass>"
+RUN_ID=<run_id> bash scripts/run_balanced_pass.sh
+# or: .venv/bin/python scripts/agent_orchestrator.py --run-id <run_id> --balanced-pass --task-file prompts/agy/<task>.md
+```
+
+Legacy (Codex only, tests already green):
+
+```bash
+RUN_ID=<run_id> bash scripts/run_pass_complete.sh "<one-line summary>"
 ```
 
 Use `SKIP_PYTEST=1` only if pytest already passed in this session.  
