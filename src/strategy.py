@@ -4,7 +4,6 @@ import pandas as pd
 from ta.momentum import RSIIndicator
 from ta.trend import MACD
 from ta.volatility import AverageTrueRange
-from src.ml_model import predict_ai_score_from_bundle
 from src.settings import StrategyProfile
 
 

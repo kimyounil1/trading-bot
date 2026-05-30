@@ -7,6 +7,8 @@ alpaca-py
 matplotlib
 scikit-learn
 lightgbm
+xgboost
+google-generativeai
 streamlit
 requests
 joblib

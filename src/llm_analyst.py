@@ -16,6 +16,7 @@ if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
 CACHE_PATH = Path("data/llm_cache.json")
+DEFAULT_LLM_MODEL = os.getenv("LLM_MODEL", "gemma-4-26b-a4b-it")
 
 
 def _load_cache() -> Dict[str, dict]:
@@ -65,7 +66,7 @@ def evaluate_ticker_consensus(ticker: str, settings: Optional[Any] = None) -> Tu
         news_context = "\n".join([f"- {h}" for h in headlines])
 
         # 2. LLM에게 분석 요청
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel(DEFAULT_LLM_MODEL)
         prompt = f"""
 Analyze the following recent news headlines for the stock ticker '{ticker}'.
 Your goal is to identify critical fundamental risks that a purely quantitative model might miss (e.g., fraud, major lawsuits, catastrophic product failure, or terrible forward guidance).

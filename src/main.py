@@ -8,8 +8,6 @@ from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
-from pandas.tseries.offsets import BDay
-
 from src.settings import load_settings, apply_dynamic_profile
 from src.data_loader import load_price_data_batch
 from src.strategy import add_indicators, generate_signal, is_bullish_market_regime
@@ -103,36 +101,8 @@ def _save_peaks(peaks: dict[str, float]) -> None:
         os.fsync(handle.fileno())
     temp_path.replace(PEAKS_PATH)
 
-def _to_session_date(value: str) -> pd.Timestamp:
-    ts = pd.Timestamp(value)
-    if ts.tzinfo is not None:
-        ts = ts.tz_convert("UTC").tz_localize(None)
-    return ts.normalize()
-
-def _check_price_frame_freshness(raw_df, market_clock) -> tuple[bool, str]:
-    if raw_df is None or raw_df.empty:
-        return False, "price data is empty"
-    if "date" not in raw_df.columns:
-        return False, "price data missing date column"
-
-    date_series = pd.to_datetime(raw_df["date"], errors="coerce").dropna()
-    if date_series.empty:
-        return False, "price data has no valid dates"
-
-    latest_bar_date = date_series.max()
-    if latest_bar_date.tzinfo is not None:
-        latest_bar_date = latest_bar_date.tz_convert("UTC").tz_localize(None)
-    latest_bar_date = latest_bar_date.normalize()
-
-    session_date = _to_session_date(market_clock.timestamp)
-    stale_cutoff = (session_date - BDay(3)).normalize()
-    if latest_bar_date < stale_cutoff:
-        return False, f"stale price data (latest={latest_bar_date.date()}, cutoff={stale_cutoff.date()})"
-
-    if market_clock.is_open and latest_bar_date >= session_date:
-        return False, f"incomplete intraday bar detected (latest={latest_bar_date.date()}, session={session_date.date()})"
-
-    return True, "price data fresh"
+from src.daily_bar_session import check_price_frame_freshness as _check_price_frame_freshness
+from src.daily_bar_session import drop_incomplete_session_bar
 
 
 def _format_llm_verdict(is_ok: bool | None, reason: str = "") -> str:
@@ -253,12 +223,21 @@ def get_signal_for_ticker(
     vix_df=None,
     spy_df=None,
     macro_df=None,
+    market_clock=None,
 ) -> tuple[str, object, float | None]:
     if raw_df.empty:
         raise ValueError(f"No price data available for {ticker}")
 
+    signal_df = (
+        drop_incomplete_session_bar(raw_df, market_clock)
+        if market_clock is not None
+        else raw_df
+    )
+    if signal_df.empty:
+        raise ValueError(f"No completed daily bars available for {ticker}")
+
     df = add_indicators(
-        raw_df,
+        signal_df,
         ma_fast=settings.ma_fast,
         ma_slow=settings.ma_slow,
     )
@@ -283,7 +262,11 @@ def get_signal_for_ticker(
             if ai_model_bundle is None:
                 raise ValueError("AI score model was not loaded")
             ai_score = predict_ai_score_from_bundle(
-                raw_df, ai_model_bundle, vix_df=vix_df, spy_df=spy_df, macro_df=macro_df
+                signal_df,
+                ai_model_bundle,
+                vix_df=vix_df,
+                spy_df=spy_df,
+                macro_df=macro_df,
             )
         except Exception:
             ai_score = None
@@ -585,6 +568,7 @@ def main() -> None:
                     vix_df=vix_df,
                     spy_df=spy_df,
                     macro_df=macro_df,
+                    market_clock=market_clock,
                 )
                 unrealized_plpc = float(position["unrealized_plpc"])
 
@@ -944,6 +928,7 @@ def main() -> None:
                 vix_df=vix_df,
                 spy_df=spy_df,
                 macro_df=macro_df,
+                market_clock=market_clock,
             )
 
             # 섹터 로테이션 보너스 (Phase 15-A)

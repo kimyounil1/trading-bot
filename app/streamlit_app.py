@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import subprocess
 from datetime import datetime
@@ -37,10 +38,16 @@ from src.notification_settings import (
 from src.logger import log_order, log_order_status
 from src.data_loader import load_price_data_batch
 from src.candidate_cache import load_latest_candidate_cache_full
-from src.portfolio_backtester import (
-    run_portfolio_backtest,
-    save_portfolio_backtest_outputs,
-)
+
+
+def _portfolio_backtest_api():
+    """Defer import so CMS pages without backtest work if optional deps are missing."""
+    from src.portfolio_backtester import (
+        run_portfolio_backtest,
+        save_portfolio_backtest_outputs,
+    )
+
+    return run_portfolio_backtest, save_portfolio_backtest_outputs
 
 
 st.set_page_config(
@@ -962,6 +969,7 @@ def run_cms_backtest(period: str = "2y") -> tuple[object, pd.DataFrame, pd.DataF
 
     status.write("포트폴리오 백테스트를 실행하는 중입니다...")
 
+    run_portfolio_backtest, save_portfolio_backtest_outputs = _portfolio_backtest_api()
     result, equity_df, trades_df = run_portfolio_backtest(
         ticker_data=ticker_data,
         initial_cash=10000.0,
@@ -2081,6 +2089,190 @@ def render_telegram() -> None:
 
 
 
+def load_json_summary(relative_path: str) -> dict | None:
+    path = ROOT_DIR / relative_path
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def render_ops_dashboard() -> None:
+    """Ops reports, universe profiles, and paper gates (Phase 26–28)."""
+    from src.universe_loader import (
+        load_master_tickers,
+        load_smoke_tickers,
+        resolve_scan_tickers,
+    )
+    from src.instrument_meta import get_instrument, load_instrument_registry
+    from src.margin_leverage_paper_gate import (
+        evaluate_margin_leverage_buy_block,
+        evaluate_margin_leverage_paper_gate,
+        load_stress_summary,
+    )
+
+    st.title("Ops / 게이트 대시보드")
+    st.caption("로컬 로그·설정 기준 — paper 계좌와 동일하지 않을 수 있음")
+
+    settings = load_settings()
+    active_profile = os.environ.get("UNIVERSE_PROFILE", "paper").strip().lower()
+
+    st.subheader("유니버스 프로필")
+    c1, c2, c3 = st.columns(3)
+    paper_count = len(resolve_scan_tickers(list(settings.tickers), profile="paper"))
+    try:
+        smoke_count = len(load_smoke_tickers())
+    except (FileNotFoundError, ValueError):
+        smoke_count = 0
+    try:
+        research_count = len(load_master_tickers())
+    except FileNotFoundError:
+        research_count = 0
+    c1.metric("paper (config)", paper_count)
+    c2.metric("smoke (CI)", smoke_count)
+    c3.metric("research (master)", research_count)
+    st.info(
+        f"현재 프로세스 `UNIVERSE_PROFILE={active_profile}`. "
+        "Streamlit은 기본 paper; 터미널에서 `UNIVERSE_PROFILE=research` 로 봇 실행."
+    )
+    with st.expander("smoke 티커 목록"):
+        try:
+            st.write(", ".join(load_smoke_tickers()))
+        except (FileNotFoundError, ValueError) as exc:
+            st.warning(str(exc))
+
+    st.divider()
+    st.subheader("마진 레버리지 paper")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("leverage_factor", float(getattr(settings, "leverage_factor", 1.0)))
+    m2.metric("paper_enabled", bool(getattr(settings, "margin_leverage_paper_enabled", False)))
+    m3.metric("stress_gate", bool(getattr(settings, "margin_leverage_stress_gate_required", True)))
+    block, block_reason = evaluate_margin_leverage_buy_block(
+        float(getattr(settings, "leverage_factor", 1.0)),
+        margin_leverage_paper_enabled=bool(
+            getattr(settings, "margin_leverage_paper_enabled", False)
+        ),
+        margin_leverage_stress_gate_required=bool(
+            getattr(settings, "margin_leverage_stress_gate_required", True)
+        ),
+    )
+    m4.metric("신규 매수 차단", "예" if block else "아니오")
+
+    if block_reason:
+        st.warning(block_reason)
+
+    margin_gate = load_json_summary("logs/margin_leverage_paper/go_no_go_checklist.json")
+    if margin_gate:
+        st.json(margin_gate)
+    else:
+        st.caption("게이트 산출물 없음 — 아래 버튼으로 생성")
+
+    col_a, col_b = st.columns(2)
+    if col_a.button("Stress 리포트 갱신", key="ops_stress"):
+        with st.spinner("leverage stress..."):
+            code, out, err = run_project_command(
+                [
+                    str(ROOT_DIR / ".venv/bin/python"),
+                    "-m",
+                    "src.leverage_stress_report",
+                    "--leverage",
+                    "2.0",
+                ],
+                timeout=120,
+            )
+        if code == 0:
+            st.success("완료")
+        else:
+            st.error("실패")
+        if out:
+            st.code(out[-4000:])
+        if err:
+            st.code(err[-2000:])
+
+    if col_b.button("마진 paper 게이트 실행", key="ops_margin_gate"):
+        with st.spinner("margin leverage gate..."):
+            code, out, err = run_project_command(
+                [
+                    str(ROOT_DIR / ".venv/bin/python"),
+                    "-m",
+                    "src.margin_leverage_paper_gate",
+                    "--refresh-stress",
+                ],
+                timeout=120,
+            )
+        if code == 0:
+            st.success("완료 — 새로고침하세요")
+        else:
+            st.error("실패")
+        if out:
+            st.code(out[-4000:])
+
+    stress_path = ROOT_DIR / "logs/leverage_stress/latest_summary.json"
+    if stress_path.is_file():
+        try:
+            stress = load_stress_summary(stress_path)
+            preview = evaluate_margin_leverage_paper_gate(
+                stress,
+                configured_leverage_factor=float(
+                    getattr(settings, "leverage_factor", 1.25)
+                ),
+            )
+            st.caption("실시간 게이트 평가 (저장 파일과 동일 로직)")
+            st.json(preview)
+        except Exception as exc:
+            st.error(str(exc))
+
+    st.divider()
+    st.subheader("레버리지 ETF 메타")
+    st.write(
+        {
+            "allow_leveraged_etfs": getattr(settings, "allow_leveraged_etfs", False),
+            "max_leveraged_etf_positions": getattr(
+                settings, "max_leveraged_etf_positions", 1
+            ),
+            "max_effective_leverage_exposure_pct": getattr(
+                settings, "max_effective_leverage_exposure_pct", 1.25
+            ),
+        }
+    )
+    registry = load_instrument_registry()
+    leveraged = [t for t, m in registry.items() if m.is_leveraged_etf]
+    st.caption(f"registry leveraged ETF: {len(leveraged)}종")
+    sample = st.text_input("티커 조회", value="TQQQ")
+    if sample:
+        meta = get_instrument(sample.strip().upper())
+        st.json(
+            {
+                "kind": meta.instrument_kind,
+                "multiple": meta.multiple,
+                "underlying": meta.underlying,
+                "direction": meta.direction,
+            }
+        )
+
+    st.divider()
+    st.subheader("기타 Ops latest_summary")
+
+    report_paths = [
+        ("일별 audit", "logs/audit_daily/latest_summary.json"),
+        ("슬리피지", "logs/slippage_reports/latest_summary.json"),
+        ("crowding paper", "logs/crowding_paper/go_no_go_checklist.json"),
+        ("실행 정합", "logs/execution_alignment/latest_summary.json"),
+        ("LLM cache", "logs/llm_cache/latest_summary.json"),
+        ("guard impact", "logs/guard_impact/latest_summary.json"),
+    ]
+    for label, rel in report_paths:
+        data = load_json_summary(rel)
+        with st.expander(label):
+            if data is None:
+                st.caption(f"없음: {rel}")
+            else:
+                st.json(data)
+
+
 def run_project_command(command: list[str], timeout: int = 600) -> tuple[int, str, str]:
     proc = subprocess.run(
         command,
@@ -2098,6 +2290,7 @@ def validate_selected_ai_threshold(threshold: float) -> tuple[object, object, pd
 
     ticker_data = load_price_data_batch(settings.tickers, period="2y")
 
+    run_portfolio_backtest, _ = _portfolio_backtest_api()
     baseline_result, baseline_equity, _ = run_portfolio_backtest(
         ticker_data=ticker_data,
         initial_cash=10000.0,
@@ -2446,6 +2639,7 @@ def main() -> None:
             "스케줄러",
             "Telegram",
             "AI 모델",
+            "Ops / 게이트",
         ],
     )
 
@@ -2477,6 +2671,8 @@ def main() -> None:
         render_telegram()
     elif page == "AI 모델":
         render_ai_model()
+    elif page == "Ops / 게이트":
+        render_ops_dashboard()
 
 
 if __name__ == "__main__":
