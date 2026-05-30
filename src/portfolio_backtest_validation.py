@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -145,3 +146,67 @@ def validate_portfolio_backtest_dir(
         "equity_rows": len(equity_df),
         "trades_rows": len(trades_df),
     }
+
+
+@dataclass
+class PortfolioBacktestThresholds:
+    """OOS / CI gates on portfolio_summary.csv (not golden fixture regression)."""
+
+    max_drawdown_floor: float = -0.20
+    min_return_vs_benchmark: float = -0.15
+    min_sharpe: float | None = None
+
+
+@dataclass
+class PortfolioBacktestThresholdResult:
+    summary: dict[str, Any]
+    passed: bool
+    failures: list[str]
+    warnings: list[str]
+
+
+def check_portfolio_backtest_thresholds(
+    output_dir: str | Path,
+    thresholds: PortfolioBacktestThresholds | None = None,
+    *,
+    validate_schema: bool = True,
+) -> PortfolioBacktestThresholdResult:
+    """Apply portfolio-level gates after schema validation."""
+    thresholds = thresholds or PortfolioBacktestThresholds()
+    failures: list[str] = []
+    warnings: list[str] = []
+
+    if validate_schema:
+        result = validate_portfolio_backtest_dir(output_dir, min_equity_rows=2)
+        summary = result["summary"]
+    else:
+        summary = load_summary_row(Path(output_dir) / "portfolio_summary.csv")
+
+    max_dd = float(summary["max_drawdown"])
+    if max_dd < thresholds.max_drawdown_floor:
+        failures.append(
+            f"max_drawdown {max_dd:.4f} worse than floor {thresholds.max_drawdown_floor:.4f}"
+        )
+
+    excess_vs_bench = float(summary["total_return"]) - float(summary["benchmark_return"])
+    if excess_vs_bench < thresholds.min_return_vs_benchmark:
+        failures.append(
+            f"total_return - benchmark_return = {excess_vs_bench:.4f} "
+            f"< min {thresholds.min_return_vs_benchmark:.4f}"
+        )
+    elif excess_vs_bench < 0:
+        warnings.append(
+            f"underperforms benchmark by {-excess_vs_bench:.4f} (within allowed gap)"
+        )
+
+    if thresholds.min_sharpe is not None:
+        sharpe = float(summary["sharpe_ratio"])
+        if sharpe < thresholds.min_sharpe:
+            failures.append(f"sharpe_ratio {sharpe:.4f} < min {thresholds.min_sharpe:.4f}")
+
+    return PortfolioBacktestThresholdResult(
+        summary=summary,
+        passed=not failures,
+        failures=failures,
+        warnings=warnings,
+    )

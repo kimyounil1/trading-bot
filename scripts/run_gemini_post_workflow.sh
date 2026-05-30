@@ -47,6 +47,16 @@ echo "Running runtime tests..."
   > "$OUT_DIR/runtime_harness.log" 2>&1
 RUNTIME_EXIT=$?
 
+echo "Running portfolio backtest gate (if outputs exist)..."
+GATE_EXIT=0
+if [ -f logs/portfolio_backtest/portfolio_summary.csv ]; then
+  PYTHONPATH=. .venv/bin/python scripts/check_portfolio_backtest_gate.py \
+    >> "$OUT_DIR/review_harness.log" 2>&1 || GATE_EXIT=$?
+else
+  echo "skip: logs/portfolio_backtest/portfolio_summary.csv not found" \
+    >> "$OUT_DIR/review_harness.log"
+fi
+
 echo "Generating review packet..."
 cat <<EOF > "$OUT_DIR/review_packet.md"
 # Agent Review Packet - Run: $RUN_ID
@@ -82,9 +92,10 @@ echo -e "# NEXT_TODO\n\n- [ ] Codex review pending for implementation agent: $IM
 echo "Creating summary.json..."
 cat <<EOF > "$OUT_DIR/summary.json"
 {
-  "overall_status": "$([ $HARNESS_EXIT -eq 0 ] && [ $RUNTIME_EXIT -eq 0 ] && echo "pass" || echo "fail")",
+  "overall_status": "$([ $HARNESS_EXIT -eq 0 ] && [ $RUNTIME_EXIT -eq 0 ] && [ $GATE_EXIT -eq 0 ] && echo "pass" || echo "fail")",
   "gemini_review_harness_exit_code": $HARNESS_EXIT,
-  "runtime_harness_exit_code": $RUNTIME_EXIT
+  "runtime_harness_exit_code": $RUNTIME_EXIT,
+  "portfolio_gate_exit_code": $GATE_EXIT
 }
 EOF
 
