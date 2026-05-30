@@ -86,12 +86,13 @@ It collects:
 The intended loop is:
 
 1. **Cursor** implements the change in the IDE (production paths).
-2. **AGY** implements `[AGY]` pytest/harness work (sequential; same branch rule — one implementer at a time).
-3. `scripts/run_cursor_post_workflow.sh` runs review/runtime checks and creates a packet.
-4. The user asks **Codex** to review `review_packet.md`.
-5. Codex leads with findings and produces `NEXT_TODO.codex.md` or rewrites `NEXT_TODO.md`.
-6. **Cursor** works the next queue (merge AGY tests, fix review findings).
-7. Repeat. Use **Gemini CLI** only for explicit `[Gemini]` docs/mechanical tasks if AGY is unavailable.
+2. **AGY** implements `[AGY]` pytest/harness work (sequential; one implementer at a time).
+3. **`bash scripts/run_pass_complete.sh`** (required): pytest → post-workflow packet → **Codex** scoped review.
+4. Read **`NEXT_TODO.codex.md`** — confirm no blocking findings; implement follow-ups in Cursor.
+5. Repeat. Do **not** mark TODO `[x]` or start the next feature until step 3–4 succeed.
+6. Use **Gemini CLI** only for explicit `[Gemini]` docs/mechanical tasks if AGY is unavailable.
+
+Shortcut for packet-only (no Codex): `run_cursor_post_workflow.sh` — not sufficient for Definition of Done.
 
 This repository does not automatically invoke Cursor from the orchestrator. Cursor is IDE-driven; the pipeline only collects diffs and runs checks.
 

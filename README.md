@@ -60,8 +60,8 @@ trading-bot/
 
 1. Cursor에서 기능 구현 (핵심 경로)
 2. **AGY**에 `[AGY]` 테스트 슬라이스 위임 → `pytest` green
-3. `RUN_ID=my_feature bash scripts/run_cursor_post_workflow.sh` 로 리뷰 패킷 생성
-4. Codex scoped 리뷰 (`--run-codex-review --scoped-review`)
+3. **패스 마감 (필수):** `RUN_ID=my_feature bash scripts/run_pass_complete.sh`
+4. `reports/agent_pipeline/<run_id>/NEXT_TODO.codex.md` 확인 후 Cursor가 follow-up 반영
 5. 전략/리스크 대형 변경 시 AGY 설계 리뷰 추가
 
 작업량 비율: `PYTHONPATH=. .venv/bin/python scripts/agent_workload_report.py --record` (커밋 메시지 `[cursor]` / `[agy]` 태그)

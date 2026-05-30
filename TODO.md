@@ -4,7 +4,14 @@
 항목을 `[x]`로 두려면 다음을 **모두** 충족:
 1. **코드** — 요구사항 반영, 프로젝트 스타일 준수
 2. **테스트** — 관련 pytest 추가·통과, 전체 suite green
-3. **운영** — 필요 시 백테스트/리포트 확인; 구현 후 `bash scripts/run_cursor_post_workflow.sh` → Codex scoped review에서 blocking 이슈 없음
+3. **운영** — 필요 시 백테스트/리포트 확인
+4. **Codex 리뷰 (필수)** — Cursor 구현 + `[AGY]` 테스트까지 끝난 뒤 **반드시** 패스 마감:
+
+```bash
+RUN_ID=<pass_id> bash scripts/run_pass_complete.sh "무엇을 했는지 한 줄"
+# → review_packet.md 생성 → Codex scoped review → NEXT_TODO.codex.md 확인
+# blocking 이슈 없을 때만 [x]. 실패 시 Codex 지적 반영 후 재실행.
+```
 
 ---
 
@@ -30,7 +37,7 @@
 | **AGY** | **`[AGY]` 테스트·하네스** + (선택) 전략·리스크 검토 (~15–25%) |
 | **Gemini CLI** | 레거시·문서만 (~0–5%, Flash급 — 테스트 금지) |
 
-**권장 패스:** Cursor 구현 → **AGY 테스트 추가** → post-workflow → Codex 리뷰 → Cursor 수정.
+**패스 마감 (필수):** Cursor 구현 → **AGY 테스트** → `bash scripts/run_pass_complete.sh` → **`NEXT_TODO.codex.md` 확인** → Cursor 수정.
 
 **작업량 집계:** `PYTHONPATH=. .venv/bin/python scripts/agent_workload_report.py --record`  
 커밋 메시지에 `[cursor]` / `[agy]` / `[codex]` 태그 → `logs/agent_workload_history.csv`에 스냅샷 누적.

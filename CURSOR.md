@@ -71,19 +71,18 @@ Include:
 
 Codex reviews with `docs/agent_review_harness.md` and `AGENTS.md` (review-only section).
 
-When the implementation pass is complete, run:
+When **Cursor implementation + `[AGY]` tests** are complete, close the pass (do not skip Codex):
 
 ```bash
-RUN_ID=cursor_$(date +%Y%m%dT%H%M%S) bash scripts/run_cursor_post_workflow.sh
+RUN_ID=cursor_$(date +%Y%m%dT%H%M%S) bash scripts/run_pass_complete.sh "summary of this pass"
 ```
 
-Then ask Codex to review:
+This runs pytest → `review_packet.md` → Codex scoped review → writes `NEXT_TODO.codex.md`.
 
-```text
-reports/agent_pipeline/<run_id>/review_packet.md
-```
+Read `reports/agent_pipeline/<run_id>/NEXT_TODO.codex.md` before starting the next feature.  
+If Codex fails (credits/CLI), fix and re-run with `SKIP_PYTEST=1` after local pytest is already green.
 
-Use `NEXT_TODO.codex.md` (or Codex's rewritten `NEXT_TODO.md`) as the next work queue.
+Legacy (packet only, no Codex): `bash scripts/run_cursor_post_workflow.sh`
 
 **Review-only (no headless implementer):**
 

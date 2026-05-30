@@ -40,7 +40,11 @@ HARNESS_EXIT=$?
 cp "$OUT_DIR/review_harness.log" "$OUT_DIR/gemini_review_harness.log" 2>/dev/null || true
 
 echo "Running runtime tests..."
-.venv/bin/python -m pytest tests/test_report_performance.py tests/test_reappraise_regime.py > "$OUT_DIR/runtime_harness.log" 2>&1
+.venv/bin/python -m pytest \
+  tests/test_report_performance.py \
+  tests/test_reappraise_regime.py \
+  tests/test_portfolio_backtest_golden.py \
+  > "$OUT_DIR/runtime_harness.log" 2>&1
 RUNTIME_EXIT=$?
 
 echo "Generating review packet..."

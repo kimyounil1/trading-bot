@@ -86,6 +86,11 @@ def parse_args() -> argparse.Namespace:
         help="Timeout for the Codex review step.",
     )
     parser.add_argument(
+        "--ignore-artifacts",
+        action="store_true",
+        help="Allow Codex review when models/logs are in the diff (pass closure).",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print planned commands without running Gemini, Codex, or tests.",
@@ -188,7 +193,11 @@ def write_json(path: Path, data: dict) -> None:
 
 
 def check_stop_conditions(
-    out_dir: Path, max_changed_files: int, history: list[dict]
+    out_dir: Path,
+    max_changed_files: int,
+    history: list[dict],
+    *,
+    ignore_artifacts: bool = False,
 ) -> str | None:
     changed_files_path = out_dir / "changed_files.txt"
     if changed_files_path.exists():
@@ -201,7 +210,7 @@ def check_stop_conditions(
             for f in changed_files
             if any(p in f for p in ["models/", "logs/", "reports/", ".pytest_cache/"])
         ]
-        if artifacts:
+        if artifacts and not ignore_artifacts:
             return f"Generated artifacts detected in diff (excluded from review loop): {artifacts}"
 
         sensitive = [
@@ -303,7 +312,12 @@ def main() -> int:
         )
 
         # Check stop conditions after Gemini + Post-workflow
-        stop_reason = check_stop_conditions(out_dir, args.max_changed_files, history)
+        stop_reason = check_stop_conditions(
+            out_dir,
+            args.max_changed_files,
+            history,
+            ignore_artifacts=args.ignore_artifacts,
+        )
         if stop_reason:
             print(f"STOP CONDITION: {stop_reason}")
             break

@@ -58,7 +58,8 @@ AGY must **not**:
 1. Cursor lands feature code + minimal smoke test if needed.
 2. User invokes AGY with `[AGY]` task file (scope: tests only, files list, interfaces to mock).
 3. AGY adds tests; runs `PYTHONPATH=. .venv/bin/python -m pytest <paths>`.
-4. Cursor merges or rebases; runs full suite; post-workflow → Codex scoped review.
+4. Cursor merges or rebases; runs full suite.
+5. **패스 마감:** `RUN_ID=<pass> bash scripts/run_pass_complete.sh` → Codex 리뷰 → `NEXT_TODO.codex.md` 확인 (AGY 테스트만 끝내고 리뷰 생략 금지).
 
 ## Handoff Format
 
