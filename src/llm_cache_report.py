@@ -11,6 +11,7 @@ from typing import Any
 
 DEFAULT_CACHE_PATH = Path("data/llm_cache.json")
 DEFAULT_OUTPUT_DIR = Path("logs/llm_monitoring")
+DEFAULT_CONFIG_PATH = Path("config/llm_monitoring_config.json")
 
 LLM_CACHE_REPORT_KEYS = (
     "generated_at",
@@ -117,22 +118,93 @@ def build_llm_cache_report(cache_path: str | Path = DEFAULT_CACHE_PATH) -> dict[
     return validate_llm_cache_report(report)
 
 
+def load_llm_monitoring_config(path: Path = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
+    if not path.is_file():
+        return {
+            "min_cache_hit_rate": 0.35,
+            "max_entries_per_ticker_day": 1.2,
+            "notify_telegram": True,
+            "notify_on_empty_cache": False,
+        }
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def evaluate_llm_cache_alerts(
+    report: dict[str, Any],
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    config = config or load_llm_monitoring_config()
+    failures: list[str] = []
+    hit_rate = float(report.get("estimated_cache_hit_rate", 0.0))
+    entries_ratio = float(report.get("entries_per_ticker_day", 0.0))
+    entry_count = int(report.get("entry_count", 0))
+
+    min_hit = float(config.get("min_cache_hit_rate", 0.35))
+    max_ratio = float(config.get("max_entries_per_ticker_day", 1.2))
+
+    if entry_count == 0 and config.get("notify_on_empty_cache"):
+        failures.append("LLM cache is empty (possible cache miss storm on next run)")
+    elif entry_count > 0 and hit_rate < min_hit:
+        failures.append(
+            f"cache hit proxy {hit_rate:.2f} < min {min_hit:.2f} (miss rate elevated)"
+        )
+    if entries_ratio > max_ratio:
+        failures.append(
+            f"entries_per_ticker_day {entries_ratio:.2f} > max {max_ratio:.2f}"
+        )
+
+    return {
+        "passed": not failures,
+        "failures": failures,
+        "thresholds": {"min_cache_hit_rate": min_hit, "max_entries_per_ticker_day": max_ratio},
+    }
+
+
+def maybe_notify_llm_cache_alerts(
+    report: dict[str, Any],
+    alerts: dict[str, Any],
+    *,
+    notify: bool = True,
+) -> None:
+    if alerts.get("passed") or not notify:
+        return
+    from src.notifier import notify_info
+
+    notify_info(
+        "⚠️ LLM cache monitoring alert",
+        "\n".join(alerts.get("failures") or [])
+        + f"\nEntries: {report.get('entry_count')} | Hit proxy: {report.get('estimated_cache_hit_rate')}",
+    )
+
+
 def write_llm_cache_artifacts(
     report: dict[str, Any],
     output_dir: Path = DEFAULT_OUTPUT_DIR,
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
-    path = output_dir / "latest_summary.json"
-    path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
-    return path
+    latest = output_dir / "latest_summary.json"
+    if latest.is_file():
+        (output_dir / "previous_summary.json").write_text(
+            latest.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+    latest.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+    return latest
 
 
 def run_llm_cache_report(
     cache_path: str | Path = DEFAULT_CACHE_PATH,
     output_dir: Path = DEFAULT_OUTPUT_DIR,
+    notify_telegram: bool | None = None,
 ) -> dict[str, Any]:
+    config = load_llm_monitoring_config()
     report = build_llm_cache_report(cache_path)
+    alerts = evaluate_llm_cache_alerts(report, config=config)
+    report["alerts"] = alerts
     write_llm_cache_artifacts(report, output_dir)
+    if notify_telegram is None:
+        notify_telegram = bool(config.get("notify_telegram", True))
+    maybe_notify_llm_cache_alerts(report, alerts, notify=notify_telegram)
     return report
 
 

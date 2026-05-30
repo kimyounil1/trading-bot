@@ -1,0 +1,8 @@
+{
+  "description": "Paper-only proposal when guard_impact go/no-go passes. Do not enable in live without review.",
+  "crowding_guard_enabled": true,
+  "crowding_lookback_days": 60,
+  "crowding_max_positions": 2,
+  "crowding_momentum_threshold": 0.15,
+  "crowding_trend_gap_threshold": 0.05
+}

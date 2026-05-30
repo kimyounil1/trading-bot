@@ -87,6 +87,18 @@
   bash scripts/run_benchmark_gap_report.sh    # logs/benchmark_gap/latest_summary.json
   ```
   승격 게이트 문서: [`docs/promotion_gates.md`](promotion_gates.md)
+- **Paper crowding guard (수동)**:
+  ```bash
+  bash scripts/run_guard_impact_report.sh
+  bash scripts/run_crowding_paper_gate.sh   # logs/crowding_paper/go_no_go_checklist.json
+  ```
+  GO 시 설정안: `config/crowding_paper_proposal.json` (paper only)
+- **실행 정합 (주간)**:
+  ```bash
+  bash scripts/run_execution_alignment_report.sh   # audit vs slippage diff
+  ```
+- **레버리지 stress 알림**: `config/leverage_stress_config.json` — `run_leverage_stress_report.sh --leverage 2.0`
+- **LLM cache 알림**: `config/llm_monitoring_config.json` — `run_llm_cache_report.sh`
 - **리스크 리포트 (수동/주간)**:
   ```bash
   bash scripts/run_guard_impact_report.sh      # logs/guard_impact/latest_summary.json

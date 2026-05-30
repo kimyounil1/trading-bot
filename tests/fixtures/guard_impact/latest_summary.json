@@ -1,0 +1,24 @@
+{
+  "baseline": {
+    "total_return_pct": 50.0,
+    "max_drawdown_pct": -10.0,
+    "sharpe_ratio": 1.5,
+    "trade_count": 42,
+    "win_rate_pct": 57.0
+  },
+  "delta": {
+    "total_return_pct": -2.0,
+    "max_drawdown_pct": 0.5,
+    "sharpe_ratio": -0.05,
+    "trade_count": -3,
+    "win_rate_pct": -1.0
+  },
+  "with_crowding_guard": {
+    "total_return_pct": 48.0,
+    "max_drawdown_pct": -9.5,
+    "sharpe_ratio": 1.45,
+    "trade_count": 39,
+    "win_rate_pct": 56.0,
+    "estimated_crowding_blocked_trades": 3
+  }
+}

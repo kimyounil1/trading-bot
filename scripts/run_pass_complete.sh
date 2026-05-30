@@ -44,6 +44,10 @@ else
     tests/test_retrain_notifications.py \
     tests/test_llm_cache_report_schema.py \
     tests/test_leverage_stress_report.py \
+    tests/test_leverage_stress_alerts.py \
+    tests/test_crowding_paper_gate.py \
+    tests/test_execution_alignment_report.py \
+    tests/test_llm_cache_alerts.py \
     tests/test_guard_impact_report.py \
     tests/test_check_audit_daily_summary.py \
     tests/test_fold_variance_report.py \

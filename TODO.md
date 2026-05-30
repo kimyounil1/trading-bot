@@ -50,7 +50,7 @@ RUN_ID=<phase>_final bash scripts/run_pass_complete.sh "Phase N complete"
 | **관측** | 일별 audit, 주간 slippage, guard/leverage/LLM cache 리포트 스크립트 (`docs/runbook.md`) |
 | **비활성** | `deep_model.py`, `rl_portfolio.py` — `docs/RESEARCH_MODELS.md` |
 
-**완료 로드맵:** Phase 0–25 → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
+**완료 로드맵:** Phase 0–26 → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
 
 **우선순위 가이드 (2026 Q2)**
 1. **운영 자동화** — 리포트·audit 타이머, 단일 ops 진입점
@@ -60,16 +60,7 @@ RUN_ID=<phase>_final bash scripts/run_pass_complete.sh "Phase N complete"
 
 ---
 
-## Phase 26 — 실행·리스크 라이브 정합 ← **다음**
-
-- [ ] `[Cursor]` `crowding_guard_enabled` paper 설정안 + `guard_impact_report` 결과 기반 go/no-go 체크리스트
-- [ ] `[Cursor]` paper 체결 vs `execution_audit.csv` 스킵 비율 주간 diff (slippage 리포트 연동)
-- [ ] `[AGY]` leverage > 1.0 stress 리포트 임계값 fixture + runbook 알림 문구
-- [ ] `[Cursor]` LLM cache miss 급증 시 Telegram (`llm_cache_report` 연동)
-
----
-
-## Backlog (우선순위 낮음 · live 미사용 시 보류 가능)
+## Backlog (우선순위 낮음 · live 미사용 시 보류 가능) ← **다음**
 
 - [ ] `[Cursor]` 레버리지 > 1.0 paper 소액 실험 + stress 게이트 연동
 - [ ] `[AGY]` Factor/crowding guard **라이브** 영향도 (백테스트 리포트 vs audit 스킵 로그 대조)

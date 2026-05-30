@@ -12,6 +12,13 @@ import pandas as pd
 
 DEFAULT_OUTPUT_DIR = Path("logs/leverage_stress")
 DEFAULT_EQUITY_PATH = Path("logs/portfolio_backtest/portfolio_equity.csv")
+DEFAULT_CONFIG_PATH = Path("config/leverage_stress_config.json")
+
+LEVERAGE_STRESS_ALERT_KEYS = (
+    "passed",
+    "failures",
+    "thresholds",
+)
 
 LEVERAGE_STRESS_REPORT_KEYS = (
     "generated_at",
@@ -126,6 +133,66 @@ def validate_leverage_stress_report(report: dict[str, Any]) -> dict[str, Any]:
     return report
 
 
+def load_leverage_stress_config(path: Path = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
+    if not path.is_file():
+        return {
+            "default_leverage": 2.0,
+            "alert_if_stressed_drawdown_below_pct": -25.0,
+            "alert_if_gap10_final_equity_loss_below_pct": -15.0,
+            "notify_telegram": True,
+        }
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def evaluate_leverage_stress_alerts(
+    report: dict[str, Any],
+    *,
+    leverage: float,
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    config = config or load_leverage_stress_config()
+    failures: list[str] = []
+    dd_floor = float(config.get("alert_if_stressed_drawdown_below_pct", -25.0))
+    gap10_floor = float(config.get("alert_if_gap10_final_equity_loss_below_pct", -15.0))
+
+    for row in report.get("scenarios") or []:
+        if float(row.get("max_drawdown_pct", 0.0)) < dd_floor:
+            failures.append(
+                f"{row['name']}: max_drawdown_pct={row['max_drawdown_pct']} < {dd_floor}"
+            )
+        if row["name"] == "gap_down_10pct":
+            loss_pct = float(row.get("final_equity_delta_pct", 0.0))
+            if loss_pct < gap10_floor:
+                failures.append(
+                    f"gap_down_10pct: final_equity_delta_pct={loss_pct} < {gap10_floor} "
+                    f"(leverage={leverage})"
+                )
+
+    return {
+        "passed": not failures,
+        "failures": failures,
+        "thresholds": {
+            "alert_if_stressed_drawdown_below_pct": dd_floor,
+            "alert_if_gap10_final_equity_loss_below_pct": gap10_floor,
+            "leverage": leverage,
+        },
+    }
+
+
+def maybe_notify_leverage_stress(
+    report: dict[str, Any],
+    alerts: dict[str, Any],
+    *,
+    notify: bool = True,
+) -> None:
+    if alerts.get("passed") or not notify:
+        return
+    from src.notifier import notify_info
+
+    body = "\n".join(alerts.get("failures") or [])
+    notify_info("⚠️ Leverage stress thresholds breached", body)
+
+
 def write_leverage_stress_artifacts(
     report: dict[str, Any],
     output_dir: Path = DEFAULT_OUTPUT_DIR,
@@ -139,12 +206,20 @@ def write_leverage_stress_artifacts(
 def run_leverage_stress_report(
     equity_path: str | Path = DEFAULT_EQUITY_PATH,
     *,
-    leverage: float = 1.0,
+    leverage: float | None = None,
     output_dir: Path = DEFAULT_OUTPUT_DIR,
+    notify_telegram: bool | None = None,
 ) -> dict[str, Any]:
+    config = load_leverage_stress_config()
+    leverage = float(leverage if leverage is not None else config.get("default_leverage", 1.0))
     equity = load_equity_series(equity_path)
     report = build_leverage_stress_report(equity, leverage=leverage)
+    alerts = evaluate_leverage_stress_alerts(report, leverage=leverage, config=config)
+    report["alerts"] = alerts
     write_leverage_stress_artifacts(report, output_dir)
+    if notify_telegram is None:
+        notify_telegram = bool(config.get("notify_telegram", True))
+    maybe_notify_leverage_stress(report, alerts, notify=notify_telegram)
     return report
 
 

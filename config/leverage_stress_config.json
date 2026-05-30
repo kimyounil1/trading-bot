@@ -1,0 +1,6 @@
+{
+  "default_leverage": 2.0,
+  "alert_if_stressed_drawdown_below_pct": -25.0,
+  "alert_if_gap10_final_equity_loss_below_pct": -15.0,
+  "notify_telegram": true
+}

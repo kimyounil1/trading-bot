@@ -49,11 +49,15 @@ bash "${ROOT}/scripts/run_llm_cache_report.sh"
 if [[ "$RUN_WEEKLY" -eq 1 ]]; then
   echo "--- weekly slippage report ---"
   bash "${ROOT}/scripts/run_weekly_slippage_report.sh"
+  echo "--- execution alignment (audit vs slippage week-over-week) ---"
+  bash "${ROOT}/scripts/run_execution_alignment_report.sh"
 fi
 
 if [[ "$RUN_HEAVY" -eq 1 ]]; then
   echo "--- guard impact (backtest comparison) ---"
   "$PYTHON" -m src.guard_impact_report
+  echo "--- crowding paper go/no-go ---"
+  bash "${ROOT}/scripts/run_crowding_paper_gate.sh"
   echo "--- leverage stress ---"
   bash "${ROOT}/scripts/run_leverage_stress_report.sh"
 fi

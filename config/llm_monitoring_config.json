@@ -1,0 +1,6 @@
+{
+  "min_cache_hit_rate": 0.35,
+  "max_entries_per_ticker_day": 1.2,
+  "notify_telegram": true,
+  "notify_on_empty_cache": false
+}
