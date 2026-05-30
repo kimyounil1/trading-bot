@@ -31,9 +31,11 @@ else
   AGY_PROMPT="$AGY_PROMPT" bash scripts/run_agy_slice.sh
 fi
 
+# AGY slice already ran above; do not pass --balanced-pass (orchestrator would run it again).
 exec .venv/bin/python scripts/agent_orchestrator.py \
   --run-id "$RUN_ID" \
-  --balanced-pass \
-  --agy-prompt "$AGY_PROMPT" \
-  --task-file "$OUT_DIR/AGY_TASK.md" \
-  ${AGY_TEST_PATHS:+--agy-test-paths "$AGY_TEST_PATHS"}
+  --run-codex-review \
+  --scoped-review \
+  --ignore-artifacts \
+  --max-changed-files "${MAX_CHANGED_FILES:-80}" \
+  --task-file "${TASK_FILE:-$OUT_DIR/AGY_TASK.md}"
