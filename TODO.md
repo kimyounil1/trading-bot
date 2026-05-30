@@ -1,29 +1,34 @@
 # TODO
 
 ## Definition of Done (완료 기준)
-본 프로젝트의 모든 TODO 항목은 단순히 **"코드 작성/존재"**만으로 완료 처리하지 않으며, 다음 **3가지 검증 조건**을 모두 충족해야 완료(`[x]`)로 표시합니다:
-1. **코드 구현 (Code Existence)**: 요구사항에 부합하는 소스 코드가 스타일 가이드를 준수하여 작성되어야 함.
-2. **테스트 검증 (Test Verification)**: 신규 기능 및 수정 본에 대한 단위/통합 테스트 코드가 작성되어야 하며, 전체 pytest Suite가 100% 통과해야 함.
-3. **운영 및 보고서 검증 (Operations & Report Validation)**: 
-   - 필요 시 백테스트 실행 및 성능 요약 리포트(P&L, 슬리피지 등)를 자동으로 생성하거나 확인해야 함.
-   - `bash scripts/run_cursor_post_workflow.sh` 후 Codex 리뷰를 통해 오류나 경고가 없이 **APPROVED**를 획득해야 함.
+항목을 `[x]`로 두려면 다음을 **모두** 충족:
+1. **코드** — 요구사항 반영, 프로젝트 스타일 준수
+2. **테스트** — 관련 pytest 추가·통과, 전체 suite green
+3. **운영** — 필요 시 백테스트/리포트 확인; 구현 후 `bash scripts/run_cursor_post_workflow.sh` → Codex scoped review에서 blocking 이슈 없음
+
+---
+
+## Who owns what (TODO 담당)
+
+| 문서 | 역할 | 누가 쓰나 |
+|------|------|-----------|
+| **`TODO.md`** (이 파일) | 중기 로드맵·Phase | **사용자 + Cursor**가 Phase/우선순위 갱신. 대규모 방향은 **AGY**(선택) 검토 |
+| **`reports/.../NEXT_TODO.md`** | 이번 PR/패스 직후 작업 큐 | `run_cursor_post_workflow.sh`가 **초안** 생성 |
+| **`NEXT_TODO.codex.md`** | 리뷰 후 다음 구현 큐 | **Codex**가 리뷰 끝에 작성 (`# NEXT_TODO for Cursor`) |
+| **완료 Phase 기록** | 토큰 절약용 요약 | **`docs/TODO_ARCHIVE.md`** — Phase 0–19 요약만 유지 |
+
+**루프:** Cursor 구현 → post-workflow → Codex 리뷰·`NEXT_TODO` → Cursor가 다음 슬라이스. 장기 Phase는 Codex 출력을 보고 **사용자가 `TODO.md`에 반영**하는 것이 기본(자동 merge 아님).
 
 ---
 
 ## Agent Workflow (Cursor-First)
 
-| 역할 | 담당 | 문서 |
-|------|------|------|
-| **Cursor** | 메인 구현·통합·`main.py`/주문·리스크 | `CURSOR.md` |
-| **Codex** | read-only 리뷰·테스트 검증·`NEXT_TODO` | `AGENTS.md`, `docs/agent_review_harness.md` |
-| **AGY** | (선택) 설계·전략·리스크·대안 검토 | `AGY.md` |
-| **Gemini CLI** | (선택) headless 슬라이스 구현 | `GEMINI.md`, `--run-gemini` |
-
-**규칙:** 한 브랜치에서 구현 에이전트는 동시에 하나만 (Cursor **또는** Gemini CLI).
-
-**작업 라벨:** 신규 Phase 항목에 `[Cursor]` / `[Gemini]` / `[Either]` 를 붙여 분담.
-
-**리뷰 패킷:**
+| 역할 | 담당 |
+|------|------|
+| **Cursor** | 메인 구현 (`CURSOR.md`) |
+| **Codex** | read-only 리뷰, `NEXT_TODO` (`AGENTS.md`) |
+| **AGY** | (선택) 전략·리스크·아키텍처 |
+| **Gemini CLI** | (선택) `[Gemini]` 슬라이스 |
 
 ```bash
 RUN_ID=phase20_a bash scripts/run_cursor_post_workflow.sh
@@ -32,185 +37,44 @@ RUN_ID=phase20_a bash scripts/run_cursor_post_workflow.sh
 
 ---
 
-## Current Status (2026-05-27)
+## Current Status (2026-05-30)
 
-### Active Config
-- Tickers: 110개 (`config/strategy_config.json`)
-- AI model: **LightGBM + XGBoost Ensemble**, 24 features
-- Regime-Aware: **BULL / BEAR / NEUTRAL** 별 독립 모델 및 프로필 가동
-- Dynamic Profile: **ULTRA_AGGRESSIVE** (BULL 시 33% 비중 집중 투자)
-- AI exit: **MA primary / VIX>30 공황 시에만 AI score<0.45 청산**
-- Risk Guards: Circuit Breaker (-15%), Correlation Guard (0.85), Earnings Filter (+3/-1d)
-- Daily retraining: 매 평일 06:00 ET (systemd timer)
+- **Tickers:** 110 (`config/strategy_config.json`) + dynamic universe
+- **Models:** Regime-aware LGBM+XGB ensemble; last retrain `logs/retrain_history.csv` (ROC-AUC ~0.51)
+- **Walk-forward (5-fold):** ROC-AUC 0.45–0.55 — fold 간 편차 큼 (`logs/ml/ai_model_metrics.csv`)
+- **Portfolio backtest (recent):** total return **+50.7%**, benchmark **+58.2%**, max DD **-10.2%**, 42 trades (`logs/portfolio_backtest/`)
+- **Not in live path:** `deep_model.py`, `rl_portfolio.py` (Phase 12 infra only)
 
-### OOS Validated Performance (test: 2024-05-27 ~ 2026-05-27)
-- **Ultra Aggressive (Bull)**: 5개월 수익률 **+41.68%**, Sharpe 2.51
-- **Regime-Aware Ensemble**: Bear 시장 예측력(ROC-AUC 0.64) 대폭 강화
-- 슬리피지: 평균 0.36% (안정적)
+**Completed roadmap:** Phase 0–19 → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
 
 ---
 
-## Phase 0-6 ✅ Complete
-(이전 단계 완료)
+## Phase 20 — Portfolio validation & 벤치마크 정합성 `[Cursor]`
+
+- [ ] 포트폴리오 백테스트 결과를 CI 또는 post-workflow에서 주기 실행·`portfolio_summary.csv` 임계값(벤치마크 대비, max DD) 체크
+- [ ] `walk_forward_validation` / retrain 후 **포트폴리오 수준** 승격 기준을 AUC 단독이 아닌 OOS P&L·Sharpe와 연동
+- [ ] `report_performance.py` paper vs signal 슬리피지를 주간 runbook 항목으로 자동화(스크립트 또는 timer 문서화)
 
 ---
 
-## Phase 7 — Live Performance & Risk Monitoring ✅ Complete
+## Phase 21 — 신호·모델 품질 (fold 안정화) `[Cursor]` / `[Gemini]` 피처 실험
 
-- [x] Alpaca paper account 실제 거래 내역 vs 백테스트 비교 리포트 (`src/report_performance.py`)
-- [x] `src/logger.py`: 주문 로그 컬럼 일관성 수정
-- [x] 상관관계 기반 포지션 제한 (`src/correlation_guard.py`)
-- [x] Drawdown circuit breaker (-15%) 구현
-- [x] VIX panic 및 모델 성능 저하 알림 (Telegram)
+- [ ] Walk-forward fold별 ROC-AUC 편차 원인 분석 및 레짐/기간별 calibration 리포트 고정 경로
+- [ ] 챔피언 승격 시 `train_ai_model` 메트릭 + 포트폴리오 백테스트 **둘 다** 통과해야 교체
+- [ ] (선택) Transformer / RL: live 연동 **또는** README·TODO에 “research-only”로 명시하고 `main.py` 경로에서 제외 유지
 
 ---
 
-## Phase 8 — Regime-Aware Modeling ✅ Complete
+## Phase 22 — 운영 관측 & 실행 품질 `[Cursor]`
 
-- [x] 시장 레짐 분류 로직 (`src/market_regime.py`): VIX + SPY 추세 기반
-- [x] 레짐별 별도 모델 학습 및 실시간 전환 로직 (`src/ml_model.py`)
-- [x] Walk-Forward 검증 자동화 (`src/walk_forward_validation.py`)
-
----
-
-## Phase 9 — Signal Quality 개선 ✅ Complete
-
-- [x] LightGBM + XGBoost 앙상블 모델 (Soft Voting) 도입
-- [x] 어닝 캘린더 필터 (`src/earnings.py`): 실적 발표 전후 매수 차단
-- [x] 옵션 시장 신호 (`^SKEW`, `^VVIX`) 피처 추가 및 재학습
+- [ ] 일별 audit 요약(스킵 사유, API 오류, stale bar) 대시보드 또는 `logs/` 집계 스크립트
+- [ ] Retrain 실패·부분 성공 시 Telegram/runbook 알림 경로 점검
+- [ ] Macro/earnings 이벤트 전후 실제 스킵 비율 로그 기반 검증
 
 ---
 
-## Phase 10 — Dynamic Strategy Profiles ✅ Complete
+## Phase 23 — (백로그) 전략·리스크 `[AGY]` 검토 후 착수
 
-- [x] 시장 레짐별 다이내믹 프로필 시스템 구축 (`config/strategy_profiles.json`)
-- [x] **ULTRA_AGGRESSIVE** 모드 최적화: 강세장 수익률 극대화 (33% 집중 투자)
-- [x] 수동 오버라이드 및 자동 전환 로직 검증 완료
-
----
-
-## Phase 11 — 실행 고도화 및 지능화 ✅ Complete
-
-- [x] **분할 매도 로직 (Partial Profit-Taking)**: 수익률 +15% 도달 시 비중의 50%를 선제적으로 익절하여 수익 보존 (`src/main.py`)
-- [x] **LLM Consensus (Gemini)**: 매수 전 최신 뉴스를 LLM(Gemini)이 분석하여 정성적 리스크(부정적 공시, 소송 등) 감지 시 매수 차단 (`src/llm_analyst.py`)
-- [x] **Consensus 로직**: 정량 모델(앙상블) + 정성 모델(LLM) 합의 시에만 최종 매수 결정하도록 통합 완료
-
----
-
-## Phase 12 — 딥러닝 및 강화학습 ✅ Complete
-
-- [x] **시계열 Transformer 인프라**: PyTorch 기반의 `SimpleTimeSeriesTransformer` 아키텍처 설계 및 구현 (`src/deep_model.py`)
-- [x] **강화학습(RL) 포트폴리오 엔진**: Stable-Baselines3(PPO)를 활용한 동적 비중 조절 환경 및 에이전트 구축 (`src/rl_portfolio.py`)
-- [x] **라이브러리 환경 구축**: `torch`, `stable-baselines3`, `gymnasium` 설치 및 연동 확인 완료
-
----
-
-## Project Roadmap Finalized (2026-05-27)
-- [x] Phase 0-12 전 과정 고도화 및 검증 완료
-- [x] AI 기반 지능형 퀀트 시스템 구축 (Quantitative + Qualitative Hybrid)
-- [x] 강세장 ULTRA_AGGRESSIVE 모드로 최고 수익률 세팅 탑재 완료
-
----
-
-## Phase 13 — 다이내믹 유니버스 & 레버리지 ✅ Complete
-
-- [x] **다이내믹 유니버스 (Dynamic Universe)**: 매일 실시간 인기 종목(Most Active) 50개를 자동 수집하여 분석 대상 확대 (총 160+ 종목)
-- [x] **레버리지 가동**: 구매력(Buying Power) 증폭 로직 구현 완료
-- [x] **추가 매수(Pyramiding) 허용**: 보유 종목이라도 비중이 낮으면 목표치까지 추가 매수하도록 개선
-
----
-
-## Phase 14 — 수익 보존 및 정밀 엑싯 ✅ Complete
-
-### 14-A: 지능형 트레일링 스탑 (Trailing Stop)
-- [x] 주가 상승에 따라 손절 라인을 자동으로 올리는 로직 구현 (`src/main.py`, `src/backtester.py`)
-- [x] 최고점 대비 X% 하락 시 익절하여 '줬다 뺏기는' 상황 방지
-
-### 14-B: 다이내믹 포지션 리밸런싱
-- [x] 목표 비중 대비 과대 보유 포지션 자동 Trim 로직 구현 (`src/main.py`)
-- [x] 추가 매수 허용 로직과 연계한 목표 비중 복원 기반 리밸런싱 1차 적용 (`src/risk_manager.py`)
-
----
-
-## Phase 15 — 시장 섹터 및 테마 분석 ✅ Complete
-
-### 15-A: 섹터 순환매 (Sector Rotation) 감지
-- [x] 11개 주요 ETF(XLK, XLF 등)의 모멘텀을 비교하여 주도 섹터 파악 (`src/sector_rotation.py`)
-- [x] 주도 섹터 종목에 AI 점수 가산점 부여 (`src/main.py`, `src/sector_rotation.py`)
-
----
-
-## Phase 16 — Execution Resilience & 운영 안정성 ✅ Complete
-
-### 16-A: 주문 실행 복원력
-- [x] 재시도/타임아웃 상황에서 중복 주문을 막는 idempotency key 또는 run-level dedupe 도입
-- [x] Alpaca 주문 제출, 체결 조회, 부분청산, trim 매도 경로별 공통 예외 처리/재시도 정책 정리
-- [x] 장중 네트워크 오류 시 `dry-run` 전환이 아니라 "실행 중단 + 경고"로 fail-safe 동작 통일
-
-### 16-B: 상태 파일 및 데이터 무결성
-- [x] `data/trailing_peaks.json` 읽기/쓰기 atomic 처리 및 손상 파일 복구 로직 추가
-- [x] 매매 전 가격 데이터 최신 시각 검증 추가: stale/incomplete bar 감지 시 해당 티커 스킵
-- [x] Dynamic Universe / candidate cache 산출물에 대해 "생성 시각, 소스, 누락 티커 수" 메타데이터 강제 기록
-
-### 16-C: 실거래 감사 추적성
-- [x] 주문 사유(reason), 적용 프로필, 레짐, AI score, LLM verdict를 한 row에서 추적 가능한 실행 audit 로그 정규화
-- [x] partial exit / rebalance trim / full exit 를 동일한 이벤트 스키마로 로깅
-- [x] 일별 실행 요약에 "실주문 수, 스킵 사유 집계, 데이터 오류 수, API 오류 수" 추가
-
----
-
-## Phase 17 — Model Governance & 신호 품질 관리 (중기) ✅ Complete
-
-### 17-A: 모델 승격/강등 체계
-- [x] 레짐별 모델 파일에 학습 기간, 피처 셋 버전, OOS 성능, 승격 시각 메타데이터 저장
-- [x] 신규 모델 학습 후 자동 교체 대신 "챌린저 vs 챔피언" 비교 리포트 기반 승격 절차 추가
-- [x] 최근 실거래/paper 성과가 기준 이하일 때 이전 안정 모델로 롤백하는 안전장치 도입
-
-### 17-B: 드리프트 및 보정
-- [x] 피처 분포 드리프트 감지(예: volatility, volume, macro feature) 및 알림
-- [x] AI score calibration 점검: 확률 예측의 calibration curve / Brier score 리포트 자동화
-- [x] 레짐별 buy/exit threshold를 고정값이 아니라 rolling OOS 기반으로 재튜닝하는 배치 추가
-
-### 17-C: 정성 신호 통제
-- [x] LLM consensus 결과 캐시 및 재사용 정책 추가로 동일 티커 중복 호출 비용 절감
-- [x] 뉴스/LLM 실패 시 무조건 통과 또는 무조건 차단이 아니라 명시적 degraded mode 정책 정의
-- [x] 부정 이벤트 분류 사유를 구조화하여 "소송/실적경고/가이던스하향" 등 카테고리별 분석 가능하게 개선
-
-
----
-
-## Phase 18 — Portfolio Risk Engine 고도화 (중기) ✅ Complete
-
-### 18-A: 포트폴리오 수준 익스포저 통제
-- [x] leverage 사용 시 gross exposure, cash buffer, single-name max loss 기준을 함께 검증하는 포트폴리오 가드 추가
-- [x] 섹터 한도 외에 factor/momentum crowding 기반 concentration guard 도입 검토
-- [x] 상관관계 가드를 단순 pairwise 기준에서 포트폴리오 전체 평균 상관/클러스터 기준으로 확장 (`src/correlation_guard.py`)
-
-### 18-B: 이벤트 리스크 캘린더
-- [x] Earnings 외에 FOMC, CPI, PPI, NFP 같은 매크로 이벤트 캘린더 반영 (`src/macro_events.py`)
-- [x] 고변동 이벤트 전후 신규 진입 제한 또는 목표 비중 축소 규칙 추가 (`src/main.py`)
-- [x] 이벤트 결과 이후 regime/profile 재평가 배치를 별도 분리 (`src/reappraise_regime.py`)
-
-### 18-C: Exit 정책 정밀화
-- [x] trailing stop, AI exit, partial take-profit, rebalance trim 간 우선순위/충돌 규칙 명시화
-- [x] 종목별 ATR 또는 realized volatility 기반 adaptive trailing stop 검토 (`src/strategy.py`, `src/main.py`)
-- [x] 시간 기반 exit(보유 기간 초과, 신호 약화 지속) 규칙 추가 검토 (`src/main.py`, `src/alpaca_client.py`)
-
----
-
-## Phase 19 — 테스트/문서/설정 정합성 정리 ✅ Complete
-
-### 19-A: 테스트 보강
-- [x] `src/main.py` 실주문 흐름을 mock broker/mock LLM/mock news 기준으로 end-to-end 테스트 추가 (`tests/test_main_e2e.py`)
-- [x] partial exit / trim / trailing stop / earnings filter 동시 발생 케이스 회귀 테스트 추가
-- [x] 장애 테스트 추가: 손상된 JSON 상태파일, 빈 데이터프레임, Alpaca timeout, LLM timeout
-
-### 19-B: 설정 스키마 정리
-- [x] `src/settings.py` 중복 필드(`trailing_stop_pct`) 및 레거시/신규 설정 혼재 정리
-- [x] `strategy_config.json` / `strategy_profiles.json` 에 대한 schema validation 추가
-- [x] 미사용 설정값 및 문서와 어긋난 기본값 정리
-
-### 19-C: 문서 최신화
-- [x] `README.md`를 현재 아키텍처 기준으로 업데이트: Regime-aware, ensemble, LLM consensus, dynamic universe 반영
-- [x] 운영 runbook 추가: retrain 실패, API 장애, drawdown breach, stale data 대응 절차 (`docs/runbook.md`)
-- [x] TODO.md 완료 기준을 "코드 존재"가 아니라 "테스트/리포트/운영 검증 완료" 기준으로 재정의
+- [ ] Factor/crowding guard 실거래 영향도 백테스트
+- [ ] Leverage 사용 시 stress scenario (gap down, correlation spike)
+- [ ] LLM consensus 비용·캐시 hit rate 모니터링
