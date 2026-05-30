@@ -104,6 +104,26 @@ def git_commit_stats(since: str | None) -> dict[str, dict[str, float]]:
     return dict(stats)
 
 
+def codex_review_runs(since: str | None = None) -> int:
+    """Count completed Codex reviews (one NEXT_TODO.codex.md per invocation)."""
+    if not REPORT_ROOT.is_dir():
+        return 0
+    count = 0
+    for path in REPORT_ROOT.glob("*/NEXT_TODO.codex.md"):
+        if since:
+            try:
+                mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+                since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
+                if since_dt.tzinfo is None:
+                    since_dt = since_dt.replace(tzinfo=timezone.utc)
+                if mtime < since_dt:
+                    continue
+            except ValueError:
+                pass
+        count += 1
+    return count
+
+
 def pipeline_runs() -> dict[str, int]:
     counts: dict[str, int] = defaultdict(int)
     if not REPORT_ROOT.is_dir():
@@ -164,6 +184,8 @@ def build_report(since: str | None) -> dict:
             for a in agents_all
         },
         "pipeline_implementation_agent_runs": pipeline,
+        "codex_review_runs_total": codex_review_runs(),
+        "codex_review_runs_since": codex_review_runs(since) if since else None,
     }
 
 
@@ -195,6 +217,24 @@ def print_human(report: dict) -> None:
         print("\n-- Pipeline runs (review_packet implementation agent) --")
         for agent, n in report["pipeline_implementation_agent_runs"].items():
             print(f"  {agent:10} {n} runs")
+
+    codex_total = report.get("codex_review_runs_total", 0)
+    codex_since = report.get("codex_review_runs_since")
+    if codex_total:
+        print("\n-- Codex reviews (NEXT_TODO.codex.md count; target ~15-20% of passes) --")
+        print(f"  all_time     {codex_total} runs")
+        if codex_since is not None and report.get("since"):
+            print(f"  since filter {codex_since} runs  (git --since={report['since']})")
+        git_commits = sum(
+            report["git"].get(a, {}).get("commits", 0)
+            for a in (*AGENT_TAGS, "unlabeled")
+        )
+        if git_commits:
+            print(
+                f"  ratio        {pct(codex_since or codex_total, git_commits)}% "
+                f"codex runs / git commits (rough)"
+            )
+        print("  Tip: use SKIP_CODEX=1 for follow-ups — docs/codex_review_policy.md")
 
     print("\nTip: tag commits e.g. `feat(test): golden backtest [agy]`")
     print("     re-run: PYTHONPATH=. .venv/bin/python scripts/agent_workload_report.py --record")

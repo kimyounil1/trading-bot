@@ -5,12 +5,14 @@
 1. **코드** — 요구사항 반영, 프로젝트 스타일 준수
 2. **테스트** — 관련 pytest 추가·통과 (기본: `run_pass_complete.sh` subset 또는 명시한 경로)
 3. **운영** — 필요 시 백테스트/리포트·runbook 반영
-4. **Codex 리뷰** — Cursor 구현 + `[AGY]` 테스트 후 패스 마감:
+4. **리뷰** — pytest 필수; **Codex는 고위험·Phase 마감 시만** ([`docs/codex_review_policy.md`](docs/codex_review_policy.md)):
 
 ```bash
-RUN_ID=<pass_id> bash scripts/run_pass_complete.sh "한 줄 요약"
-# 대규모 diff: orchestrator에 --max-changed-files 80 (run_balanced_pass.sh 기본값 참고)
-# → NEXT_TODO.codex.md blocking 없을 때만 [x]
+# 일반 follow-up / docs / 리포트 스크립트
+RUN_ID=<pass_id> SKIP_CODEX=1 bash scripts/run_pass_complete.sh
+
+# Phase 마감 또는 main/orders/promotion 변경
+RUN_ID=<phase>_final bash scripts/run_pass_complete.sh "Phase N complete"
 ```
 
 ---
@@ -23,13 +25,13 @@ RUN_ID=<pass_id> bash scripts/run_pass_complete.sh "한 줄 요약"
 | **`docs/TODO_ARCHIVE.md`** | 완료 Phase 0–23 요약 |
 | **`reports/.../NEXT_TODO.codex.md`** | 패스 직후 Codex 구현 큐 |
 
-**루프:** Cursor 구현 → `[AGY]` 테스트 → `run_pass_complete.sh` → Codex `NEXT_TODO` 반영.
+**루프:** Cursor 구현 → `[AGY]` 테스트 → `SKIP_CODEX=1` pytest (중간) → Codex **1회** (마감) → 반영.
 
 | 역할 | 담당 |
 |------|------|
 | **Cursor** | `src/` 구현·설정·runbook |
 | **AGY** | `[AGY]` pytest·fixture·harness |
-| **Codex** | scoped 리뷰 (~15–20%) |
+| **Codex** | scoped 리뷰 **Phase당 1~2회** (~15–20% 호출 목표; 중간 수정은 `SKIP_CODEX=1`) |
 | **Gemini CLI** | 문서만 (테스트·트레이딩 경로 금지) |
 
 커밋 태그: `[cursor]` / `[agy]` — `scripts/agent_workload_report.py --record`

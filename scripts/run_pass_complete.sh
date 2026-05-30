@@ -6,8 +6,9 @@
 #   RUN_ID=phase20_golden bash scripts/run_pass_complete.sh "Cursor feature + AGY golden tests"
 #   RUN_ID=phase20_golden TASK_FILE=prompts/my_pass.md bash scripts/run_pass_complete.sh
 #
-# Requires: .venv, Codex CLI with credits for step 3.
+# Requires: .venv, Codex CLI with credits for step 3 (skip with SKIP_CODEX=1).
 # FULL_PYTEST=1 for entire suite; SKIP_PYTEST=1 if already green.
+# SKIP_CODEX=1 for docs/tests/reports or follow-up fixes — see docs/codex_review_policy.md
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -51,16 +52,23 @@ else
     tests/test_champion_promotion_governance.py
 fi
 
-echo "=== [2/3] Codex review via orchestrator (post-workflow + scoped review) ==="
+echo "=== [2/3] post-workflow / Codex ==="
 export IMPLEMENTATION_AGENT
 CODEX_EXIT=0
-.venv/bin/python scripts/agent_orchestrator.py \
-  --run-id "$RUN_ID" \
-  --task-file "$OUT_DIR/TASK.md" \
-  --run-codex-review \
-  --scoped-review \
-  --ignore-artifacts \
-  || CODEX_EXIT=$?
+if [[ "${SKIP_CODEX:-}" == "1" ]]; then
+  echo "SKIP_CODEX=1 — review packet only (no Codex). Policy: docs/codex_review_policy.md"
+  RUN_ID="$RUN_ID" IMPLEMENTATION_AGENT="$IMPLEMENTATION_AGENT" \
+    bash "$ROOT/scripts/run_cursor_post_workflow.sh"
+else
+  .venv/bin/python scripts/agent_orchestrator.py \
+    --run-id "$RUN_ID" \
+    --task-file "$OUT_DIR/TASK.md" \
+    --run-codex-review \
+    --scoped-review \
+    --ignore-artifacts \
+    --max-changed-files "${MAX_CHANGED_FILES:-80}" \
+    || CODEX_EXIT=$?
+fi
 
 echo ""
 echo "=== [3/3] Pass outputs ==="
@@ -81,12 +89,14 @@ else
 fi
 
 echo ""
-if [[ "$CODEX_EXIT" -ne 0 ]] || [[ ! -f "$OUT_DIR/NEXT_TODO.codex.md" ]]; then
+if [[ "${SKIP_CODEX:-}" == "1" ]]; then
+  echo "Light pass complete (no Codex). Use full pass before Phase [x] on high-risk work."
+elif [[ "$CODEX_EXIT" -ne 0 ]] || [[ ! -f "$OUT_DIR/NEXT_TODO.codex.md" ]]; then
   echo "Codex review incomplete (exit ${CODEX_EXIT:-?}). Fix credits/CLI, then re-run:"
   echo "  RUN_ID=$RUN_ID SKIP_PYTEST=1 bash scripts/run_pass_complete.sh"
   exit "${CODEX_EXIT:-1}"
+else
+  echo "Pass complete. Implement items from NEXT_TODO.codex.md in Cursor, then repeat."
 fi
-
-echo "Pass complete. Implement items from NEXT_TODO.codex.md in Cursor, then repeat."
 PYTHONPATH=. .venv/bin/python scripts/agent_workload_report.py --record 2>/dev/null || true
 exit 0
