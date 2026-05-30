@@ -52,6 +52,10 @@ echo "Running runtime tests..."
   tests/test_leverage_stress_report.py \
   tests/test_guard_impact_report.py \
   tests/test_check_audit_daily_summary.py \
+  tests/test_fold_variance_report.py \
+  tests/test_promotion_summary.py \
+  tests/test_benchmark_gap_report.py \
+  tests/test_champion_promotion_governance.py \
   > "$OUT_DIR/runtime_harness.log" 2>&1
 RUNTIME_EXIT=$?
 
