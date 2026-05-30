@@ -38,6 +38,7 @@ from src.retrain_holdout import (
     slice_ticker_data_to_holdout,
 )
 from src.notifier import notify_info
+from src.retrain_notifications import notify_champion_retained_if_needed, run_retrain_cli
 from src.portfolio_backtester import (
     PortfolioBacktestResult,
     build_ai_score_frames,
@@ -646,6 +647,8 @@ def main() -> None:
         if archived is not None:
             promotion_report["archived_previous_champion_model_path"] = str(archived[0])
             promotion_report["archived_previous_champion_metadata_path"] = str(archived[1])
+    else:
+        notify_champion_retained_if_needed(promotion_report, promotion_report_path)
 
     archived = find_latest_archived_champion(CHAMPION_ARCHIVE_DIR)
     rollback_report = resolve_rollback_decision(
@@ -687,4 +690,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    run_retrain_cli(main, _append_retrain_log)

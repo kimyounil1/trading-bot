@@ -1,0 +1,5 @@
+reason,count
+earnings filter: within 3d window,1
+macro event risk: FOMC day,1
+stale_price_data,1
+llm_or_policy,1

@@ -1,0 +1,41 @@
+{
+  "api_error_count": 1,
+  "api_error_samples": [
+    {
+      "event_type": "BUY_ERROR",
+      "reason": "API rate limit exceeded",
+      "ticker": "TSLA",
+      "timestamp": "2026-05-30T09:20:00+00:00"
+    }
+  ],
+  "context_skip_counts": {
+    "earnings": 1,
+    "macro_event": 1,
+    "other": 1,
+    "stale": 1
+  },
+  "context_skip_rate_of_skips": {
+    "earnings": 0.25,
+    "macro_event": 0.25,
+    "other": 0.25,
+    "stale": 0.25
+  },
+  "event_type_counts": {
+    "BUY_ERROR": 1,
+    "SKIP_BUY": 4
+  },
+  "generated_at": "2026-05-30T12:00:00Z",
+  "orders_submitted_count": 0,
+  "row_count": 5,
+  "skip_by_event": {
+    "SKIP_BUY": 4
+  },
+  "skip_reason_counts": {
+    "earnings filter: within 3d window": 1,
+    "llm_or_policy": 1,
+    "macro event risk: FOMC day": 1,
+    "stale_price_data": 1
+  },
+  "stale_bar_count": 1,
+  "unique_tickers": 5
+}

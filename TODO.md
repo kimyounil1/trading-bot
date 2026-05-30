@@ -93,16 +93,16 @@ RUN_ID=phase20_a bash scripts/run_cursor_post_workflow.sh
 - [x] `[AGY]` calibration/Brier 리포트 출력에 대한 pytest + fold별 메트릭 CSV 스키마 회귀 테스트
 - [x] `[Cursor]` 챔피언 승격: `train_ai_model` 메트릭 + 포트폴리오 백테스트 **둘 다** 통과해야 교체
 - [x] `[AGY]` 승격/롤백 decision path mock 테스트 (챌린저 거절·롤백 시나리오)
-- [ ] `[Cursor]` (선택) Transformer / RL: live 연동 **또는** “research-only” 명시
+- [ ] `[Cursor]` (백로그) Transformer / RL: live 미사용 — research-only 명시만 필요 시
 
 ---
 
 ## Phase 22 — 운영 관측 & 실행 품질
 
-- [ ] `[Cursor]` 일별 audit 요약(스킵 사유, API 오류, stale bar) 집계 스크립트 또는 대시보드
-- [ ] `[AGY]` audit 집계 출력·스키마에 대한 단위 테스트 + 샘플 로그 fixture
-- [ ] `[Cursor]` Retrain 실패·부분 성공 시 Telegram/runbook 알림 경로 점검
-- [ ] `[AGY]` macro/earnings 스킵 비율: 로그 fixture 기반 회귀 테스트
+- [x] `[Cursor]` 일별 audit 요약(스킵 사유, API 오류, stale bar) 집계 — `src/daily_audit_summary.py`, `scripts/run_daily_audit_summary.sh`
+- [x] `[AGY]` audit 집계 출력·스키마 — `tests/test_daily_audit_summary_schema.py`, `tests/fixtures/audit_daily/`
+- [x] `[Cursor]` Retrain 실패·부분 성공 Telegram/runbook — `run_retrain_cli`, `docs/runbook.md` §2.2
+- [x] `[AGY]` macro/earnings 스킵 비율 — `context_skip_*` in `daily_audit_summary` + golden fixture
 
 ---
 

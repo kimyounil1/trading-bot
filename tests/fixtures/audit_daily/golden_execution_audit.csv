@@ -1,0 +1,6 @@
+timestamp,event_type,ticker,action,status,reason
+2026-05-30T09:00:00+00:00,SKIP_BUY,AAPL,BUY,SKIPPED,earnings filter: within 3d window
+2026-05-30T09:05:00+00:00,SKIP_BUY,MSFT,BUY,SKIPPED,macro event risk: FOMC day
+2026-05-30T09:10:00+00:00,SKIP_BUY,GOOG,BUY,SKIPPED,stale price data for GOOG
+2026-05-30T09:15:00+00:00,SKIP_BUY,NVDA,BUY,SKIPPED,LLM reject: low conviction
+2026-05-30T09:20:00+00:00,BUY_ERROR,TSLA,BUY,ERROR,API rate limit exceeded
