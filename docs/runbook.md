@@ -40,7 +40,7 @@
 - **대응**:
     1. `logs/retrain_runs/retrain_*.log` 및 `logs/retrain_history.csv` 확인.
     2. 데이터 소스(yfinance) 차단 여부 확인.
-    3. `models/ai_score_model.joblib`이 있으면 봇은 기존 챔피언으로 동작. 수동: `bash scripts/run_retrain.sh`.
+    3. `models/ai_score_model.joblib`은 **로컬 전용**(git 미추적). `model_promotion_report.json`에서 `decision=PROMOTE`일 때만 챔피언 파일을 교체하고, ROC-AUC < 0.51이면 커밋·배포하지 않음. 수동: `bash scripts/run_retrain.sh`.
 
 ### 2.3 Drawdown Circuit Breaker 발동
 - **현상**: 포트폴리오 자산이 최고점 대비 15% 이상 하락하여 "New buys blocked" 알림 발생.

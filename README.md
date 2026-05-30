@@ -31,7 +31,7 @@ trading-bot/
 ├── config/             # 전략 프로필 및 시스템 설정 (JSON)
 ├── data/               # 피크 정보, LLM 캐시, 트레일링 스탑 데이터
 ├── logs/               # 실행 감사(Audit), 주문, 신호 로그 (CSV)
-├── models/             # 학습된 레짐별 AI 모델 파일
+├── models/             # 챔피언 모델 (로컬, git 미추적 — retrain·승격 후 생성)
 ├── scripts/            # 실행, 서비스 등록 및 에이전트 오케스트레이터
 │   ├── agent_orchestrator.py # Codex 리뷰 / optional Gemini CLI 루프
 │   ├── run_cursor_post_workflow.sh # Cursor 구현 후 리뷰 패킷 수집

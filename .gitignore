@@ -30,6 +30,10 @@ logs/*
 !logs/portfolio_backtest/
 !logs/portfolio_backtest/*summary*.csv
 
+# Champion model binaries are local-only (retrain + promotion); never commit ad-hoc retrains.
+models/*
+!models/.gitkeep
+
 # Never commit bulky/generated trading artifacts.
 logs/**/portfolio_equity.csv
 logs/**/portfolio_trades.csv

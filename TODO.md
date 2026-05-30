@@ -73,7 +73,8 @@ RUN_ID=phase20_a bash scripts/run_cursor_post_workflow.sh
 - **Portfolio backtest (recent):** total return **+50.7%**, benchmark **+58.2%**, max DD **-10.2%**, 42 trades (`logs/portfolio_backtest/`)
 - **Not in live path:** `deep_model.py`, `rl_portfolio.py` (Phase 12 infra only)
 
-**Completed roadmap:** Phase 0–19 → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
+**Completed roadmap:** Phase 0–23 → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)  
+**Last pass:** `phase23_pass` (Codex scoped review, 2026-05-30)
 
 ---
 
