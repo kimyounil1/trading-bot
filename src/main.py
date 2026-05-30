@@ -39,6 +39,10 @@ from src.market_clock import get_market_clock
 from src.notifier import notify_order, notify_error, notify_run_summary, notify_info
 from src.ml_model import load_ai_score_model, predict_ai_score_from_bundle
 from src.instrument_meta import check_instrument_buy_allowed, format_audit_reason
+from src.margin_leverage_paper_gate import (
+    apply_margin_leverage_paper_overrides,
+    evaluate_margin_leverage_buy_block,
+)
 from src.sector import is_sector_allowed
 from src.correlation_guard import is_correlation_allowed
 from src.market_regime import get_current_regime
@@ -418,6 +422,26 @@ def main() -> None:
 
     # 다이내믹 프로필 적용
     settings, profile_name = apply_dynamic_profile(settings, current_regime)
+
+    if getattr(settings, "margin_leverage_paper_enabled", False):
+        try:
+            settings = apply_margin_leverage_paper_overrides(settings)
+            print("Margin leverage paper proposal overrides applied.")
+        except FileNotFoundError as exc:
+            print(f"Warning: margin leverage paper proposal not applied: {exc}")
+
+    margin_leverage_block_active, margin_leverage_block_reason = evaluate_margin_leverage_buy_block(
+        float(getattr(settings, "leverage_factor", 1.0)),
+        margin_leverage_paper_enabled=bool(
+            getattr(settings, "margin_leverage_paper_enabled", False)
+        ),
+        margin_leverage_stress_gate_required=bool(
+            getattr(settings, "margin_leverage_stress_gate_required", True)
+        ),
+    )
+    if margin_leverage_block_active:
+        print(f"MARGIN_LEVERAGE_GATE_BLOCK: {margin_leverage_block_reason}")
+
     print(f"Applied Strategy Profile: {profile_name}")
     print(f"  - Max Positions: {settings.max_total_positions}")
     print(f"  - Position Pct: {settings.max_position_pct:.1%}")
@@ -886,6 +910,9 @@ def main() -> None:
         if macro_risk_active:
             print(f"MACRO_EVENT_RISK_ACTIVE: {macro_risk_reason}. New buys will be restricted.")
 
+    if margin_leverage_block_active:
+        print("New buys blocked until margin leverage stress gate passes (see runbook).")
+
     for ticker in settings.tickers:
         try:
             data_fresh, data_reason = price_data_freshness.get(
@@ -1055,6 +1082,11 @@ def main() -> None:
             if risk_allowed and position is None and macro_risk_active:
                 risk_allowed = False
                 risk_reason = f"macro event risk: {macro_risk_reason}"
+                target_amount = 0.0
+
+            if risk_allowed and position is None and margin_leverage_block_active:
+                risk_allowed = False
+                risk_reason = margin_leverage_block_reason
                 target_amount = 0.0
 
             # LLM Consensus 필터: 정량적 신호를 뉴스로 정성 검증 (Phase 11-B)

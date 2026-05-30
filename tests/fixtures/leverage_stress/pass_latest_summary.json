@@ -1,0 +1,19 @@
+{
+  "leverage": 2.0,
+  "scenarios": [
+    {
+      "name": "gap_down_10pct",
+      "max_drawdown_pct": -12.0,
+      "final_equity_delta_pct": -8.0
+    }
+  ],
+  "alerts": {
+    "passed": true,
+    "failures": [],
+    "thresholds": {
+      "alert_if_stressed_drawdown_below_pct": -25.0,
+      "alert_if_gap10_final_equity_loss_below_pct": -15.0,
+      "leverage": 2.0
+    }
+  }
+}

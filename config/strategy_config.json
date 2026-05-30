@@ -163,6 +163,8 @@
   "max_leveraged_etf_positions": 1,
   "max_effective_leverage_exposure_pct": 1.25,
   "block_leveraged_etfs_vix_above": 28.0,
+  "margin_leverage_paper_enabled": false,
+  "margin_leverage_stress_gate_required": true,
   "trailing_stop_pct": 0.05,
   "rebalance_threshold_pct": 0.20,
   "sector_rotation_enabled": true

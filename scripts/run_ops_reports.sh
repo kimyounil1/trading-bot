@@ -60,6 +60,8 @@ if [[ "$RUN_HEAVY" -eq 1 ]]; then
   bash "${ROOT}/scripts/run_crowding_paper_gate.sh"
   echo "--- leverage stress ---"
   bash "${ROOT}/scripts/run_leverage_stress_report.sh"
+  echo "--- margin leverage paper go/no-go ---"
+  bash "${ROOT}/scripts/run_margin_leverage_paper_gate.sh" --refresh-stress
 fi
 
 echo "=== ops reports complete; log=${LOG_FILE} ==="

@@ -1,0 +1,7 @@
+{
+  "max_allowed_leverage_factor": 1.5,
+  "stress_leverage": 2.0,
+  "stress_summary_path": "logs/leverage_stress/latest_summary.json",
+  "require_stress_alerts_passed": true,
+  "proposal_path": "config/margin_leverage_paper_proposal.json"
+}

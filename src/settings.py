@@ -113,6 +113,8 @@ class StrategySettings(StrategyProfile):
     max_leveraged_etf_positions: int = 1
     max_effective_leverage_exposure_pct: float = 1.25
     block_leveraged_etfs_vix_above: float = 28.0
+    margin_leverage_paper_enabled: bool = False
+    margin_leverage_stress_gate_required: bool = True
     trailing_stop_pct: float = 0.05
     adaptive_trailing_stop_enabled: bool = False
     atr_multiplier: float = 3.0

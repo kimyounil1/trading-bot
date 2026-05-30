@@ -70,7 +70,14 @@ print(len(s.tickers), 'tickers cached')
 
 **레버리지 ETF vs 마진 레버리지**
 - **레버리지 ETF** (`TQQQ`, `SOXL` 등): `config/instrument_registry.json` + `allow_leveraged_etfs` (기본 `false`). 유효 노출 = `Σ(market_value × |multiple|)` ≤ `max_effective_leverage_exposure_pct × portfolio`. 고 VIX 시 차단: `block_leveraged_etfs_vix_above` (기본 28).
-- **마진 `leverage_factor`**: 계좌 배수 — ETF 메타와 별도. paper 실험은 TODO 백로그.
+- **마진 `leverage_factor`**: 계좌 배수 — ETF 메타와 별도.
+  ```bash
+  bash scripts/run_leverage_stress_report.sh --leverage 2.0
+  bash scripts/run_margin_leverage_paper_gate.sh --leverage-factor 1.25 --refresh-stress
+  # GO → config/margin_leverage_paper_proposal.json 값으로 paper 소액 실험
+  # strategy_config: margin_leverage_paper_enabled=true (기본 stress gate 필수)
+  ```
+  산출물: `logs/margin_leverage_paper/go_no_go_checklist.json`
 
 ### 2.5 데이터 최신성(Stale Data) 오류
 - **현상**: `SKIP_BUY - stale price data` 로그 발생.

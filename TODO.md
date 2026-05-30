@@ -44,6 +44,7 @@ RUN_ID=<phase>_final bash scripts/run_pass_complete.sh "Phase N complete"
 |------|------|
 | **유니버스** | `UNIVERSE_PROFILE` paper/smoke/research; master **259** (`config/universe_master.csv`) |
 | **종목 메타** | `instrument_registry.json` — 레버리지 ETF 기본 매수 차단 (`allow_leveraged_etfs: false`) |
+| **마진 레버리지 paper** | stress gate + `margin_leverage_paper_proposal.json` (기본 비활성) |
 | **챔피언 모델** | LGBM+XGB, 로컬 `models/ai_score_model.joblib` (git 미추적) |
 | **최근 retrain** | `logs/retrain_history.csv` — fold ROC-AUC ~0.45–0.55, 평균 ~0.51 근처 |
 | **포트폴리오 백테스트** | return **+50.7%** vs bench **+58.2%**, max DD **-10.2%**, 42 trades (`logs/portfolio_backtest/`) |
@@ -51,7 +52,7 @@ RUN_ID=<phase>_final bash scripts/run_pass_complete.sh "Phase N complete"
 | **관측** | 일별 audit, 주간 slippage, guard/leverage/LLM cache 리포트 스크립트 (`docs/runbook.md`) |
 | **비활성** | `deep_model.py`, `rl_portfolio.py` — `docs/RESEARCH_MODELS.md` |
 
-**완료 로드맵:** Phase 0–27 → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
+**완료 로드맵:** Phase 0–28 → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
 
 **우선순위 가이드 (2026 Q2)**
 1. **백로그** — 마진 레버리지 paper, crowding 라이브, DL/RL
@@ -62,8 +63,6 @@ RUN_ID=<phase>_final bash scripts/run_pass_complete.sh "Phase N complete"
 ---
 
 ## Backlog (우선순위 낮음 · live 미사용 시 보류 가능) ← **다음**
-
-- [ ] `[Cursor]` 레버리지 > 1.0 **마진** paper 소액 실험 + stress 게이트 (Phase 27 instrument 레이어 이후)
 - [ ] `[AGY]` Factor/crowding guard **라이브** 영향도 (백테스트 리포트 vs audit 스킵 로그 대조)
 - [ ] `[Cursor]` Transformer / RL — `docs/RESEARCH_MODELS.md` 실험 브랜치만 (프로덕션 연동 없음)
 - [ ] `[Cursor]` Streamlit CMS에 ops 리포트 latest_summary 뷰어
@@ -88,6 +87,7 @@ bash scripts/run_promotion_summary.sh
 bash scripts/run_benchmark_gap_report.sh
 bash scripts/run_guard_impact_report.sh    # 무거움 — 주간 권장
 bash scripts/run_leverage_stress_report.sh --leverage 2.0
+bash scripts/run_margin_leverage_paper_gate.sh --leverage-factor 1.25
 
 # retrain (로컬 챔피언만 갱신, PROMOTE 시에만 교체)
 bash scripts/run_retrain.sh
