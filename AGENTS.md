@@ -89,8 +89,8 @@ Ask the user only before:
 ## Cursor / Codex / AGY Review Harness
 - **Cursor IDE** is the primary interactive implementation environment. Follow `CURSOR.md` when implementing in Cursor.
 - **Codex** is the default reviewer, verifier, and planning agent unless the user explicitly asks Codex to implement fixes.
-- **AGY** is an optional secondary reviewer for architecture, strategy, risk, and alternative designs (`AGY.md`).
-- **Gemini CLI** is an optional legacy headless implementer (`--run-gemini`); do not run it on the same branch while Cursor is editing.
+- **AGY** owns **`[AGY]` test and harness slices** (preferred over Gemini CLI); optional reviewer for architecture, strategy, and risk (`AGY.md`).
+- **Gemini CLI** is legacy headless (`--run-gemini`), **docs/low-risk only** — weaker default model than AGY; do not use for pytest or trading paths.
 - The review harness lives in `docs/agent_review_harness.md` and `codex_harness/agent_contract.json` (when present).
 - After Cursor (or any single implementer) finishes work, run `bash scripts/run_cursor_post_workflow.sh` to collect diffs, test logs, a Codex review packet, and a draft `NEXT_TODO.md` under `reports/agent_pipeline/<run_id>/`.
 - For **review-only** after Cursor edits: `.venv/bin/python scripts/agent_orchestrator.py --run-codex-review --scoped-review`.
@@ -100,7 +100,7 @@ Ask the user only before:
 - Before final reporting on broad agent-harness work, prefer `bash scripts/codex_pre_final_check.sh` when available.
 
 ### Multi-agent working tree rule
-Only one implementation agent may edit the working tree at a time. Default: Cursor edits; Codex reviews read-only; AGY reviews read-only or plan-only. Codex or AGY may implement fixes only when explicitly asked, preferably on a separate branch.
+Only one implementation agent may edit the working tree at a time. Default: Cursor edits production code; **AGY edits tests when assigned `[AGY]`**; Codex reviews read-only. AGY or Codex may touch non-test code only when explicitly asked, preferably on a separate branch.
 
 ### Codex (review-only)
 When reviewing implementation work:

@@ -1,26 +1,41 @@
 # AGY.md
 
-Optional secondary review rules for **AGY** (Antigravity / Gemini-based design assistant). AGY is **not** the primary implementer in this repository.
+Rules for **AGY** (Antigravity / stronger Gemini-tier assistant). AGY is **not** the primary production implementer, but it **is** the preferred agent for **test and harness work** in this repo.
+
+**Model note:** AGY sessions typically use a stronger model (e.g. Gemini Pro tier) than **Gemini CLI** headless defaults (often Flash-class). Prefer AGY over Gemini CLI for anything that must be correct on first try (tests, risk regressions, calibration reports).
 
 ## Role
 
-| Agent | Role |
-|-------|------|
-| **Cursor** | Primary interactive implementation (IDE) |
-| **Codex** | Default read-only reviewer, verifier, planner |
-| **AGY** | Optional second opinion on architecture, strategy, and risk |
-| **Gemini CLI** | Optional legacy headless implementer (`--run-gemini`) |
+| Agent | Role | Typical share (target) |
+|-------|------|-------------------------|
+| **Cursor** | Primary implementation: `main.py`, orders, integration, config wiring | ~60–70% |
+| **Codex** | Read-only review, test verification, `NEXT_TODO` per pass | ~15–20% |
+| **AGY** | **Tests & harness** (`[AGY]` slices); optional architecture/strategy/risk review | ~15–25% |
+| **Gemini CLI** | Legacy, low-risk only (`--run-gemini`); avoid for tests | ~0–5% |
 
-## When to Involve AGY
+## When to Involve AGY (review)
 
-Request AGY review when changes touch:
+Request AGY **review** when changes touch:
 - trading strategy semantics (buy/sell gates, regime logic, profile switching);
 - portfolio or execution risk (leverage, concentration, circuit breakers, correlation);
 - model governance (promotion, rollback, calibration, drift);
 - large refactors that span multiple core modules;
 - alternative designs worth comparing before merge.
 
-Skip AGY for: typo fixes, pure test additions, README-only updates, or changes already fully covered by Codex review.
+## When to Assign AGY (implement — `[AGY]`)
+
+Route **implementation** to AGY (explicit invoke; separate branch or sequential pass; still only one implementer at a time) for:
+- new or extended **pytest** for behavior Cursor just added (mock broker, mock LLM, fault injection);
+- **regression tests** for partial exit / trim / trailing / earnings / macro skip combinations;
+- **harness scripts** under `tests/harness/` and calibration/backtest **report generators** that do not touch live order paths;
+- portfolio/walk-forward **validation scripts** and golden-file checks on `logs/` outputs;
+- property-style tests on pure functions (`risk_manager`, `correlation_guard`, schema validators).
+
+**Cursor keeps:** `main.py` integration, Alpaca order paths, profile/regime wiring, and merging AGY test PRs after green pytest.
+
+**Do not assign AGY:** live order submission changes, secrets, `.env`, or same-branch concurrent edits with Cursor.
+
+Skip AGY entirely for: typo-only README, comment-only diffs already approved by Codex with no behavioral gap.
 
 ## Default AGY Stance
 
@@ -32,10 +47,18 @@ AGY should:
 5. End with a short, actionable plan — not a full reimplementation unless asked.
 
 AGY must **not**:
-- edit the working tree during review unless explicitly asked;
+- edit the working tree during **review** unless explicitly asked;
 - place or enable live trades;
 - edit secrets, `.env`, or production deployment configs;
-- run concurrently with Cursor or Gemini CLI as a second implementer on the same branch.
+- run concurrently with Cursor or Gemini CLI as a second implementer on the same branch;
+- replace Codex for `NEXT_TODO` drafting (Codex stays the per-pass queue owner).
+
+### AGY test implementation handoff
+
+1. Cursor lands feature code + minimal smoke test if needed.
+2. User invokes AGY with `[AGY]` task file (scope: tests only, files list, interfaces to mock).
+3. AGY adds tests; runs `PYTHONPATH=. .venv/bin/python -m pytest <paths>`.
+4. Cursor merges or rebases; runs full suite; post-workflow → Codex scoped review.
 
 ## Handoff Format
 

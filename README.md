@@ -51,17 +51,20 @@ trading-bot/
 
 | 역할 | 담당 | 규칙 문서 |
 |------|------|-----------|
-| **Cursor** | 메인 구현 (WSL Remote IDE) | [`CURSOR.md`](CURSOR.md) |
-| **Codex** | read-only 리뷰, 검증, `NEXT_TODO` | [`AGENTS.md`](AGENTS.md) |
-| **AGY** | (선택) 설계·전략·리스크 2차 검토 | [`AGY.md`](AGY.md) |
-| **Gemini CLI** | (선택) headless 구현 (`--run-gemini`) | [`GEMINI.md`](GEMINI.md) |
+| **Cursor** | 메인 구현 (~60–70%) | [`CURSOR.md`](CURSOR.md) |
+| **Codex** | read-only 리뷰, `NEXT_TODO` (~15–20%) | [`AGENTS.md`](AGENTS.md) |
+| **AGY** | **`[AGY]` 테스트·하네스** + 전략/리스크 검토 (~15–25%) | [`AGY.md`](AGY.md) |
+| **Gemini CLI** | 레거시·문서만 (~0–5%, 테스트 금지) | [`GEMINI.md`](GEMINI.md) |
 
 **평소 흐름**
 
-1. Cursor에서 구현 및 `pytest` 실행
-2. `RUN_ID=my_feature bash scripts/run_cursor_post_workflow.sh` 로 리뷰 패킷 생성
-3. `.venv/bin/python scripts/agent_orchestrator.py --run-codex-review --scoped-review` 로 Codex 리뷰
-4. 전략/리스크 대형 변경 시 AGY 추가 검토
+1. Cursor에서 기능 구현 (핵심 경로)
+2. **AGY**에 `[AGY]` 테스트 슬라이스 위임 → `pytest` green
+3. `RUN_ID=my_feature bash scripts/run_cursor_post_workflow.sh` 로 리뷰 패킷 생성
+4. Codex scoped 리뷰 (`--run-codex-review --scoped-review`)
+5. 전략/리스크 대형 변경 시 AGY 설계 리뷰 추가
+
+작업량 비율: `PYTHONPATH=. .venv/bin/python scripts/agent_workload_report.py --record` (커밋 메시지 `[cursor]` / `[agy]` 태그)
 
 상세: [docs/agent_review_harness.md](docs/agent_review_harness.md) (구 [gemini_codex_harness.md](docs/gemini_codex_harness.md))
 

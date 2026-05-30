@@ -2,7 +2,7 @@
 
 This harness defines how **Codex** (and optionally **AGY**) review, validate, and plan follow-up work after an implementation agent has changed this repository. It is not the trading runtime harness and it is not a "Codex implements everything" workflow.
 
-**Default flow:** Cursor implements in the IDE → post-workflow collects artifacts → Codex reviews read-only → optional AGY for architecture/risk.
+**Default flow:** Cursor implements → **AGY adds `[AGY]` tests** → post-workflow → Codex reviews read-only → optional AGY for architecture/risk on large strategy diffs.
 
 ## Roles
 
@@ -24,8 +24,8 @@ Only one implementation agent may edit the working tree at a time.
 Default:
 - **Cursor** edits.
 - **Codex** reviews in read-only mode.
-- **AGY** reviews in read-only or plan-only mode.
-- **Gemini CLI** (`--run-gemini`) is optional legacy headless implementer.
+- **AGY** implements **`[AGY]` test/harness slices** when invoked; otherwise read-only/plan-only for strategy/risk.
+- **Gemini CLI** (`--run-gemini`) is legacy, **docs/low-risk only** — not for tests (weaker default model than AGY).
 
 Codex or AGY may implement fixes only when explicitly asked, and preferably on a separate branch.
 Never let multiple agents edit the same branch concurrently.
@@ -85,12 +85,13 @@ It collects:
 
 The intended loop is:
 
-1. **Cursor** implements the change in the IDE (WSL remote or local).
-2. `scripts/run_cursor_post_workflow.sh` runs review/runtime checks and creates a packet.
-3. The user asks **Codex** to review `review_packet.md`.
-4. Codex leads with findings and produces `NEXT_TODO.codex.md` or rewrites `NEXT_TODO.md`.
-5. **Cursor** (or optional **Gemini CLI** for `[Gemini]`-labeled slices) works the next queue.
-6. Repeat after the next implementation pass.
+1. **Cursor** implements the change in the IDE (production paths).
+2. **AGY** implements `[AGY]` pytest/harness work (sequential; same branch rule — one implementer at a time).
+3. `scripts/run_cursor_post_workflow.sh` runs review/runtime checks and creates a packet.
+4. The user asks **Codex** to review `review_packet.md`.
+5. Codex leads with findings and produces `NEXT_TODO.codex.md` or rewrites `NEXT_TODO.md`.
+6. **Cursor** works the next queue (merge AGY tests, fix review findings).
+7. Repeat. Use **Gemini CLI** only for explicit `[Gemini]` docs/mechanical tasks if AGY is unavailable.
 
 This repository does not automatically invoke Cursor from the orchestrator. Cursor is IDE-driven; the pipeline only collects diffs and runs checks.
 
@@ -190,7 +191,7 @@ The orchestrator stops the loop automatically if:
 
 ## Optional AGY Review
 
-After Codex review, invoke AGY when strategy, risk, or architecture changed materially. AGY reads the same `review_packet.md` and follows `AGY.md`. AGY does not replace Codex for test verification or `NEXT_TODO` drafting unless you prefer that split.
+After Codex review, invoke AGY for **strategy/risk/architecture** when diffs are material. For **test gaps**, assign a follow-up `[AGY]` slice instead of Gemini CLI. AGY does not replace Codex for `NEXT_TODO` drafting.
 
 ## Review Output
 
@@ -200,7 +201,7 @@ A good Codex review should include:
 - tests run and actual results;
 - tests not run and why;
 - whether the implementer's claims were verified;
-- a short next-step plan with stop conditions and `[Cursor]` / `[Gemini]` labels where helpful;
+- a short next-step plan with stop conditions and `[Cursor]` / `[AGY]` labels where helpful;
 - residual risk.
 
 ## Guardrails

@@ -1,6 +1,8 @@
 # GEMINI.md
 
-> **Primary implementer:** use [`CURSOR.md`](CURSOR.md) for Cursor (IDE). This file applies to **Gemini CLI** only (optional legacy headless implementer via `--run-gemini`).
+> **Primary implementer:** [`CURSOR.md`](CURSOR.md) (Cursor IDE). **Tests & harness:** [`AGY.md`](AGY.md) (`[AGY]`). This file applies to **Gemini CLI** only — **legacy, lowest priority.**
+
+**Quality warning:** Gemini CLI headless runs often default to a **faster/weaker** model than AGY (Pro-tier) sessions. Do **not** use Gemini CLI for trading tests, risk regressions, or model-governance logic. Use **AGY** for `[AGY]` test slices; use Cursor for production code.
 
 Behavioral guidelines to reduce common LLM coding mistakes and ensure the Trading Bot's reliability. These rules govern how **Gemini CLI** operates within this workspace when used as a headless implementation agent.
 
@@ -82,7 +84,15 @@ For a headless Gemini ↔ Codex loop:
 .venv/bin/python scripts/agent_orchestrator.py --task-file <task.md> --run-gemini --run-codex-review
 ```
 
-Only one implementer (Cursor **or** Gemini CLI) may edit the branch at a time. See `CURSOR.md` § Multi-Agent Working Tree Rule.
+Only one implementer (Cursor, **AGY**, or Gemini CLI) may edit the branch at a time. See `CURSOR.md` § Multi-Agent Working Tree Rule.
+
+## Allowed Gemini CLI scope (if used at all)
+
+- README / runbook wording, non-trading docs;
+- mechanical refactors with **zero** behavior change and Codex review immediately after;
+- one-off scripts explicitly marked `[Gemini]` and **outside** `src/main.py`, `src/alpaca_client.py`, risk guards.
+
+**Forbidden for Gemini CLI:** new pytest suites, harness evals, champion/challenger logic, order/idempotency paths — assign **`[AGY]`** instead.
 
 ### 6. Automatic Documentation Maintenance
 **Keep the entry point (README.md) synchronized with code changes.**

@@ -135,9 +135,12 @@ Never let multiple agents edit the same branch concurrently.
 - **Performance Reporting**: Run `PYTHONPATH=. .venv/bin/python src/report_performance.py` for slippage and P&L analysis.
 - **Fault Injection**: Any new risk logic or API interaction must be tested against `tests/harness/test_fault_injection.py`.
 
-## Task Ownership Labels (with Gemini CLI)
+## Task Ownership Labels
 
 When splitting work across agents, label tasks in `TODO.md` or task files:
-- `[Cursor]` — main integration, `main.py`, orders, portfolio/risk guards.
-- `[Gemini]` — isolated modules, tests, docs, CMS (headless via `--run-gemini`).
+- `[Cursor]` — main integration, `main.py`, orders, portfolio/risk guards, config wiring.
+- `[AGY]` — **pytest**, `tests/harness/`, regression/fault-injection, calibration & backtest report scripts (no live order paths). Invoke AGY explicitly after Cursor lands the feature under test.
+- `[Gemini]` — **deprecated for tests**; docs-only or mechanical non-trading edits via `--run-gemini` if no AGY session available.
 - `[Either]` — README or non-risk utilities (still only one implementer at a time).
+
+**Suggested split per feature:** Cursor implements → AGY test pass → Codex review → Cursor merge fixes.
