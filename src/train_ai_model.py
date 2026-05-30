@@ -38,6 +38,7 @@ from src.retrain_holdout import (
     slice_ticker_data_to_holdout,
 )
 from src.notifier import notify_info
+from src.model_promotion import apply_champion_promotion_if_needed
 from src.retrain_notifications import notify_champion_retained_if_needed, run_retrain_cli
 from src.portfolio_backtester import (
     PortfolioBacktestResult,
@@ -641,13 +642,21 @@ def main() -> None:
         encoding="utf-8",
     )
 
-    if promotion_report["decision"] == "PROMOTE":
+    def _promote_champion() -> None:
+        nonlocal archived
         archived = archive_current_champion()
         save_model_bundle(bundle)
         if archived is not None:
             promotion_report["archived_previous_champion_model_path"] = str(archived[0])
             promotion_report["archived_previous_champion_metadata_path"] = str(archived[1])
-    else:
+
+    archived = None
+    apply_result = apply_champion_promotion_if_needed(
+        promotion_report["decision"],
+        _promote_champion,
+    )
+    promotion_report["champion_updated"] = apply_result["champion_updated"]
+    if not apply_result["champion_updated"]:
         notify_champion_retained_if_needed(promotion_report, promotion_report_path)
 
     archived = find_latest_archived_champion(CHAMPION_ARCHIVE_DIR)

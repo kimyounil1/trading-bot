@@ -80,6 +80,13 @@
   ```
   산출물: `logs/slippage_reports/latest_summary.json` (타이머 설치: `bash scripts/install_slippage_report_timer.sh`)
 - **월간**: `data/llm_cache.json` 및 오래된 로그 파일 정리 (용량 관리).
+- **모델·알파 품질 (수동)**:
+  ```bash
+  bash scripts/run_fold_variance_report.sh    # logs/ml/fold_variance_report.json
+  bash scripts/run_promotion_summary.sh       # logs/ml/model_promotion_report.json
+  bash scripts/run_benchmark_gap_report.sh    # logs/benchmark_gap/latest_summary.json
+  ```
+  승격 게이트 문서: [`docs/promotion_gates.md`](promotion_gates.md)
 - **리스크 리포트 (수동/주간)**:
   ```bash
   bash scripts/run_guard_impact_report.sh      # logs/guard_impact/latest_summary.json

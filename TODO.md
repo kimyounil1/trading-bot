@@ -48,7 +48,7 @@ RUN_ID=<pass_id> bash scripts/run_pass_complete.sh "한 줄 요약"
 | **관측** | 일별 audit, 주간 slippage, guard/leverage/LLM cache 리포트 스크립트 (`docs/runbook.md`) |
 | **비활성** | `deep_model.py`, `rl_portfolio.py` — `docs/RESEARCH_MODELS.md` |
 
-**완료 로드맵:** Phase 0–24 → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
+**완료 로드맵:** Phase 0–25 → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
 
 **우선순위 가이드 (2026 Q2)**
 1. **운영 자동화** — 리포트·audit 타이머, 단일 ops 진입점
@@ -58,16 +58,7 @@ RUN_ID=<pass_id> bash scripts/run_pass_complete.sh "한 줄 요약"
 
 ---
 
-## Phase 25 — 신호·승격 품질 (알파) ← **다음**
-
-- [ ] `[AGY]` walk-forward fold 편차 원인 분석 노트 + 재현 스크립트 (리포트만, 전략 변경 최소)
-- [ ] `[Cursor]` promotion 게이트 임계값(config) 문서화 + `logs/ml/model_promotion_report.json` 대시보드/요약 CLI
-- [ ] `[Cursor]` 포트폴리오 백테스트 vs 벤치마크 gap 원인 분해 (섹터·진입 타이밍·슬리피지)
-- [ ] `[AGY]` 승격 거절 시나리오 E2E: degraded ROC 챔피언이 **파일만** 갱신되지 않음 (governance 회귀)
-
----
-
-## Phase 26 — 실행·리스크 라이브 정합
+## Phase 26 — 실행·리스크 라이브 정합 ← **다음**
 
 - [ ] `[Cursor]` `crowding_guard_enabled` paper 설정안 + `guard_impact_report` 결과 기반 go/no-go 체크리스트
 - [ ] `[Cursor]` paper 체결 vs `execution_audit.csv` 스킵 비율 주간 diff (slippage 리포트 연동)
@@ -94,6 +85,9 @@ RUN_ID=phase24_ops bash scripts/run_pass_complete.sh "작업 요약"
 # 운영 리포트 (수동)
 bash scripts/run_ops_reports.sh
 bash scripts/run_ops_reports.sh --weekly
+bash scripts/run_fold_variance_report.sh
+bash scripts/run_promotion_summary.sh
+bash scripts/run_benchmark_gap_report.sh
 bash scripts/run_guard_impact_report.sh    # 무거움 — 주간 권장
 bash scripts/run_leverage_stress_report.sh --leverage 2.0
 
