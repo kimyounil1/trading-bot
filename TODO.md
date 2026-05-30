@@ -3,112 +3,110 @@
 ## Definition of Done (완료 기준)
 항목을 `[x]`로 두려면 다음을 **모두** 충족:
 1. **코드** — 요구사항 반영, 프로젝트 스타일 준수
-2. **테스트** — 관련 pytest 추가·통과, 전체 suite green
-3. **운영** — 필요 시 백테스트/리포트 확인
-4. **Codex 리뷰 (필수)** — Cursor 구현 + `[AGY]` 테스트까지 끝난 뒤 **반드시** 패스 마감:
+2. **테스트** — 관련 pytest 추가·통과 (기본: `run_pass_complete.sh` subset 또는 명시한 경로)
+3. **운영** — 필요 시 백테스트/리포트·runbook 반영
+4. **Codex 리뷰** — Cursor 구현 + `[AGY]` 테스트 후 패스 마감:
 
 ```bash
-RUN_ID=<pass_id> bash scripts/run_pass_complete.sh "무엇을 했는지 한 줄"
-# → review_packet.md 생성 → Codex scoped review → NEXT_TODO.codex.md 확인
-# blocking 이슈 없을 때만 [x]. 실패 시 Codex 지적 반영 후 재실행.
+RUN_ID=<pass_id> bash scripts/run_pass_complete.sh "한 줄 요약"
+# 대규모 diff: orchestrator에 --max-changed-files 80 (run_balanced_pass.sh 기본값 참고)
+# → NEXT_TODO.codex.md blocking 없을 때만 [x]
 ```
 
 ---
 
-## Who owns what (TODO 담당)
+## Who owns what
 
-| 문서 | 역할 | 누가 쓰나 |
-|------|------|-----------|
-| **`TODO.md`** (이 파일) | 중기 로드맵·Phase | **사용자 + Cursor**가 Phase/우선순위 갱신. 전략·리스크는 **AGY** 검토, **테스트는 `[AGY]`** |
-| **`reports/.../NEXT_TODO.md`** | 이번 PR/패스 직후 작업 큐 | `run_cursor_post_workflow.sh`가 **초안** 생성 |
-| **`NEXT_TODO.codex.md`** | 리뷰 후 다음 구현 큐 | **Codex**가 리뷰 끝에 작성 (`# NEXT_TODO for Cursor`) |
-| **완료 Phase 기록** | 토큰 절약용 요약 | **`docs/TODO_ARCHIVE.md`** — Phase 0–19 요약만 유지 |
+| 문서 | 역할 |
+|------|------|
+| **`TODO.md`** | 활성 로드맵 (Phase 24+) — 사용자·Cursor가 우선순위 갱신 |
+| **`docs/TODO_ARCHIVE.md`** | 완료 Phase 0–23 요약 |
+| **`reports/.../NEXT_TODO.codex.md`** | 패스 직후 Codex 구현 큐 |
 
-**루프:** Cursor 구현 → post-workflow → Codex 리뷰·`NEXT_TODO` → Cursor가 다음 슬라이스. 장기 Phase는 Codex 출력을 보고 **사용자가 `TODO.md`에 반영**하는 것이 기본(자동 merge 아님).
-
----
-
-## Agent Workflow (Cursor-First)
+**루프:** Cursor 구현 → `[AGY]` 테스트 → `run_pass_complete.sh` → Codex `NEXT_TODO` 반영.
 
 | 역할 | 담당 |
 |------|------|
-| **Cursor** | 메인 구현 (`CURSOR.md`) |
-| **Codex** | read-only 리뷰, `NEXT_TODO` (~15–20%) |
-| **AGY** | **`[AGY]` 테스트·하네스** + (선택) 전략·리스크 검토 (~15–25%) |
-| **Gemini CLI** | 레거시·문서만 (~0–5%, Flash급 — 테스트 금지) |
+| **Cursor** | `src/` 구현·설정·runbook |
+| **AGY** | `[AGY]` pytest·fixture·harness |
+| **Codex** | scoped 리뷰 (~15–20%) |
+| **Gemini CLI** | 문서만 (테스트·트레이딩 경로 금지) |
 
-### 멀티 계정·토큰 균형 (운영 의도)
-
-Cursor / AGY / Codex를 **서로 다른 구독·계정**으로 쓰는 경우, 작업을 고르게 나누는 것이 맞습니다.
-
-| 계정 | 패스당 역할 | 토큰을 쓰는 타이밍 |
-|------|-------------|-------------------|
-| **Cursor** | `src/` 구현·통합·설정·리뷰 반영 | 기능 개발 턴 |
-| **AGY** | `[AGY]` pytest·fixture·harness만 | Cursor 커밋 직후 **별도 AGY 세션** |
-| **Codex** | scoped 리뷰·`NEXT_TODO` | `run_pass_complete.sh` 1~2회/패스 |
-
-**균형 목표 (주간, `agent_workload_report.py`):** 구현 라인 ~**55–65% Cursor**, 테스트 라인 ~**20–30% AGY**, 리뷰 ~**15–20% Codex** (Codex는 커밋 수보다 **호출 횟수**로 보면 됨).
-
-**AGY 세션 생략 가능:** `main.py`/주문 경로 변경 없음, 테스트 추가 ≤2파일, harness만 — 단, **이번 주 AGY 비중이 목표보다 10%p 이상 낮으면** 다음 `[AGY]` 항목은 AGY 세션으로 처리.
-
-**중복 금지:** 같은 테스트를 Cursor·AGY **둘 다** 작성하지 않음 (한 패스 = 한 구현 계정 + 한 테스트 계정).
-
-**패스 마감 (필수):** Cursor 구현 → **AGY 테스트** → `bash scripts/run_pass_complete.sh` → **`NEXT_TODO.codex.md` 확인** → Cursor 수정.
-
-**작업량 집계:** `PYTHONPATH=. .venv/bin/python scripts/agent_workload_report.py --record`  
-커밋 메시지에 `[cursor]` / `[agy]` / `[codex]` 태그 → `logs/agent_workload_history.csv`에 스냅샷 누적.
-
-```bash
-RUN_ID=phase20_a bash scripts/run_cursor_post_workflow.sh
-.venv/bin/python scripts/agent_orchestrator.py --run-id phase20_a --run-codex-review --scoped-review
-```
+커밋 태그: `[cursor]` / `[agy]` — `scripts/agent_workload_report.py --record`
 
 ---
 
 ## Current Status (2026-05-30)
 
-- **Tickers:** 110 (`config/strategy_config.json`) + dynamic universe
-- **Models:** Regime-aware LGBM+XGB ensemble; last retrain `logs/retrain_history.csv` (ROC-AUC ~0.51)
-- **Walk-forward (5-fold):** ROC-AUC 0.45–0.55 — fold 간 편차 큼 (`logs/ml/ai_model_metrics.csv`)
-- **Portfolio backtest (recent):** total return **+50.7%**, benchmark **+58.2%**, max DD **-10.2%**, 42 trades (`logs/portfolio_backtest/`)
-- **Not in live path:** `deep_model.py`, `rl_portfolio.py` (Phase 12 infra only)
+| 영역 | 상태 |
+|------|------|
+| **유니버스** | 110 tickers + dynamic universe (`config/strategy_config.json`) |
+| **챔피언 모델** | LGBM+XGB, 로컬 `models/ai_score_model.joblib` (git 미추적) |
+| **최근 retrain** | `logs/retrain_history.csv` — fold ROC-AUC ~0.45–0.55, 평균 ~0.51 근처 |
+| **포트폴리오 백테스트** | return **+50.7%** vs bench **+58.2%**, max DD **-10.2%**, 42 trades (`logs/portfolio_backtest/`) |
+| **거버넌스** | 승격 = ML 품질 + 포트폴리오 OOS 게이트; retrain 실패/챔피언 유지 Telegram |
+| **관측** | 일별 audit, 주간 slippage, guard/leverage/LLM cache 리포트 스크립트 (`docs/runbook.md`) |
+| **비활성** | `deep_model.py`, `rl_portfolio.py` — `docs/RESEARCH_MODELS.md` |
 
-**Completed roadmap:** Phase 0–23 → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)  
-**Last pass:** `phase23_pass` (Codex scoped review, 2026-05-30)
+**완료 로드맵:** Phase 0–23 → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
 
----
-
-## Phase 20 — Portfolio validation & 벤치마크 정합성
-
-- [x] `[Cursor]` post-workflow/CI 훅에서 `portfolio_summary.csv` 임계값(벤치마크 대비, max DD) 체크 연동
-- [x] `[AGY]` `tests/test_portfolio_backtest_gate.py` — `prompts/agy/phase20_portfolio_gate.md`
-- [x] `[Cursor]` retrain 후 **포트폴리오 수준** 승격 기준을 AUC 단독이 아닌 OOS P&L·Sharpe와 연동
-- [x] `[Cursor]` `report_performance.py` paper vs signal 슬리피지 주간 자동화(스크립트 또는 timer)
-- [x] `[AGY]` portfolio backtest golden test: fixture equity/trades vs `logs/portfolio_backtest/` 스키마·핵심 메트릭 회귀
-
----
-
-## Phase 21 — 신호·모델 품질 (fold 안정화)
-
-- [x] `[Cursor]` Walk-forward fold별 ROC-AUC 편차 분석 및 calibration 리포트 **생성 경로** 구현
-- [x] `[AGY]` calibration/Brier 리포트 출력에 대한 pytest + fold별 메트릭 CSV 스키마 회귀 테스트
-- [x] `[Cursor]` 챔피언 승격: `train_ai_model` 메트릭 + 포트폴리오 백테스트 **둘 다** 통과해야 교체
-- [x] `[AGY]` 승격/롤백 decision path mock 테스트 (챌린저 거절·롤백 시나리오)
-- [x] `[Cursor]` Transformer / RL research-only — `docs/RESEARCH_MODELS.md`
+**우선순위 가이드 (2026 Q2)**
+1. **운영 자동화** — 리포트·audit 타이머, 단일 ops 진입점
+2. **알파·승격 품질** — 벤치마크 underperform, fold 편차 완화
+3. **라이브 정합** — paper vs 백테스트·슬리피지 드리프트 (live 미사용이어도 paper 기준 유지)
+4. **백로그** — 레버리지 실거래, DL/RL 연구
 
 ---
 
-## Phase 22 — 운영 관측 & 실행 품질
+## Phase 24 — 운영 자동화 & CI
 
-- [x] `[Cursor]` 일별 audit 요약(스킵 사유, API 오류, stale bar) 집계 — `src/daily_audit_summary.py`, `scripts/run_daily_audit_summary.sh`
-- [x] `[AGY]` audit 집계 출력·스키마 — `tests/test_daily_audit_summary_schema.py`, `tests/fixtures/audit_daily/`
-- [x] `[Cursor]` Retrain 실패·부분 성공 Telegram/runbook — `run_retrain_cli`, `docs/runbook.md` §2.2
-- [x] `[AGY]` macro/earnings 스킵 비율 — `context_skip_*` in `daily_audit_summary` + golden fixture
+- [ ] `[Cursor]` 일별 audit / 주간 slippage / LLM cache 리포트용 systemd timer (또는 `install_*_timer.sh` 패턴 통일)
+- [ ] `[Cursor]` `scripts/run_ops_reports.sh` — audit + slippage + llm_cache (+ 선택 guard/stress) 일괄 실행
+- [ ] `[AGY]` `run_pass_complete.sh` 기본 pytest subset에 Phase 22–23 테스트 경로 추가
+- [ ] `[Cursor]` post-workflow에 `logs/audit_daily/latest_summary.json` 존재·스키마 smoke (선택)
 
 ---
 
-## Phase 23 — 전략·리스크 리포트
+## Phase 25 — 신호·승격 품질 (알파)
 
-- [x] `[Cursor]` Factor/crowding guard 백테스트 영향도 — `src/guard_impact_report.py`, backtester `crowding_guard_enabled`
-- [x] `[Cursor]` Leverage stress (gap down, correlation spike) — `src/leverage_stress_report.py`
-- [x] `[AGY]` LLM cache hit rate 모니터링 — `src/llm_cache_report.py`, `tests/test_llm_cache_report_schema.py`
+- [ ] `[AGY]` walk-forward fold 편차 원인 분석 노트 + 재현 스크립트 (리포트만, 전략 변경 최소)
+- [ ] `[Cursor]` promotion 게이트 임계값(config) 문서화 + `logs/ml/model_promotion_report.json` 대시보드/요약 CLI
+- [ ] `[Cursor]` 포트폴리오 백테스트 vs 벤치마크 gap 원인 분해 (섹터·진입 타이밍·슬리피지)
+- [ ] `[AGY]` 승격 거절 시나리오 E2E: degraded ROC 챔피언이 **파일만** 갱신되지 않음 (governance 회귀)
+
+---
+
+## Phase 26 — 실행·리스크 라이브 정합
+
+- [ ] `[Cursor]` `crowding_guard_enabled` paper 설정안 + `guard_impact_report` 결과 기반 go/no-go 체크리스트
+- [ ] `[Cursor]` paper 체결 vs `execution_audit.csv` 스킵 비율 주간 diff (slippage 리포트 연동)
+- [ ] `[AGY]` leverage > 1.0 stress 리포트 임계값 fixture + runbook 알림 문구
+- [ ] `[Cursor]` LLM cache miss 급증 시 Telegram (`llm_cache_report` 연동)
+
+---
+
+## Backlog (우선순위 낮음 · live 미사용 시 보류 가능)
+
+- [ ] `[Cursor]` 레버리지 > 1.0 paper 소액 실험 + stress 게이트 연동
+- [ ] `[AGY]` Factor/crowding guard **라이브** 영향도 (백테스트 리포트 vs audit 스킵 로그 대조)
+- [ ] `[Cursor]` Transformer / RL — `docs/RESEARCH_MODELS.md` 실험 브랜치만 (프로덕션 연동 없음)
+- [ ] `[Cursor]` Streamlit CMS에 ops 리포트 latest_summary 뷰어
+
+---
+
+## Quick commands
+
+```bash
+# 패스 마감
+RUN_ID=phase24_ops bash scripts/run_pass_complete.sh "작업 요약"
+
+# 운영 리포트 (수동)
+bash scripts/run_daily_audit_summary.sh
+bash scripts/run_weekly_slippage_report.sh
+bash scripts/run_llm_cache_report.sh
+bash scripts/run_guard_impact_report.sh    # 무거움 — 주간 권장
+bash scripts/run_leverage_stress_report.sh --leverage 2.0
+
+# retrain (로컬 챔피언만 갱신, PROMOTE 시에만 교체)
+bash scripts/run_retrain.sh
+```
