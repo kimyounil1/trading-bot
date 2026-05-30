@@ -165,22 +165,12 @@ class PortfolioBacktestThresholdResult:
     warnings: list[str]
 
 
-def check_portfolio_backtest_thresholds(
-    output_dir: str | Path,
-    thresholds: PortfolioBacktestThresholds | None = None,
-    *,
-    validate_schema: bool = True,
-) -> PortfolioBacktestThresholdResult:
-    """Apply portfolio-level gates after schema validation."""
-    thresholds = thresholds or PortfolioBacktestThresholds()
+def _apply_portfolio_thresholds_to_summary(
+    summary: dict[str, Any],
+    thresholds: PortfolioBacktestThresholds,
+) -> tuple[list[str], list[str]]:
     failures: list[str] = []
     warnings: list[str] = []
-
-    if validate_schema:
-        result = validate_portfolio_backtest_dir(output_dir, min_equity_rows=2)
-        summary = result["summary"]
-    else:
-        summary = load_summary_row(Path(output_dir) / "portfolio_summary.csv")
 
     max_dd = float(summary["max_drawdown"])
     if max_dd < thresholds.max_drawdown_floor:
@@ -204,6 +194,40 @@ def check_portfolio_backtest_thresholds(
         if sharpe < thresholds.min_sharpe:
             failures.append(f"sharpe_ratio {sharpe:.4f} < min {thresholds.min_sharpe:.4f}")
 
+    return failures, warnings
+
+
+def check_portfolio_summary_thresholds(
+    summary: dict[str, Any],
+    thresholds: PortfolioBacktestThresholds | None = None,
+) -> PortfolioBacktestThresholdResult:
+    """Apply portfolio-level gates to an in-memory summary row (retrain promotion)."""
+    thresholds = thresholds or PortfolioBacktestThresholds()
+    failures, warnings = _apply_portfolio_thresholds_to_summary(summary, thresholds)
+    return PortfolioBacktestThresholdResult(
+        summary=summary,
+        passed=not failures,
+        failures=failures,
+        warnings=warnings,
+    )
+
+
+def check_portfolio_backtest_thresholds(
+    output_dir: str | Path,
+    thresholds: PortfolioBacktestThresholds | None = None,
+    *,
+    validate_schema: bool = True,
+) -> PortfolioBacktestThresholdResult:
+    """Apply portfolio-level gates after schema validation."""
+    thresholds = thresholds or PortfolioBacktestThresholds()
+
+    if validate_schema:
+        result = validate_portfolio_backtest_dir(output_dir, min_equity_rows=2)
+        summary = result["summary"]
+    else:
+        summary = load_summary_row(Path(output_dir) / "portfolio_summary.csv")
+
+    failures, warnings = _apply_portfolio_thresholds_to_summary(summary, thresholds)
     return PortfolioBacktestThresholdResult(
         summary=summary,
         passed=not failures,

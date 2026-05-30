@@ -10,9 +10,11 @@ from src.ml_model import (
     build_promotion_report,
     find_latest_archived_champion,
     load_model_metadata,
+    portfolio_oos_beats_champion,
     restore_archived_champion,
     save_model_bundle,
 )
+from src.portfolio_backtest_validation import PortfolioBacktestThresholds
 from src.train_ai_model import _evaluate_rollback_need
 
 
@@ -53,10 +55,69 @@ class ModelGovernanceTest(unittest.TestCase):
         challenger_metadata = {"oos_metrics": {"avg_roc_auc": 0.63}}
         champion_metadata = {"oos_metrics": {"avg_roc_auc": 0.60}}
 
-        report = build_promotion_report(challenger_metadata, champion_metadata)
+        report = build_promotion_report(
+            challenger_metadata,
+            champion_metadata,
+            require_portfolio_oos=False,
+        )
 
         self.assertEqual(report["decision"], "PROMOTE")
-        self.assertIn("challenger_avg_roc_auc", report["reason"])
+        self.assertTrue(report["auc_gate_passed"])
+
+    def test_build_promotion_report_requires_portfolio_gates(self) -> None:
+        challenger_metadata = {"oos_metrics": {"avg_roc_auc": 0.63}}
+        champion_metadata = {"oos_metrics": {"avg_roc_auc": 0.60}}
+        weak_portfolio = {
+            "total_return": 0.02,
+            "benchmark_return": 0.20,
+            "max_drawdown": -0.30,
+            "sharpe_ratio": -0.2,
+        }
+        strong_portfolio = {
+            "total_return": 0.15,
+            "benchmark_return": 0.10,
+            "max_drawdown": -0.08,
+            "sharpe_ratio": 1.1,
+        }
+
+        report = build_promotion_report(
+            challenger_metadata,
+            champion_metadata,
+            challenger_portfolio=weak_portfolio,
+            champion_portfolio=strong_portfolio,
+            portfolio_thresholds=PortfolioBacktestThresholds(max_drawdown_floor=-0.20),
+        )
+
+        self.assertEqual(report["decision"], "RETAIN_CHAMPION")
+        self.assertTrue(report["auc_gate_passed"])
+        self.assertFalse(report["portfolio_gate_passed"])
+
+    def test_build_promotion_report_promotes_on_auc_and_portfolio(self) -> None:
+        challenger_metadata = {"oos_metrics": {"avg_roc_auc": 0.63}}
+        champion_metadata = {"oos_metrics": {"avg_roc_auc": 0.60}}
+        challenger_portfolio = {
+            "total_return": 0.12,
+            "benchmark_return": 0.10,
+            "max_drawdown": -0.08,
+            "sharpe_ratio": 1.2,
+        }
+        champion_portfolio = {
+            "total_return": 0.08,
+            "benchmark_return": 0.10,
+            "max_drawdown": -0.10,
+            "sharpe_ratio": 0.9,
+        }
+
+        report = build_promotion_report(
+            challenger_metadata,
+            champion_metadata,
+            challenger_portfolio=challenger_portfolio,
+            champion_portfolio=champion_portfolio,
+        )
+
+        self.assertEqual(report["decision"], "PROMOTE")
+        self.assertTrue(report["portfolio_vs_champion_passed"])
+        self.assertTrue(portfolio_oos_beats_champion(challenger_portfolio, champion_portfolio))
 
     def test_save_model_bundle_persists_metadata_json(self) -> None:
         bundle = {

@@ -55,7 +55,12 @@
 ## 📈 3. 주기적 점검 사항 (Maintenance)
 
 - **일간**: Telegram 요약 리포트를 통해 실주문 수 및 스킵 사유 집계 확인.
-- **주간**: `PYTHONPATH=. .venv/bin/python src/report_performance.py` 실행하여 실거래 vs 백테스트 괴리율(슬리피지) 점검.
+- **주간**: paper 체결 vs 시그널 슬리피지 자동 리포트
+  ```bash
+  bash scripts/run_weekly_slippage_report.sh
+  # 또는: PYTHONPATH=. .venv/bin/python -m src.report_performance --weekly
+  ```
+  산출물: `logs/slippage_reports/latest_summary.json` (타이머 설치: `bash scripts/install_slippage_report_timer.sh`)
 - **월간**: `data/llm_cache.json` 및 오래된 로그 파일 정리 (용량 관리).
 
 ---

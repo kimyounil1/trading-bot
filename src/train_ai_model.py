@@ -16,7 +16,9 @@ from src.ml_model import (
     archive_current_champion,
     build_model_bundle,
     build_promotion_report,
+    bundle_to_model_wrapper,
     find_latest_archived_champion,
+    load_ai_score_model,
     load_model_metadata,
     restore_archived_champion,
     save_challenger_bundle,
@@ -24,8 +26,17 @@ from src.ml_model import (
     train_ai_score_model,
 )
 from src.macro_loader import load_macro_data
+from src.retrain_holdout import (
+    exclude_holdout_from_ticker_data,
+    portfolio_holdout_window,
+    slice_ticker_data_to_holdout,
+)
 from src.notifier import notify_info
-from src.portfolio_backtester import run_portfolio_backtest
+from src.portfolio_backtester import (
+    PortfolioBacktestResult,
+    build_ai_score_frames,
+    run_portfolio_backtest,
+)
 
 VIX_TICKER = "^VIX"
 RETRAIN_LOG_PATH = Path("logs/retrain_history.csv")
@@ -332,6 +343,118 @@ def _score_threshold_row(row: dict) -> tuple[float, float, float, float]:
     )
 
 
+def _portfolio_oos_snapshot(
+    result: PortfolioBacktestResult,
+    eval_start: pd.Timestamp,
+    eval_end: pd.Timestamp,
+) -> dict:
+    return {
+        "evaluation_start": eval_start.strftime("%Y-%m-%d"),
+        "evaluation_end": eval_end.strftime("%Y-%m-%d"),
+        "total_return": float(result.total_return),
+        "benchmark_return": float(result.benchmark_return),
+        "max_drawdown": float(result.max_drawdown),
+        "sharpe_ratio": float(result.sharpe_ratio),
+        "trades": int(result.trades),
+        "win_rate": float(result.win_rate),
+    }
+
+
+def _run_retrain_oos_portfolio(
+    *,
+    settings,
+    ticker_data: dict[str, pd.DataFrame],
+    vix_df: pd.DataFrame | None,
+    macro_df: pd.DataFrame | None,
+    model_wrapper,
+    eval_start: pd.Timestamp,
+    eval_end: pd.Timestamp,
+) -> dict:
+    """Portfolio backtest on holdout-only price data for model promotion."""
+    benchmark_df = (
+        ticker_data.get(settings.market_regime_ticker)
+        if settings.market_regime_filter_enabled
+        else None
+    )
+    relative_strength_benchmark_df = (
+        ticker_data.get(settings.relative_strength_benchmark_ticker)
+        if settings.relative_strength_filter_enabled
+        else None
+    )
+    spy_df = ticker_data.get("SPY")
+
+    ai_score_frames = None
+    if settings.use_ai_score:
+        ai_score_frames = build_ai_score_frames(
+            ticker_data,
+            ai_model_bundle=model_wrapper,
+            vix_df=vix_df,
+            spy_df=spy_df,
+            macro_df=macro_df,
+        )
+
+    result, _, _ = run_portfolio_backtest(
+        ticker_data=ticker_data,
+        benchmark_df=benchmark_df,
+        relative_strength_benchmark_df=relative_strength_benchmark_df,
+        initial_cash=10000.0,
+        max_positions=settings.max_total_positions,
+        target_position_pct=settings.max_position_pct,
+        transaction_cost_pct=0.001,
+        ma_fast=settings.ma_fast,
+        ma_slow=settings.ma_slow,
+        rsi_buy_limit=settings.rsi_buy_limit,
+        use_ai_score=settings.use_ai_score,
+        ai_score_buy_threshold=settings.ai_score_buy_threshold,
+        market_regime_filter_enabled=settings.market_regime_filter_enabled,
+        market_regime_ma_fast=settings.market_regime_ma_fast,
+        market_regime_ma_slow=settings.market_regime_ma_slow,
+        relative_strength_filter_enabled=settings.relative_strength_filter_enabled,
+        relative_strength_lookback_days=settings.relative_strength_lookback_days,
+        relative_strength_min_excess_return=settings.relative_strength_min_excess_return,
+        volume_filter_enabled=settings.volume_filter_enabled,
+        volume_lookback_days=settings.volume_lookback_days,
+        min_volume_ratio=settings.min_volume_ratio,
+        volatility_filter_enabled=settings.volatility_filter_enabled,
+        volatility_lookback_days=settings.volatility_lookback_days,
+        max_volatility=settings.max_volatility,
+        rank_trend_weight=settings.rank_trend_weight,
+        rank_ai_weight=settings.rank_ai_weight,
+        rank_momentum_weight=settings.rank_momentum_weight,
+        rank_volatility_weight=settings.rank_volatility_weight,
+        stop_loss_pct=settings.stop_loss_pct,
+        take_profit_pct=settings.take_profit_pct,
+        trailing_stop_pct=settings.trailing_stop_pct,
+        allocation_method=settings.allocation_method,
+        ai_exit_enabled=getattr(settings, "ai_exit_enabled", False),
+        ai_exit_threshold=(
+            settings.ai_exit_threshold_bear
+            if getattr(settings, "ai_exit_dynamic_enabled", False)
+            else settings.ai_exit_threshold
+        ),
+        ai_exit_dynamic_enabled=getattr(settings, "ai_exit_dynamic_enabled", False),
+        ai_exit_vix_low=getattr(settings, "ai_exit_vix_low", 15.0),
+        ai_exit_vix_high=getattr(settings, "ai_exit_vix_high", 25.0),
+        ai_exit_threshold_bull=getattr(settings, "ai_exit_threshold_bull", 0.22),
+        ai_exit_threshold_bear=getattr(settings, "ai_exit_threshold_bear", 0.50),
+        vix_df=vix_df,
+        macro_df=macro_df,
+        ai_score_frames=ai_score_frames,
+        evaluation_start_date=eval_start,
+        evaluation_end_date=eval_end,
+    )
+    return _portfolio_oos_snapshot(result, eval_start, eval_end)
+
+
+def _load_champion_model_wrapper():
+    if not MODEL_PATH.exists():
+        return None
+    try:
+        return load_ai_score_model()
+    except (FileNotFoundError, ValueError):
+        return None
+
+
 def _run_threshold_retune(
     settings,
     ticker_data: dict[str, pd.DataFrame],
@@ -383,19 +506,23 @@ def _run_threshold_retune(
                 rank_trend_weight=settings.rank_trend_weight,
                 rank_ai_weight=settings.rank_ai_weight,
                 rank_momentum_weight=settings.rank_momentum_weight,
-                rank_volatility_weight=settings.rank_volatility_weight,
-                ai_exit_enabled=getattr(settings, "ai_exit_enabled", False),
-                ai_exit_threshold=exit_threshold,
-                ai_exit_dynamic_enabled=getattr(settings, "ai_exit_dynamic_enabled", False),
-                ai_exit_vix_low=getattr(settings, "ai_exit_vix_low", 15.0),
-                ai_exit_vix_high=getattr(settings, "ai_exit_vix_high", 25.0),
-                ai_exit_threshold_bull=getattr(settings, "ai_exit_threshold_bull", 0.22),
-                ai_exit_threshold_bear=exit_threshold if getattr(settings, "ai_exit_dynamic_enabled", False) else getattr(settings, "ai_exit_threshold_bear", 0.50),
-                vix_df=vix_df,
-                macro_df=macro_df,
-                evaluation_start_date=eval_start,
-                evaluation_end_date=eval_end,
-            )
+        rank_volatility_weight=settings.rank_volatility_weight,
+        stop_loss_pct=settings.stop_loss_pct,
+        take_profit_pct=settings.take_profit_pct,
+        trailing_stop_pct=settings.trailing_stop_pct,
+        allocation_method=settings.allocation_method,
+        ai_exit_enabled=getattr(settings, "ai_exit_enabled", False),
+        ai_exit_threshold=exit_threshold,
+        ai_exit_dynamic_enabled=getattr(settings, "ai_exit_dynamic_enabled", False),
+        ai_exit_vix_low=getattr(settings, "ai_exit_vix_low", 15.0),
+        ai_exit_vix_high=getattr(settings, "ai_exit_vix_high", 25.0),
+        ai_exit_threshold_bull=getattr(settings, "ai_exit_threshold_bull", 0.22),
+        ai_exit_threshold_bear=exit_threshold if getattr(settings, "ai_exit_dynamic_enabled", False) else getattr(settings, "ai_exit_threshold_bear", 0.50),
+        vix_df=vix_df,
+        macro_df=macro_df,
+        evaluation_start_date=eval_start,
+        evaluation_end_date=eval_end,
+    )
             rows.append(
                 {
                     "buy_threshold": buy_threshold,
@@ -464,9 +591,19 @@ def main() -> None:
     else:
         print(f"  Macro data: {len(macro_df)} rows, columns: {list(macro_df.columns)}")
 
+    holdout_start, holdout_end = portfolio_holdout_window(training_data)
+    training_data_fit = exclude_holdout_from_ticker_data(training_data, holdout_start)
+    holdout_ticker_data = slice_ticker_data_to_holdout(
+        training_data, holdout_start, holdout_end
+    )
+    print(
+        f"Portfolio promotion holdout: {holdout_start.strftime('%Y-%m-%d')} "
+        f"to {holdout_end.strftime('%Y-%m-%d')} (excluded from challenger training)"
+    )
+
     print("Training model with LightGBM + enhanced features (21 features)...")
     model, metrics_df = train_ai_score_model(
-        training_data=training_data,
+        training_data=training_data_fit,
         prediction_horizon=20,
         target_return_threshold=0.0,
         vix_df=vix_df,
@@ -509,7 +646,7 @@ def main() -> None:
 
     threshold_retune_report, threshold_retune_results_df = _run_threshold_retune(
         settings=settings,
-        ticker_data=training_data,
+        ticker_data=training_data_fit,
         vix_df=vix_df,
         macro_df=macro_df,
     )
@@ -530,17 +667,55 @@ def main() -> None:
     bundle = build_model_bundle(
         trained_models=model.models,
         metrics_df=metrics_df,
-        training_data=training_data,
+        training_data=training_data_fit,
         feature_columns=FEATURE_COLUMNS,
         prediction_horizon=model.prediction_horizon,
         target_return_threshold=model.target_return_threshold,
     )
+
+    challenger_portfolio = None
+    champion_portfolio = None
+    if settings.use_ai_score:
+        if holdout_start > holdout_end:
+            raise ValueError(
+                "Invalid portfolio holdout window; cannot score promotion gates"
+            )
+        print(
+            "Running holdout-window portfolio evaluation for promotion gates "
+            "(full history for indicator warmup)..."
+        )
+        challenger_portfolio = _run_retrain_oos_portfolio(
+            settings=settings,
+            ticker_data=training_data,
+            vix_df=vix_df,
+            macro_df=macro_df,
+            model_wrapper=bundle_to_model_wrapper(bundle),
+            eval_start=holdout_start,
+            eval_end=holdout_end,
+        )
+        challenger_portfolio["holdout_excluded_from_training"] = True
+        bundle["metadata"]["portfolio_oos"] = challenger_portfolio
+        champion_wrapper = _load_champion_model_wrapper()
+        if champion_wrapper is not None:
+            champion_portfolio = _run_retrain_oos_portfolio(
+                settings=settings,
+                ticker_data=training_data,
+                vix_df=vix_df,
+                macro_df=macro_df,
+                model_wrapper=champion_wrapper,
+                eval_start=holdout_start,
+                eval_end=holdout_end,
+            )
+            champion_portfolio["holdout_excluded_from_training"] = True
 
     challenger_model_path, challenger_metadata_path = save_challenger_bundle(bundle)
     champion_metadata = load_model_metadata()
     promotion_report = build_promotion_report(
         challenger_metadata=bundle["metadata"],
         champion_metadata=champion_metadata,
+        challenger_portfolio=challenger_portfolio,
+        champion_portfolio=champion_portfolio,
+        require_portfolio_oos=settings.use_ai_score,
     )
     promotion_report.update(
         {

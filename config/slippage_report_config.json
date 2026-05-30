@@ -1,0 +1,7 @@
+{
+  "timezone": "America/New_York",
+  "on_calendar_times": ["Sun 18:00:00"],
+  "lookback_days": 7,
+  "output_dir": "logs/slippage_reports",
+  "notify_telegram": true
+}

@@ -8,6 +8,7 @@ import pytest
 from src.portfolio_backtest_validation import (
     PortfolioBacktestThresholds,
     check_portfolio_backtest_thresholds,
+    check_portfolio_summary_thresholds,
 )
 
 
@@ -32,6 +33,17 @@ def _write_minimal_bundle(dir_path: Path, summary_row: dict) -> None:
             "qty", "cost_basis", "exit_value", "return_pct", "exit_reason",
         ]
     ).to_csv(dir_path / "portfolio_trades.csv", index=False)
+
+
+def test_summary_thresholds_pass_in_memory():
+    summary = {
+        "total_return": 0.10,
+        "benchmark_return": 0.12,
+        "max_drawdown": -0.08,
+        "sharpe_ratio": 1.2,
+    }
+    result = check_portfolio_summary_thresholds(summary)
+    assert result.passed
 
 
 def test_thresholds_pass(tmp_path: Path):
