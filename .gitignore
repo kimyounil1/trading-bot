@@ -34,6 +34,10 @@ logs/*
 !logs/benchmark_gap/latest_summary.json
 !logs/operational_alpha/
 !logs/operational_alpha/latest_summary.json
+!logs/operational_alpha/baseline/
+!logs/operational_alpha/baseline/portfolio_summary.csv
+!logs/operational_alpha/with_operational_filters/
+!logs/operational_alpha/with_operational_filters/portfolio_summary.csv
 !logs/llm_cache_warmup/
 !logs/llm_cache_warmup/latest_summary.json
 !logs/llm_advisory/
