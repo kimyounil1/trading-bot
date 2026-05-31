@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Tuple, Optional, Dict, Any
 
 import google.generativeai as genai
-import yfinance as yf
-import pandas as pd
+
+from src.news_sentiment import _headlines_before_date, _headlines_current
 
 # Gemini API 설정 (환경 변수 필요)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -33,36 +33,47 @@ def _save_cache(cache: Dict[str, dict]) -> None:
     CACHE_PATH.write_text(json.dumps(cache, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def evaluate_ticker_consensus(ticker: str, settings: Optional[Any] = None) -> Tuple[bool, str]:
+def evaluate_ticker_consensus(
+    ticker: str,
+    settings: Optional[Any] = None,
+    as_of_date: Optional[str] = None,
+    *,
+    cache_only: bool = False,
+    fallback_current_headlines: bool = False,
+) -> Tuple[bool, str]:
     """LLM을 사용하여 해당 종목의 최신 뉴스를 분석하고 매수 승인 여부를 결정한다.
-    
+
+    as_of_date: cache key date (YYYY-MM-DD). Backtest replay should pass entry_date.
+    cache_only: if True, never call the API on cache miss (use llm_degraded_mode).
+
     Returns:
         (is_approved, reason)
     """
-    if not GEMINI_API_KEY:
-        return True, "GEMINI_API_KEY not found, skipping qualitative analysis (Auto-Approved)"
-
     cache_enabled = getattr(settings, "llm_cache_enabled", True)
     degraded_mode = getattr(settings, "llm_degraded_mode", "PASS").upper()
-
-    today = datetime.now().strftime("%Y-%m-%d")
+    date_key = as_of_date or datetime.now().strftime("%Y-%m-%d")
     cache = _load_cache()
-    
-    # 캐시 확인 (동일 티커, 동일 날짜면 재사용)
-    cache_key = f"{ticker}_{today}"
+    cache_key = f"{ticker}_{date_key}"
+
     if cache_enabled and cache_key in cache:
         cached = cache[cache_key]
         return cached["is_approved"], cached.get("category_reason") or cached["reason"]
 
+    if cache_only:
+        is_ok = degraded_mode == "PASS"
+        status = "Auto-Approved" if is_ok else "Auto-Rejected"
+        return is_ok, f"LLM cache miss ({status} per policy)"
+
+    if not GEMINI_API_KEY:
+        return True, "GEMINI_API_KEY not found, skipping qualitative analysis (Auto-Approved)"
+
     try:
-        # 1. 최신 뉴스 가져오기 (yfinance)
-        t = yf.Ticker(ticker)
-        news = t.news
-        if not news:
+        headlines = _headlines_before_date(ticker, date_key, max_articles=5)
+        if not headlines and fallback_current_headlines:
+            headlines = _headlines_current(ticker, max_articles=5)
+        if not headlines:
             return True, "No recent news found for qualitative analysis"
 
-        # 최근 뉴스 5개 제목 추출
-        headlines = [n.get("title") for n in news[:5]]
         news_context = "\n".join([f"- {h}" for h in headlines])
 
         # 2. LLM에게 분석 요청

@@ -125,6 +125,7 @@ class StrategySettings(StrategyProfile):
     macro_event_lookback_days: int = 1
     llm_degraded_mode: str = "PASS"  # "PASS" or "FAIL"
     llm_cache_enabled: bool = True
+    llm_advisory_only: bool = True  # True: log LLM verdict, do not block orders
 
 
 _STRATEGY_SETTINGS_FIELD_NAMES = {item.name for item in fields(StrategySettings)}

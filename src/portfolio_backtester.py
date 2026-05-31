@@ -9,6 +9,8 @@ from src.strategy import add_indicators, build_market_regime_frame
 from src.features import FEATURE_COLUMNS, build_features
 from src.ml_model import load_ai_score_model
 from src.portfolio_optimizer import compute_candidate_weights
+from src.llm_analyst import evaluate_ticker_consensus
+from src.news_sentiment import get_ticker_sentiment
 from src.risk_manager import apply_factor_crowding_limits
 
 
@@ -175,6 +177,58 @@ def _apply_market_regime_filter(
     return filtered_df
 
 
+def _price_series_from_ticker_df(df: pd.DataFrame) -> pd.Series:
+    tmp = df.copy()
+    tmp["date"] = pd.to_datetime(tmp["date"])
+    price_col = "adj_close" if "adj_close" in tmp.columns else "close"
+    if price_col not in tmp.columns:
+        raise ValueError("Ticker data must contain close or adj_close")
+    return pd.to_numeric(tmp.set_index("date")[price_col], errors="coerce")
+
+
+def _build_equal_weight_benchmark_values(
+    equity_dates: pd.Series,
+    ticker_data: dict[str, pd.DataFrame],
+    initial_cash: float,
+) -> list[float]:
+    """Equal-weight buy-and-hold using raw prices (not filtered market_df)."""
+    if not ticker_data:
+        raise ValueError("ticker_data is empty")
+
+    price_by_ticker = {
+        ticker: _price_series_from_ticker_df(df) for ticker, df in ticker_data.items()
+    }
+    dates = pd.to_datetime(equity_dates)
+    start_date = None
+    tickers = list(price_by_ticker.keys())
+    for date in dates:
+        prices = {
+            ticker: price_by_ticker[ticker].get(date)
+            for ticker in tickers
+        }
+        if all(price is not None and pd.notna(price) and float(price) > 0 for price in prices.values()):
+            start_date = date
+            break
+    if start_date is None:
+        raise ValueError("No date with valid closes for all tickers to seed equal-weight benchmark")
+
+    per_ticker_cash = initial_cash / len(tickers)
+    shares = {
+        ticker: per_ticker_cash / float(price_by_ticker[ticker].loc[start_date])
+        for ticker in tickers
+    }
+
+    values: list[float] = []
+    for date in dates:
+        value = 0.0
+        for ticker, qty in shares.items():
+            price = price_by_ticker[ticker].get(date)
+            if price is not None and pd.notna(price):
+                value += qty * float(price)
+        values.append(value)
+    return values
+
+
 def _build_benchmark_relative_return_frame(
     benchmark_df: pd.DataFrame,
     lookback_days: int,
@@ -262,6 +316,11 @@ def run_portfolio_backtest(
     evaluation_start_date: str | pd.Timestamp | None = None,
     evaluation_end_date: str | pd.Timestamp | None = None,
     crowding_guard_enabled: bool = False,
+    llm_filter_enabled: bool = False,
+    llm_cache_only: bool = True,
+    news_sentiment_filter_enabled: bool = False,
+    news_sentiment_threshold: float = -0.30,
+    operational_settings: Any | None = None,
 ) -> tuple[PortfolioBacktestResult, pd.DataFrame, pd.DataFrame]:
     if relative_strength_lookback_days <= 0:
         raise ValueError("relative_strength_lookback_days must be positive")
@@ -543,6 +602,24 @@ def run_portfolio_backtest(
                     if not crowding.allowed:
                         continue
 
+                entry_day = pd.Timestamp(current_date).strftime("%Y-%m-%d")
+                ops_settings = operational_settings if operational_settings is not None else None
+
+                if llm_filter_enabled:
+                    llm_ok, _ = evaluate_ticker_consensus(
+                        ticker,
+                        settings=ops_settings,
+                        as_of_date=entry_day,
+                        cache_only=llm_cache_only,
+                    )
+                    if not llm_ok:
+                        continue
+
+                if news_sentiment_filter_enabled:
+                    sentiment = get_ticker_sentiment(ticker, as_of_date=entry_day)
+                    if sentiment is not None and sentiment < news_sentiment_threshold:
+                        continue
+
                 if total_to_deploy is not None:
                     target_value = total_to_deploy * alloc_weights.get(
                         ticker, 1.0 / len(candidate_tickers)
@@ -616,38 +693,16 @@ def run_portfolio_backtest(
     else:
         win_rate = 0.0
 
-    benchmark_values = []
-    shares = {}
-
-    first_date = equity_df["date"].iloc[0]
-    first_day = market_df[market_df["date"] == first_date]
-
-    equal_cash = initial_cash / len(ticker_data)
-
-    for _, row in first_day.iterrows():
-        ticker = row["ticker"]
-        close = float(row["close"])
-        shares[ticker] = equal_cash / close
-
-    for current_date in equity_df["date"]:
-        day_df = market_df[market_df["date"] == current_date]
-        prices = {
-            row["ticker"]: float(row["close"])
-            for _, row in day_df.iterrows()
-        }
-
-        value = 0.0
-        for ticker, qty in shares.items():
-            price = prices.get(ticker)
-            if price is not None:
-                value += qty * price
-
-        benchmark_values.append(value)
-
-    equity_df["benchmark_equity"] = benchmark_values
-    benchmark_return = (
-        float(equity_df["benchmark_equity"].iloc[-1]) / initial_cash - 1.0
+    benchmark_values = _build_equal_weight_benchmark_values(
+        equity_df["date"],
+        ticker_data,
+        initial_cash,
     )
+    equity_df["benchmark_equity"] = benchmark_values
+    last_benchmark = float(equity_df["benchmark_equity"].iloc[-1])
+    if not pd.notna(last_benchmark) or last_benchmark <= 0:
+        raise ValueError("Equal-weight benchmark equity is invalid at end of backtest")
+    benchmark_return = last_benchmark / initial_cash - 1.0
 
     # Annualized Sharpe (252 trading days, risk-free=0)
     daily_returns = equity_df["daily_return"]

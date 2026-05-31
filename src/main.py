@@ -1074,10 +1074,25 @@ def main() -> None:
                 risk_reason = margin_leverage_block_reason
                 target_amount = 0.0
 
-            # LLM Consensus 필터: 정량적 신호를 뉴스로 정성 검증 (Phase 11-B)
+            # LLM Consensus: advisory (log only) or blocking filter
             if risk_allowed and position is None:
                 llm_is_ok, llm_reason = evaluate_ticker_consensus(ticker, settings=settings)
-                if not llm_is_ok:
+                llm_advisory_only = bool(getattr(settings, "llm_advisory_only", True))
+                if not llm_is_ok and llm_advisory_only:
+                    log_execution_audit(
+                        event_type="LLM_ADVISORY",
+                        ticker=ticker,
+                        action="BUY",
+                        status="WOULD_REJECT",
+                        reason=format_audit_reason(llm_reason, ticker),
+                        profile_name=profile_name,
+                        regime=current_regime,
+                        signal=signal,
+                        ai_score=ai_score,
+                        llm_verdict=_format_llm_verdict(llm_is_ok, llm_reason),
+                        notional=target_amount,
+                    )
+                elif not llm_is_ok:
                     risk_allowed = False
                     risk_reason = f"LLM Reject: {llm_reason}"
                     target_amount = 0.0

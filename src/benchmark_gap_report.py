@@ -20,10 +20,12 @@ BENCHMARK_GAP_REPORT_KEYS = (
     "generated_at",
     "summary",
     "gap_pct",
+    "beats_benchmark",
     "by_ticker",
     "by_sector",
     "by_entry_month",
     "slippage_context",
+    "recommendations",
 )
 
 
@@ -36,7 +38,14 @@ def _load_summary(backtest_dir: Path) -> dict[str, Any]:
     if not summary_path.is_file():
         raise FileNotFoundError(f"Missing {summary_path}")
     row = pd.read_csv(summary_path).iloc[0]
-    return {col: float(row[col]) if col != "trades" else int(row[col]) for col in row.index}
+    out: dict[str, Any] = {}
+    for col in row.index:
+        if col == "trades":
+            out[col] = int(row[col])
+        else:
+            val = row[col]
+            out[col] = float(val) if pd.notna(val) else float("nan")
+    return out
 
 
 def _trade_pnl(trades_df: pd.DataFrame) -> pd.Series:
@@ -63,7 +72,11 @@ def build_benchmark_gap_report(
     trades["entry_date"] = pd.to_datetime(trades["entry_date"], errors="coerce")
     trades["sector"] = trades["ticker"].astype(str).map(get_sector)
 
-    gap_pct = round((summary["total_return"] - summary["benchmark_return"]) * 100.0, 4)
+    bench_ret = summary.get("benchmark_return", float("nan"))
+    bench_valid = bench_ret == bench_ret
+    gap_pct = (
+        round((summary["total_return"] - bench_ret) * 100.0, 4) if bench_valid else float("nan")
+    )
 
     by_ticker = (
         trades.groupby("ticker", as_index=False)["pnl"]
@@ -96,14 +109,40 @@ def build_benchmark_gap_report(
             "note": "Paper slippage is execution-only; backtest gap is simulation vs SPY buy-hold.",
         }
 
+    beats_benchmark = bool(bench_valid and gap_pct >= 0)
+    recommendations: list[str] = []
+    if not bench_valid:
+        recommendations.append(
+            "Benchmark return missing in portfolio_summary.csv — re-run "
+            "`python -m src.run_portfolio_backtest` after fixing equal-weight benchmark."
+        )
+    elif not beats_benchmark:
+        recommendations.append(
+            "Portfolio underperforms equal-weight universe buy-hold — tune rank_ai_weight, "
+            "ai_score_buy_threshold, or relative_strength_filter (config/strategy_config.json)."
+        )
+        if bench_valid and by_ticker:
+            worst = by_ticker[0]
+            recommendations.append(
+                f"Largest drag: {worst.get('ticker')} PnL ${float(worst.get('pnl', 0)):.0f} — review exits or exclude in research branch."
+            )
+        worst_sectors = sorted(by_sector, key=lambda r: float(r.get("pnl", 0)))[:2]
+        for row in worst_sectors:
+            if float(row.get("pnl", 0)) < 0:
+                recommendations.append(
+                    f"Sector drag: {row.get('sector')} ${float(row.get('pnl', 0)):.0f}"
+                )
+
     report = {
         "generated_at": _utc_now_iso(),
         "summary": summary,
         "gap_pct": gap_pct,
+        "beats_benchmark": beats_benchmark,
         "by_ticker": by_ticker,
         "by_sector": by_sector,
         "by_entry_month": by_entry_month,
         "slippage_context": slippage_context,
+        "recommendations": recommendations,
     }
     validate_benchmark_gap_report(report)
     return report
@@ -139,6 +178,10 @@ def format_benchmark_gap_report(report: dict[str, Any]) -> str:
             f"\nSlippage (paper): avg {slip.get('overall_avg_slippage_pct')}% "
             f"({slip.get('matched_trades')} matches)"
         )
+    if report.get("recommendations"):
+        lines.append("\nRecommendations:")
+        for rec in report["recommendations"]:
+            lines.append(f"  - {rec}")
     return "\n".join(lines)
 
 

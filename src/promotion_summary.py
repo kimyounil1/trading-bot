@@ -8,14 +8,15 @@ from pathlib import Path
 from typing import Any
 
 from src.ml_quality_report import MlQualityPromotionCriteria, PROMOTION_MAX_OVERALL_BRIER, PROMOTION_MIN_AVG_ROC_AUC
-from src.portfolio_backtest_validation import PortfolioBacktestThresholds
+from src.promotion_thresholds import ci_portfolio_thresholds, promotion_portfolio_thresholds
 
 DEFAULT_REPORT_PATH = Path("logs/ml/model_promotion_report.json")
 
 
 def promotion_gate_reference() -> dict[str, Any]:
     ml = MlQualityPromotionCriteria()
-    portfolio = PortfolioBacktestThresholds()
+    promote_pf = promotion_portfolio_thresholds()
+    ci_pf = ci_portfolio_thresholds()
     return {
         "ml_quality": {
             "min_avg_roc_auc": ml.min_avg_roc_auc,
@@ -26,10 +27,17 @@ def promotion_gate_reference() -> dict[str, Any]:
                 "PROMOTION_MAX_OVERALL_BRIER": PROMOTION_MAX_OVERALL_BRIER,
             },
         },
-        "portfolio_oos": {
-            "max_drawdown_floor": portfolio.max_drawdown_floor,
-            "min_return_vs_benchmark": portfolio.min_return_vs_benchmark,
-            "min_sharpe": portfolio.min_sharpe,
+        "portfolio_oos_promotion": {
+            "max_drawdown_floor": promote_pf.max_drawdown_floor,
+            "min_return_vs_benchmark": promote_pf.min_return_vs_benchmark,
+            "min_sharpe": promote_pf.min_sharpe,
+            "note": "Retrain promotion; challenger must beat benchmark (>=0 pp).",
+        },
+        "portfolio_oos_ci": {
+            "max_drawdown_floor": ci_pf.max_drawdown_floor,
+            "min_return_vs_benchmark": ci_pf.min_return_vs_benchmark,
+            "min_sharpe": ci_pf.min_sharpe,
+            "note": "Post-workflow / check_portfolio_backtest_gate only.",
         },
         "auc_vs_champion": "challenger avg_roc_auc must exceed champion when champion exists",
         "portfolio_vs_champion": "challenger must beat champion on Sharpe, then return, then drawdown",

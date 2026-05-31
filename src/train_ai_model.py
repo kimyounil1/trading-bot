@@ -618,11 +618,14 @@ def main() -> None:
 
     challenger_model_path, challenger_metadata_path = save_challenger_bundle(bundle)
     champion_metadata = load_model_metadata()
+    from src.promotion_thresholds import promotion_portfolio_thresholds
+
     promotion_report = build_promotion_report(
         challenger_metadata=bundle["metadata"],
         champion_metadata=champion_metadata,
         challenger_portfolio=challenger_portfolio,
         champion_portfolio=champion_portfolio,
+        portfolio_thresholds=promotion_portfolio_thresholds(),
         require_portfolio_oos=settings.use_ai_score,
         fold_stability_report=stability_report,
         calibration_report=calibration_report,

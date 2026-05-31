@@ -15,17 +15,28 @@ Fold analysis: `python -m src.fold_variance_report`
 
 ## Portfolio OOS (holdout backtest)
 
-| Gate | Default | Code |
-|------|---------|------|
-| Max drawdown floor | -20% | `PortfolioBacktestThresholds.max_drawdown_floor` |
-| Min return vs benchmark | -15% pp | `min_return_vs_benchmark` |
-| Min Sharpe | (optional) | `min_sharpe` |
+Two threshold profiles (`src/promotion_thresholds.py`):
+
+| Profile | Min return vs benchmark | Max DD | Min Sharpe | Used by |
+|---------|-------------------------|--------|------------|---------|
+| **Promotion** | **0 pp** (must beat benchmark) | -20% | 1.0 | `train_ai_model` retrain / `build_promotion_report` |
+| **CI / post-workflow** | -15 pp | -20% | (none) | `check_portfolio_backtest_gate`, golden regression |
+
+Override promotion via env: `PROMOTION_MIN_RETURN_VS_BENCHMARK`, `PROMOTION_MIN_SHARPE`, `PROMOTION_MAX_DRAWDOWN_FLOOR`.
 
 Challenger must also **beat** stored champion portfolio OOS on Sharpe → return → drawdown.
 
 ## AUC vs champion
 
 Challenger `oos_metrics.avg_roc_auc` must exceed champion when champion metadata exists.
+
+## Alpha / benchmark tracking
+
+```bash
+bash scripts/run_alpha_pipeline.sh
+```
+
+Report: `logs/benchmark_gap/latest_summary.json` (`beats_benchmark`, `recommendations`).
 
 ## CLI
 

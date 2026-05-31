@@ -49,6 +49,40 @@
     2. 포트폴리오 구성 종목의 개별 리스크(실적 악화 등) 재평가.
     3. 시장이 안정되었다고 판단되면 `config/strategy_config.json`의 `max_portfolio_drawdown_pct`를 일시적으로 상향 조정하여 가드 해제 가능.
 
+### 2.3.1 LLM·뉴스 (advisory vs blocking)
+
+기본 설정: **`llm_advisory_only: true`** — LLM이 REJECT여도 **주문은 진행**, `execution_audit.csv`에 기록만.
+
+| `llm_advisory_only` | 동작 |
+|---------------------|------|
+| `true` (기본) | `LLM_ADVISORY` / `WOULD_REJECT` 로그 + `BUY_SUBMITTED`에 `llm_verdict` 저장 |
+| `false` | REJECT 시 매수 차단 (`SKIP_BUY`, LLM Reject) |
+
+**나중에 수익 비교** (paper 누적 후):
+
+```bash
+bash scripts/run_bot_once.sh              # dry-run 또는 execute
+bash scripts/run_llm_advisory_report.sh   # 따랐을 때 vs 무시한 매수 집계
+```
+
+산출물: `logs/llm_advisory/latest_summary.json`  
+`buy_submitted_despite_llm_reject` = LLM은 거절했는데 실제로 산 건수. 체결 PnL까지 비교하려면 주문/체결 로그와 조인하는 후속 리포트가 필요.
+
+백테스트 수익(+96% 등)은 **ML `ai_score`만** 반영. in-loop LLM 필터는 별도 실험용.
+
+**운영에 가까운 in-loop 비교** (매수 직전 LLM+뉴스 필터, `portfolio_backtester`):
+
+```bash
+# 백테스트 진입일 기준 캐시 채우기 (중단 시 재실행 — 이미 있는 키는 스킵)
+bash scripts/warm_llm_cache_from_backtest.sh
+
+bash scripts/run_operational_alpha_validation.sh
+LIVE_LLM=1 bash scripts/run_operational_alpha_validation.sh   # cache miss 시 Gemini 호출
+```
+
+산출물: `data/llm_cache.json`, `logs/llm_cache_warmup/latest_summary.json`, `logs/operational_alpha/latest_summary.json`  
+워밍업은 진입일 키(`{티커}_{YYYY-MM-DD}`)로 저장. 당일 yfinance에 기사가 없으면 **현재 헤드라인 fallback**으로 Gemini 호출(완전한 과거 뉴스 아카이브는 아님). paper `main.py` 실행 시 같은 키로 캐시가 계속 쌓임.
+
 ### 2.4 유니버스 프로필 (`UNIVERSE_PROFILE`)
 
 | 프로필 | 스캔 풀 | 용도 |

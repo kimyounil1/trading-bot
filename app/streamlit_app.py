@@ -2285,10 +2285,10 @@ def render_ops_dashboard() -> None:
             ("실행 정합", "logs/execution_alignment/latest_summary.json"),
         ]),
         ("백테스트·가드", [
+            ("벤치마크 gap", "logs/benchmark_gap/latest_summary.json"),
             ("guard impact (백테스트)", "logs/guard_impact/latest_summary.json"),
             ("crowding live (audit 대조)", "logs/crowding_live/latest_summary.json"),
             ("crowding paper GO/NO-GO", "logs/crowding_paper/go_no_go_checklist.json"),
-            ("벤치마크 gap", "logs/benchmark_gap/latest_summary.json"),
             ("guard/leverage stress", "logs/leverage_stress/latest_summary.json"),
         ]),
         ("모델·승격", [
@@ -2305,10 +2305,17 @@ def render_ops_dashboard() -> None:
                 if data is None:
                     st.caption("산출물 없음 — runbook Quick commands 또는 위 버튼으로 생성")
                 else:
+                    if label.startswith("벤치마크 gap"):
+                        gap = data.get("gap_pct")
+                        beats = data.get("beats_benchmark")
+                        if gap is not None:
+                            st.metric("vs benchmark (pp)", f"{gap:+.2f}", delta="OK" if beats else "under")
                     st.json(data)
                     if "alignment" in data and isinstance(data["alignment"], dict):
                         for note in data["alignment"].get("notes") or []:
                             st.info(note)
+                    for rec in data.get("recommendations") or []:
+                        st.warning(rec)
 
 
 def run_project_command(command: list[str], timeout: int = 600) -> tuple[int, str, str]:

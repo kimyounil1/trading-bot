@@ -13,7 +13,8 @@ from src.promotion_summary import (
 def test_promotion_gate_reference_has_defaults():
     gates = promotion_gate_reference()
     assert gates["ml_quality"]["min_avg_roc_auc"] == 0.51
-    assert gates["portfolio_oos"]["max_drawdown_floor"] == -0.20
+    assert gates["portfolio_oos_promotion"]["min_return_vs_benchmark"] == 0.0
+    assert gates["portfolio_oos_ci"]["min_return_vs_benchmark"] == -0.15
 
 
 def test_format_promotion_summary_reject(tmp_path):
