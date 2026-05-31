@@ -1,0 +1,9 @@
+ TODO.md                        |   6 +--
+ logs/ml/ai_model_metrics.csv   |  10 ++---
+ logs/retrain_history.csv       |   1 +
+ models/ai_score_model.joblib   | Bin 1757990 -> 1758310 bytes
+ src/ml_model.py                |  23 +++++++++--
+ src/train_ai_model.py          |  91 ++++++++++++++---------------------------
+ src/walk_forward_validation.py |  53 ++++++++++++++++++++----
+ tests/test_model_governance.py |  49 ++++++++++++++++++++++
+ 8 files changed, 152 insertions(+), 81 deletions(-)

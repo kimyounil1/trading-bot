@@ -1,0 +1,11 @@
+TODO.md
+app/streamlit_app.py
+config/strategy_config.json
+docs/promotion_gates.md
+logs/portfolio_backtest/portfolio_summary.csv
+src/benchmark_gap_report.py
+src/portfolio_backtester.py
+src/promotion_summary.py
+src/run_portfolio_backtest.py
+src/train_ai_model.py
+tests/test_promotion_summary.py

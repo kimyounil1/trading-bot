@@ -1,0 +1,3705 @@
+$ codex --ask-for-approval never --sandbox read-only review /home/kimyo/trading-bot/reports/agent_pipeline/phase20_slippage/review_packet.md -c 'model_reasoning_effort="low"'
+exit_code=0
+
+## stdout
+The slippage automation mostly works for matched fills, but the no-fill weekly path leaves stale latest artifacts. More importantly, the new model promotion OOS gate does not evaluate the configured portfolio strategy, which can make promotion decisions incorrect.
+
+Full review comments:
+
+- [P1] Pass live exit/allocation settings into OOS gate — /home/kimyo/trading-bot/src/train_ai_model.py:396-420
+  When `settings` uses non-default exits or allocation (the project defaults include stop loss, take profit, and trailing stop), this holdout promotion run falls back to `run_portfolio_backtest` defaults (`0` exits and `equal_weight`) because those settings are not forwarded. That means the promotion decision can be based on a materially different portfolio strategy than the configured/live one, so a challenger can be promoted or retained for the wrong OOS P&L/Sharpe.
+
+- [P2] Persist a fresh weekly artifact when there are no fills — /home/kimyo/trading-bot/src/report_performance.py:266-268
+  For weeks with no matched paper fills, the scheduled report returns before writing `latest_summary.json`. If a previous report exists, dashboards or runbook checks will continue reading stale slippage data while the timer appears to have completed successfully; write a zero-trade/no-data summary (or clear/update `latest_summary.json`) for this branch.
+
+
+## stderr
+OpenAI Codex v0.133.0
+--------
+workdir: /home/kimyo/trading-bot
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: low
+reasoning summaries: none
+session id: 019e7877-260c-7f11-bfb1-2781f73bb73c
+--------
+user
+/home/kimyo/trading-bot/reports/agent_pipeline/phase20_slippage/review_packet.md
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+exec
+/bin/bash -lc "sed -n '1,240p' reports/agent_pipeline/phase20_slippage/review_packet.md && git diff --stat && git diff --cached --stat" in /home/kimyo/trading-bot
+ succeeded in 201ms:
+# Agent Review Packet - Run: phase20_slippage
+
+## Implementation Agent
+cursor
+
+## Task Description
+weekly paper vs signal slippage report + systemd timer install scripts
+
+## Changed Files
+- TODO.md
+- docs/runbook.md
+- logs/ml/ai_model_metrics.csv
+- logs/retrain_history.csv
+- models/ai_score_model.joblib
+- src/ml_model.py
+- src/portfolio_backtest_validation.py
+- src/report_performance.py
+- src/train_ai_model.py
+- tests/test_model_governance.py
+- tests/test_portfolio_backtest_gate.py
+- tests/test_report_performance.py
+
+## Git Diff Summary
+```
+ TODO.md                               |   2 +-
+ docs/runbook.md                       |   7 +-
+ logs/ml/ai_model_metrics.csv          |  10 +-
+ logs/retrain_history.csv              |   1 +
+ models/ai_score_model.joblib          | Bin 1757990 -> 1758310 bytes
+ src/ml_model.py                       | 123 ++++++++++-
+ src/portfolio_backtest_validation.py  |  52 +++--
+ src/report_performance.py             | 375 +++++++++++++++++++++++++++-------
+ src/train_ai_model.py                 | 175 +++++++++++++++-
+ tests/test_model_governance.py        |  65 +++++-
+ tests/test_portfolio_backtest_gate.py |  12 ++
+ tests/test_report_performance.py      |  70 +++++--
+ 12 files changed, 767 insertions(+), 125 deletions(-)
+```
+
+## Test Execution Results (runtime_harness.log)
+```
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/kimyo/trading-bot
+plugins: anyio-4.13.0
+collected 10 items
+
+tests/test_report_performance.py ....                                    [ 40%]
+tests/test_reappraise_regime.py ...                                      [ 70%]
+tests/test_portfolio_backtest_golden.py ...                              [100%]
+
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6
+  /home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 10 passed, 1 warning in 0.71s =========================
+```
+
+## Git Patch
+```diff
+diff --git a/TODO.md b/TODO.md
+index 4480659..4847513 100644
+--- a/TODO.md
++++ b/TODO.md
+@@ -81,7 +81,7 @@ RUN_ID=phase20_a bash scripts/run_cursor_post_workflow.sh
+ 
+ - [x] `[Cursor]` post-workflow/CI 훅에서 `portfolio_summary.csv` 임계값(벤치마크 대비, max DD) 체크 연동
+ - [x] `[AGY]` `tests/test_portfolio_backtest_gate.py` — `prompts/agy/phase20_portfolio_gate.md`
+-- [ ] `[Cursor]` retrain 후 **포트폴리오 수준** 승격 기준을 AUC 단독이 아닌 OOS P&L·Sharpe와 연동
++- [x] `[Cursor]` retrain 후 **포트폴리오 수준** 승격 기준을 AUC 단독이 아닌 OOS P&L·Sharpe와 연동
+ - [ ] `[Cursor]` `report_performance.py` paper vs signal 슬리피지 주간 자동화(스크립트 또는 timer)
+ - [x] `[AGY]` portfolio backtest golden test: fixture equity/trades vs `logs/portfolio_backtest/` 스키마·핵심 메트릭 회귀
+ 
+diff --git a/docs/runbook.md b/docs/runbook.md
+index 8b1d1a1..98b5108 100644
+--- a/docs/runbook.md
++++ b/docs/runbook.md
+@@ -55,7 +55,12 @@
+ ## 📈 3. 주기적 점검 사항 (Maintenance)
+ 
+ - **일간**: Telegram 요약 리포트를 통해 실주문 수 및 스킵 사유 집계 확인.
+-- **주간**: `PYTHONPATH=. .venv/bin/python src/report_performance.py` 실행하여 실거래 vs 백테스트 괴리율(슬리피지) 점검.
++- **주간**: paper 체결 vs 시그널 슬리피지 자동 리포트
++  ```bash
++  bash scripts/run_weekly_slippage_report.sh
++  # 또는: PYTHONPATH=. .venv/bin/python -m src.report_performance --weekly
++  ```
++  산출물: `logs/slippage_reports/latest_summary.json` (타이머 설치: `bash scripts/install_slippage_report_timer.sh`)
+ - **월간**: `data/llm_cache.json` 및 오래된 로그 파일 정리 (용량 관리).
+ 
+ ---
+diff --git a/logs/ml/ai_model_metrics.csv b/logs/ml/ai_model_metrics.csv
+index 0638196..f5a77ad 100644
+--- a/logs/ml/ai_model_metrics.csv
++++ b/logs/ml/ai_model_metrics.csv
+@@ -1,6 +1,6 @@
+ fold,accuracy,precision,recall,roc_auc,test_positive_rate,prediction_positive_rate,train_size,test_size
+-1,0.5244384996934738,0.5484398737875423,0.5012817773979918,0.5286340670919325,0.5217633617566739,0.47689906927492615,17946,17943
+-2,0.4494789054227275,0.6544431509507179,0.2940714908456844,0.5158509944937936,0.639246502814468,0.2872429359638856,35889,17943
+-3,0.5586022404280221,0.5981134772045162,0.7847365460341271,0.5298942819902608,0.5944379423730702,0.779914172657861,53832,17943
+-4,0.46853926322242656,0.5456267409470752,0.4729116368903911,0.4732537359173688,0.5771052778242212,0.500195062141225,71775,17943
+-5,0.5130134314217244,0.5579873646209387,0.5064509522834323,0.51604461357988,0.5442791060580728,0.4940088056623753,89718,17943
++1,0.528979045920642,0.5457911357944027,0.5393306790057032,0.5316021297826623,0.5178889879625501,0.5117588051716451,17944,17944
++2,0.45692153366027644,0.6543549218347363,0.33001212961358517,0.5026369607790756,0.6432233615693268,0.32439812750780206,35888,17944
++3,0.5665960766830138,0.6093773110486614,0.7675826734979041,0.5460608256136901,0.5982501114578689,0.7535666518056174,53832,17944
++4,0.451627284886313,0.5284319356691557,0.44508950169327527,0.4455734853749122,0.5759585376727597,0.4851203744984396,71776,17944
++5,0.5106442264823896,0.5542609092986064,0.4986126811221868,0.5146206734442764,0.5422982612572448,0.4878510922871155,89720,17944
+diff --git a/logs/retrain_history.csv b/logs/retrain_history.csv
+index 9e73b35..8e1e7f7 100644
+--- a/logs/retrain_history.csv
++++ b/logs/retrain_history.csv
+@@ -2,3 +2,4 @@ timestamp,status,avg_roc_auc,avg_precision,elapsed_sec
+ 2026-05-26T13:35:17Z,success,0.4985,0.5439,13.9
+ 2026-05-26T13:51:32Z,success,0.5103,0.5616,19.3
+ 2026-05-26T14:22:04Z,success,0.5127,0.5809,19.1
++2026-05-30T09:28:07Z,success,0.5081,0.5784,93.5
+diff --git a/models/ai_score_model.joblib b/models/ai_score_model.joblib
+index 4cc580d..a7de37d 100644
+Binary files a/models/ai_score_model.joblib and b/models/ai_score_model.joblib differ
+diff --git a/src/ml_model.py b/src/ml_model.py
+index e0c664b..2561599 100644
+--- a/src/ml_model.py
++++ b/src/ml_model.py
+@@ -290,25 +290,132 @@ def restore_archived_champion(
+     return model_path, metadata_path
+ 
+ 
++def bundle_to_model_wrapper(bundle: dict[str, Any]) -> RegimeAwareModelWrapper:
++    return RegimeAwareModelWrapper(
++        bundle["models"],
++        bundle["feature_columns"],
++        bundle["prediction_horizon"],
++        bundle["target_return_threshold"],
++    )
++
++
++def _portfolio_oos_rank_key(snapshot: dict[str, Any]) -> tuple[float, float, float]:
++    return (
++        float(snapshot["sharpe_ratio"]),
++        float(snapshot["total_return"]),
++        -abs(float(snapshot["max_drawdown"])),
++    )
++
++
++def portfolio_oos_beats_champion(
++    challenger: dict[str, Any],
++    champion: dict[str, Any],
++) -> bool:
++    """True when challenger ranks higher on Sharpe, then return, then drawdown."""
++    return _portfolio_oos_rank_key(challenger) > _portfolio_oos_rank_key(champion)
++
++
+ def build_promotion_report(
+     challenger_metadata: dict[str, Any],
+     champion_metadata: dict[str, Any] | None,
++    *,
++    challenger_portfolio: dict[str, Any] | None = None,
++    champion_portfolio: dict[str, Any] | None = None,
++    portfolio_thresholds: Any | None = None,
++    require_portfolio_oos: bool = True,
+ ) -> dict[str, Any]:
++    from src.portfolio_backtest_validation import (
++        PortfolioBacktestThresholds,
++        check_portfolio_summary_thresholds,
++    )
++
++    thresholds = portfolio_thresholds or PortfolioBacktestThresholds()
+     challenger_auc = float(challenger_metadata.get("oos_metrics", {}).get("avg_roc_auc", 0.0))
+-    champion_auc = float(champion_metadata.get("oos_metrics", {}).get("avg_roc_auc", 0.0)) if champion_metadata else None
+-    promote = champion_metadata is None or challenger_auc > champion_auc
+-    return {
++    champion_auc = (
++        float(champion_metadata.get("oos_metrics", {}).get("avg_roc_auc", 0.0))
++        if champion_metadata
++        else None
++    )
++    auc_ok = champion_metadata is None or challenger_auc > champion_auc
++
++    portfolio_gate = None
++    portfolio_gate_ok = True
++    portfolio_vs_ok = True
++
++    if require_portfolio_oos:
++        if challenger_portfolio is None:
++            portfolio_gate_ok = False
++            portfolio_vs_ok = False
++        else:
++            portfolio_gate = check_portfolio_summary_thresholds(
++                challenger_portfolio, thresholds
++            )
++            portfolio_gate_ok = portfolio_gate.passed
++
++            if champion_portfolio is None and champion_metadata is not None:
++                stored = champion_metadata.get("portfolio_oos")
++                if isinstance(stored, dict):
++                    champion_portfolio = stored
++
++            if champion_portfolio is not None:
++                portfolio_vs_ok = portfolio_oos_beats_champion(
++                    challenger_portfolio, champion_portfolio
++                )
++
++    promote = auc_ok and portfolio_gate_ok and portfolio_vs_ok
++
++    reasons: list[str] = []
++    if champion_metadata is None:
++        reasons.append("no existing champion metadata")
++    elif not auc_ok:
++        reasons.append(
++            f"challenger_avg_roc_auc={challenger_auc:.4f} vs champion_avg_roc_auc={champion_auc:.4f}"
++        )
++    if require_portfolio_oos and challenger_portfolio is None:
++        reasons.append("missing challenger portfolio OOS evaluation")
++    elif require_portfolio_oos and portfolio_gate is not None and not portfolio_gate_ok:
++        reasons.append("portfolio gates failed: " + "; ".join(portfolio_gate.failures))
++    elif (
++        require_portfolio_oos
++        and champion_portfolio is not None
++        and challenger_portfolio is not None
++        and not portfolio_vs_ok
++    ):
++        c, h = challenger_portfolio, champion_portfolio
++        reasons.append(
++            "portfolio OOS did not beat champion "
++            f"(sharpe {float(c['sharpe_ratio']):.4f} vs {float(h['sharpe_ratio']):.4f}, "
++            f"return {float(c['total_return']):.4f} vs {float(h['total_return']):.4f})"
++        )
++
++    if promote:
++        reason = (
++            "no existing champion; challenger passes portfolio OOS gates"
++            if champion_metadata is None
++            else "challenger passes AUC and portfolio OOS criteria"
++        )
++    else:
++        reason = "; ".join(reasons) if reasons else "challenger retained"
++
++    report: dict[str, Any] = {
+ TODO.md                               |   2 +-
+ docs/runbook.md                       |   7 +-
+ logs/ml/ai_model_metrics.csv          |  10 +-
+ logs/retrain_history.csv              |   1 +
+ models/ai_score_model.joblib          | Bin 1757990 -> 1758310 bytes
+ src/ml_model.py                       | 123 ++++++++++-
+ src/portfolio_backtest_validation.py  |  52 +++--
+ src/report_performance.py             | 375 +++++++++++++++++++++++++++-------
+ src/train_ai_model.py                 | 175 +++++++++++++++-
+ tests/test_model_governance.py        |  65 +++++-
+ tests/test_portfolio_backtest_gate.py |  12 ++
+ tests/test_report_performance.py      |  70 +++++--
+ 12 files changed, 767 insertions(+), 125 deletions(-)
+
+exec
+/bin/bash -lc 'git diff -- src/report_performance.py src/train_ai_model.py src/ml_model.py src/portfolio_backtest_validation.py tests/test_report_performance.py' in /home/kimyo/trading-bot
+ succeeded in 182ms:
+diff --git a/src/ml_model.py b/src/ml_model.py
+index e0c664b..2561599 100644
+--- a/src/ml_model.py
++++ b/src/ml_model.py
+@@ -290,25 +290,132 @@ def restore_archived_champion(
+     return model_path, metadata_path
+ 
+ 
++def bundle_to_model_wrapper(bundle: dict[str, Any]) -> RegimeAwareModelWrapper:
++    return RegimeAwareModelWrapper(
++        bundle["models"],
++        bundle["feature_columns"],
++        bundle["prediction_horizon"],
++        bundle["target_return_threshold"],
++    )
++
++
++def _portfolio_oos_rank_key(snapshot: dict[str, Any]) -> tuple[float, float, float]:
++    return (
++        float(snapshot["sharpe_ratio"]),
++        float(snapshot["total_return"]),
++        -abs(float(snapshot["max_drawdown"])),
++    )
++
++
++def portfolio_oos_beats_champion(
++    challenger: dict[str, Any],
++    champion: dict[str, Any],
++) -> bool:
++    """True when challenger ranks higher on Sharpe, then return, then drawdown."""
++    return _portfolio_oos_rank_key(challenger) > _portfolio_oos_rank_key(champion)
++
++
+ def build_promotion_report(
+     challenger_metadata: dict[str, Any],
+     champion_metadata: dict[str, Any] | None,
++    *,
++    challenger_portfolio: dict[str, Any] | None = None,
++    champion_portfolio: dict[str, Any] | None = None,
++    portfolio_thresholds: Any | None = None,
++    require_portfolio_oos: bool = True,
+ ) -> dict[str, Any]:
++    from src.portfolio_backtest_validation import (
++        PortfolioBacktestThresholds,
++        check_portfolio_summary_thresholds,
++    )
++
++    thresholds = portfolio_thresholds or PortfolioBacktestThresholds()
+     challenger_auc = float(challenger_metadata.get("oos_metrics", {}).get("avg_roc_auc", 0.0))
+-    champion_auc = float(champion_metadata.get("oos_metrics", {}).get("avg_roc_auc", 0.0)) if champion_metadata else None
+-    promote = champion_metadata is None or challenger_auc > champion_auc
+-    return {
++    champion_auc = (
++        float(champion_metadata.get("oos_metrics", {}).get("avg_roc_auc", 0.0))
++        if champion_metadata
++        else None
++    )
++    auc_ok = champion_metadata is None or challenger_auc > champion_auc
++
++    portfolio_gate = None
++    portfolio_gate_ok = True
++    portfolio_vs_ok = True
++
++    if require_portfolio_oos:
++        if challenger_portfolio is None:
++            portfolio_gate_ok = False
++            portfolio_vs_ok = False
++        else:
++            portfolio_gate = check_portfolio_summary_thresholds(
++                challenger_portfolio, thresholds
++            )
++            portfolio_gate_ok = portfolio_gate.passed
++
++            if champion_portfolio is None and champion_metadata is not None:
++                stored = champion_metadata.get("portfolio_oos")
++                if isinstance(stored, dict):
++                    champion_portfolio = stored
++
++            if champion_portfolio is not None:
++                portfolio_vs_ok = portfolio_oos_beats_champion(
++                    challenger_portfolio, champion_portfolio
++                )
++
++    promote = auc_ok and portfolio_gate_ok and portfolio_vs_ok
++
++    reasons: list[str] = []
++    if champion_metadata is None:
++        reasons.append("no existing champion metadata")
++    elif not auc_ok:
++        reasons.append(
++            f"challenger_avg_roc_auc={challenger_auc:.4f} vs champion_avg_roc_auc={champion_auc:.4f}"
++        )
++    if require_portfolio_oos and challenger_portfolio is None:
++        reasons.append("missing challenger portfolio OOS evaluation")
++    elif require_portfolio_oos and portfolio_gate is not None and not portfolio_gate_ok:
++        reasons.append("portfolio gates failed: " + "; ".join(portfolio_gate.failures))
++    elif (
++        require_portfolio_oos
++        and champion_portfolio is not None
++        and challenger_portfolio is not None
++        and not portfolio_vs_ok
++    ):
++        c, h = challenger_portfolio, champion_portfolio
++        reasons.append(
++            "portfolio OOS did not beat champion "
++            f"(sharpe {float(c['sharpe_ratio']):.4f} vs {float(h['sharpe_ratio']):.4f}, "
++            f"return {float(c['total_return']):.4f} vs {float(h['total_return']):.4f})"
++        )
++
++    if promote:
++        reason = (
++            "no existing champion; challenger passes portfolio OOS gates"
++            if champion_metadata is None
++            else "challenger passes AUC and portfolio OOS criteria"
++        )
++    else:
++        reason = "; ".join(reasons) if reasons else "challenger retained"
++
++    report: dict[str, Any] = {
+         "generated_at": _utc_now_iso(),
+         "champion_exists": champion_metadata is not None,
+         "champion_avg_roc_auc": champion_auc,
+         "challenger_avg_roc_auc": challenger_auc,
++        "auc_gate_passed": auc_ok,
++        "portfolio_gate_passed": portfolio_gate_ok,
++        "portfolio_vs_champion_passed": portfolio_vs_ok,
+         "decision": "PROMOTE" if promote else "RETAIN_CHAMPION",
+-        "reason": (
+-            "no existing champion metadata"
+-            if champion_metadata is None
+-            else f"challenger_avg_roc_auc={'{:.4f}'.format(challenger_auc)} vs champion_avg_roc_auc={'{:.4f}'.format(champion_auc)}"
+-        ),
++        "reason": reason,
+     }
++    if challenger_portfolio is not None:
++        report["challenger_portfolio_oos"] = challenger_portfolio
++    if champion_portfolio is not None:
++        report["champion_portfolio_oos"] = champion_portfolio
++    if portfolio_gate is not None:
++        report["portfolio_gate_failures"] = portfolio_gate.failures
++        report["portfolio_gate_warnings"] = portfolio_gate.warnings
++    return report
+ 
+ 
+ def train_ai_score_model(
+diff --git a/src/portfolio_backtest_validation.py b/src/portfolio_backtest_validation.py
+index 658e495..7d6d539 100644
+--- a/src/portfolio_backtest_validation.py
++++ b/src/portfolio_backtest_validation.py
+@@ -165,23 +165,13 @@ class PortfolioBacktestThresholdResult:
+     warnings: list[str]
+ 
+ 
+-def check_portfolio_backtest_thresholds(
+-    output_dir: str | Path,
+-    thresholds: PortfolioBacktestThresholds | None = None,
+-    *,
+-    validate_schema: bool = True,
+-) -> PortfolioBacktestThresholdResult:
+-    """Apply portfolio-level gates after schema validation."""
+-    thresholds = thresholds or PortfolioBacktestThresholds()
++def _apply_portfolio_thresholds_to_summary(
++    summary: dict[str, Any],
++    thresholds: PortfolioBacktestThresholds,
++) -> tuple[list[str], list[str]]:
+     failures: list[str] = []
+     warnings: list[str] = []
+ 
+-    if validate_schema:
+-        result = validate_portfolio_backtest_dir(output_dir, min_equity_rows=2)
+-        summary = result["summary"]
+-    else:
+-        summary = load_summary_row(Path(output_dir) / "portfolio_summary.csv")
+-
+     max_dd = float(summary["max_drawdown"])
+     if max_dd < thresholds.max_drawdown_floor:
+         failures.append(
+@@ -204,6 +194,40 @@ def check_portfolio_backtest_thresholds(
+         if sharpe < thresholds.min_sharpe:
+             failures.append(f"sharpe_ratio {sharpe:.4f} < min {thresholds.min_sharpe:.4f}")
+ 
++    return failures, warnings
++
++
++def check_portfolio_summary_thresholds(
++    summary: dict[str, Any],
++    thresholds: PortfolioBacktestThresholds | None = None,
++) -> PortfolioBacktestThresholdResult:
++    """Apply portfolio-level gates to an in-memory summary row (retrain promotion)."""
++    thresholds = thresholds or PortfolioBacktestThresholds()
++    failures, warnings = _apply_portfolio_thresholds_to_summary(summary, thresholds)
++    return PortfolioBacktestThresholdResult(
++        summary=summary,
++        passed=not failures,
++        failures=failures,
++        warnings=warnings,
++    )
++
++
++def check_portfolio_backtest_thresholds(
++    output_dir: str | Path,
++    thresholds: PortfolioBacktestThresholds | None = None,
++    *,
++    validate_schema: bool = True,
++) -> PortfolioBacktestThresholdResult:
++    """Apply portfolio-level gates after schema validation."""
++    thresholds = thresholds or PortfolioBacktestThresholds()
++
++    if validate_schema:
++        result = validate_portfolio_backtest_dir(output_dir, min_equity_rows=2)
++        summary = result["summary"]
++    else:
++        summary = load_summary_row(Path(output_dir) / "portfolio_summary.csv")
++
++    failures, warnings = _apply_portfolio_thresholds_to_summary(summary, thresholds)
+     return PortfolioBacktestThresholdResult(
+         summary=summary,
+         passed=not failures,
+diff --git a/src/report_performance.py b/src/report_performance.py
+index 2ebc588..8b53930 100644
+--- a/src/report_performance.py
++++ b/src/report_performance.py
+@@ -1,113 +1,291 @@
+-"""실제 거래 내역과 백테스트 결과를 비교 분석하는 스크립트."""
++"""실제 거래 내역과 시그널 가격을 비교해 paper 슬리피지를 분석·리포트한다."""
++
++from __future__ import annotations
++
++import argparse
++import json
++from dataclasses import asdict, dataclass
++from datetime import datetime, timedelta, timezone
++from pathlib import Path
+ 
+-import pandas as pd
+ import numpy as np
+-from datetime import datetime, timedelta
++import pandas as pd
++
+ from src.alpaca_client import get_account_summary, get_positions_summary
+-from src.config import SIGNAL_LOG_PATH, ORDER_LOG_PATH
+-
+-
+-def analyze_slippage(signals_path=None, orders_path=None):
+-    """signals log와 orders log를 결합하여 슬리피지를 분석한다."""
+-    
+-    # 인자가 제공되지 않으면 기본 경로 사용
+-    if signals_path is None:
+-        signals_path = SIGNAL_LOG_PATH
+-    if orders_path is None:
+-        orders_path = ORDER_LOG_PATH
+-        
+-    try:
+-        signals_df = pd.read_csv(signals_path)
+-        orders_df = pd.read_csv(orders_path)
+-    except FileNotFoundError:
+-        print("Log files not found.")
+-        return
++from src.config import ORDER_LOG_PATH, SIGNAL_LOG_PATH
+ 
+-    # 주문 체결 내역만 필터링 (기존 로그의 컬럼 밀림 현상 대응)
+-    # 1. 'event' 컬럼에서 확인
++
++@dataclass
++class SlippageReport:
++    generated_at: str
++    lookback_days: int
++    signals_path: str
++    orders_path: str
++    matched_trades: int
++    overall_avg_slippage_pct: float
++    total_slippage_usd: float
++    by_ticker: list[dict]
++
++    def to_dict(self) -> dict:
++        return asdict(self)
++
++
++def _utc_now_iso() -> str:
++    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
++
++
++def _filter_since(df: pd.DataFrame, since: datetime | None, column: str = "timestamp") -> pd.DataFrame:
++    if since is None or df.empty or column not in df.columns:
++        return df
++    frame = df.copy()
++    frame["_ts"] = pd.to_datetime(frame[column], utc=True, errors="coerce")
++    cutoff = pd.Timestamp(since).tz_convert("UTC") if pd.Timestamp(since).tzinfo else pd.Timestamp(since, tz="UTC")
++    return frame[frame["_ts"] >= cutoff].drop(columns=["_ts"])
++
++
++def _extract_filled_orders(orders_df: pd.DataFrame) -> pd.DataFrame:
+     filled_orders = orders_df[orders_df.get("event") == "STATUS_CHECK"].copy()
+-    
+-    # 2. 만약 비어있다면, 다른 컬럼에 밀려있는지 확인 (예: filled_avg_price 컬럼에 STATUS_CHECK이 있는 경우)
++
+     if filled_orders.empty:
+-        # 마지막 컬럼들 중 'STATUS_CHECK'이 포함된 행 찾기
+         mask = orders_df.apply(lambda row: "STATUS_CHECK" in row.values, axis=1)
+         filled_orders = orders_df[mask].copy()
+-        
+-        # 컬럼 재매핑 (데이터 위치에 맞게)
+-        # 필터링된 행들에 대해 'STATUS_CHECK'이 위치한 인덱스를 기준으로 재배치
+-        def remap_row(row):
++
++        def remap_row(row: pd.Series) -> pd.Series:
+             vals = list(row)
+             if "STATUS_CHECK" in vals:
+                 idx = vals.index("STATUS_CHECK")
+-                # STATUS_CHECK이 마지막(10번 인덱스)에 있다고 가정하고 밀린 경우 대응
+-                # timestamp, ticker, notional, order_id, status, side, order_type, filled_qty, filled_avg_price, reason, event
+                 if idx == 10:
+-                    return pd.Series([vals[0], vals[1], vals[2], vals[3], vals[4], vals[5], vals[6], vals[7], vals[8], vals[9], vals[10]],
+-                                   index=["timestamp", "ticker", "notional", "order_id", "status", "side", "order_type", "filled_qty", "filled_avg_price", "reason", "event"])
++                    return pd.Series(
++                        [
++                            vals[0],
++                            vals[1],
++                            vals[2],
++                            vals[3],
++                            vals[4],
++                            vals[5],
++                            vals[6],
++                            vals[7],
++                            vals[8],
++                            vals[9],
++                            vals[10],
++                        ],
++                        index=[
++                            "timestamp",
++                            "ticker",
++                            "notional",
++                            "order_id",
++                            "status",
++                            "side",
++                            "order_type",
++                            "filled_qty",
++                            "filled_avg_price",
++                            "reason",
++                            "event",
++                        ],
++                    )
+             return row
+ 
+         if not filled_orders.empty:
+             filled_orders = filled_orders.apply(remap_row, axis=1)
+ 
+     if filled_orders.empty:
+-        print("No filled orders found in log.")
+-        return
++        return filled_orders
++
++    filled_orders["filled_avg_price"] = pd.to_numeric(
++        filled_orders["filled_avg_price"], errors="coerce"
++    )
++    return filled_orders.dropna(subset=["filled_avg_price"])
++
+ 
+-    # 숫자형 변환
+-    filled_orders["filled_avg_price"] = pd.to_numeric(filled_orders["filled_avg_price"], errors="coerce")
+-    filled_orders = filled_orders.dropna(subset=["filled_avg_price"])
++def compute_slippage_report(
++    signals_path: str | Path | None = None,
++    orders_path: str | Path | None = None,
++    *,
++    lookback_days: int | None = None,
++    since: datetime | None = None,
++) -> SlippageReport | None:
++    """Match paper fills to signal close prices and compute slippage metrics."""
++    signals_path = Path(signals_path or SIGNAL_LOG_PATH)
++    orders_path = Path(orders_path or ORDER_LOG_PATH)
+ 
++    if since is None and lookback_days is not None:
++        since = datetime.now(timezone.utc) - timedelta(days=lookback_days)
++
++    try:
++        signals_df = pd.read_csv(signals_path)
++        orders_df = pd.read_csv(orders_path)
++    except FileNotFoundError:
++        return None
+ 
+-    # Timestamp 변환 (초 단위 절삭하여 매칭 확률 높임)
+-    signals_df["ts_short"] = pd.to_datetime(signals_df["timestamp"]).dt.floor("min")
+-    filled_orders["ts_short"] = pd.to_datetime(filled_orders["timestamp"]).dt.floor("min")
++    signals_df = _filter_since(signals_df, since)
++    orders_df = _filter_since(orders_df, since)
++
++    filled_orders = _extract_filled_orders(orders_df)
++    if filled_orders.empty:
++        return None
++
++    signals_df["ts_short"] = pd.to_datetime(signals_df["timestamp"], utc=True).dt.floor("min")
++    filled_orders["ts_short"] = pd.to_datetime(filled_orders["timestamp"], utc=True).dt.floor("min")
+ 
+-    # Ticker와 유사 시간대로 Join
+     merged = pd.merge(
+         filled_orders,
+         signals_df,
+         on=["ticker", "ts_short"],
+         how="inner",
+-        suffixes=("_order", "_signal")
++        suffixes=("_order", "_signal"),
+     )
+-
+     if merged.empty:
+-        print("Could not match orders with signals for slippage analysis.")
+-        # 시간을 좀 더 넓게 잡아보자 (5분 내외)
+-        return
++        return None
+ 
+     merged["side_lower"] = merged["side"].astype(str).str.lower()
+-    # Handle both plain "sell" and Enum string representation "orderside.sell"
+     sign = np.where(merged["side_lower"].str.contains("sell", na=False), -1, 1)
+-
+-    merged["slippage_pct"] = sign * (merged["filled_avg_price"] - merged["close"]) / merged["close"] * 100
+-
+-    # 슬리피지 USD 비용 계산
++    merged["slippage_pct"] = (
++        sign * (merged["filled_avg_price"] - merged["close"]) / merged["close"] * 100
++    )
+     merged["filled_qty"] = pd.to_numeric(merged["filled_qty"], errors="coerce")
+-    merged["slippage_usd"] = sign * (merged["filled_avg_price"] - merged["close"]) * merged["filled_qty"]
+-    
+-    # BUY는 높은 가격에 체결되면 슬리피지 발생 (+), SELL은 낮은 가격에 체결되면 발생 (+)
+-    # 편의상 절대값이나 방향성을 고려해 출력
+-    print("\n=== Slippage Analysis (Actual vs Signal Price) ===")
+-    summary = merged.groupby("ticker").agg(
++    merged["slippage_usd"] = (
++        sign * (merged["filled_avg_price"] - merged["close"]) * merged["filled_qty"]
++    )
++
++    by_ticker_df = merged.groupby("ticker").agg(
+         avg_slippage_pct=("slippage_pct", "mean"),
+         total_slippage_usd=("slippage_usd", "sum"),
+-        trades=("ticker", "count")
++        trades=("ticker", "count"),
++    )
++    by_ticker = [
++        {
++            "ticker": str(ticker),
++            "avg_slippage_pct": float(row["avg_slippage_pct"]),
++            "total_slippage_usd": float(row["total_slippage_usd"]),
++            "trades": int(row["trades"]),
++        }
++        for ticker, row in by_ticker_df.iterrows()
++    ]
++
++    return SlippageReport(
++        generated_at=_utc_now_iso(),
++        lookback_days=int(lookback_days or 0),
++        signals_path=str(signals_path),
++        orders_path=str(orders_path),
++        matched_trades=int(len(merged)),
++        overall_avg_slippage_pct=float(merged["slippage_pct"].mean()),
++        total_slippage_usd=float(merged["slippage_usd"].sum()),
++        by_ticker=by_ticker,
++    )
++
++
++def format_slippage_report(report: SlippageReport) -> str:
++    lines = [
++        "",
++        "=== Slippage Analysis (Paper Fill vs Signal Price) ===",
++        f"Window: last {report.lookback_days} day(s)" if report.lookback_days else "Window: all logs",
++        f"Matched trades: {report.matched_trades}",
++    ]
++    if report.by_ticker:
++        summary = pd.DataFrame(report.by_ticker).set_index("ticker")
++        lines.append(summary.to_string())
++    lines.append(f"\nOverall Average Slippage: {report.overall_avg_slippage_pct:.4f}%")
++    lines.append(f"Total Slippage Cost: ${report.total_slippage_usd:.2f}")
++    return "\n".join(lines)
++
++
++def write_slippage_artifacts(
++    report: SlippageReport,
++    output_dir: str | Path,
++    *,
++    run_id: str | None = None,
++) -> Path:
++    output_dir = Path(output_dir)
++    output_dir.mkdir(parents=True, exist_ok=True)
++    stamp = run_id or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
++    run_dir = output_dir / f"slippage_{stamp}"
++    run_dir.mkdir(parents=True, exist_ok=True)
++
++    (run_dir / "summary.json").write_text(
++        json.dumps(report.to_dict(), indent=2, sort_keys=True),
++        encoding="utf-8",
++    )
++    if report.by_ticker:
++        pd.DataFrame(report.by_ticker).to_csv(run_dir / "by_ticker.csv", index=False)
++
++    latest = output_dir / "latest_summary.json"
++    latest.write_text(
++        json.dumps(report.to_dict(), indent=2, sort_keys=True),
++        encoding="utf-8",
++    )
++    return run_dir
++
++
++def analyze_slippage(
++    signals_path: str | Path | None = None,
++    orders_path: str | Path | None = None,
++    *,
++    lookback_days: int | None = None,
++) -> SlippageReport | None:
++    report = compute_slippage_report(
++        signals_path=signals_path,
++        orders_path=orders_path,
++        lookback_days=lookback_days,
++    )
++    if report is None:
++        print("No slippage data available (missing logs, fills, or signal matches).")
++        return None
++    print(format_slippage_report(report))
++    return report
++
++
++def _maybe_notify_slippage(report: SlippageReport) -> None:
++    try:
++        from src.notifier import notify_info
++    except ImportError:
++        return
++    notify_info(
++        "Weekly paper vs signal slippage",
++        (
++            f"Matched trades: {report.matched_trades}\n"
++            f"Avg slippage: {report.overall_avg_slippage_pct:.4f}%\n"
++            f"Total cost: ${report.total_slippage_usd:.2f}"
++        ),
+     )
+-    print(summary.to_string())
+-    print(f"\nOverall Average Slippage: {merged['slippage_pct'].mean():.4f}%")
+-    print(f"Total Slippage Cost: ${merged['slippage_usd'].sum():.2f}")
+ 
+ 
+-def report_account_performance():
+-    """Alpaca 계좌의 현재 실적 요약."""
++def run_weekly_slippage_report(
++    *,
++    lookback_days: int = 7,
++    output_dir: str | Path = "logs/slippage_reports",
++    signals_path: str | Path | None = None,
++    orders_path: str | Path | None = None,
++    notify_telegram: bool = False,
++    include_account: bool = False,
++) -> SlippageReport | None:
++    report = compute_slippage_report(
++        signals_path=signals_path,
++        orders_path=orders_path,
++        lookback_days=lookback_days,
++    )
++    if report is None:
++        print("Weekly slippage report: no matched paper fills in lookback window.")
++        return None
++
++    run_dir = write_slippage_artifacts(report, output_dir)
++    print(format_slippage_report(report))
++    print(f"\nSaved weekly slippage report to {run_dir}")
++    if notify_telegram:
++        _maybe_notify_slippage(report)
++    if include_account:
++        report_account_performance()
++    return report
++
++
++def report_account_performance() -> None:
++    """Alpaca paper 계좌의 현재 실적 요약."""
+     account = get_account_summary()
+     positions = get_positions_summary()
+-    
++
+     print("\n=== Account Performance Summary ===")
+     print(f"Portfolio Value: ${account['portfolio_value']:.2f}")
+     print(f"Cash: ${account['cash']:.2f}")
+-    
++
+     if positions:
+         print("\n--- Open Positions ---")
+         pos_df = pd.DataFrame(positions)
+@@ -116,10 +294,67 @@ def report_account_performance():
+         print("\nNo open positions.")
+ 
+ 
+-def main():
++def _load_slippage_config() -> dict:
++    path = Path("config/slippage_report_config.json")
++    if not path.is_file():
++        return {}
++    return json.loads(path.read_text(encoding="utf-8"))
++
++
++def main() -> None:
++    config = _load_slippage_config()
++    parser = argparse.ArgumentParser(description="Paper vs signal slippage reporting")
++    parser.add_argument(
++        "--weekly",
++        action="store_true",
++        help="Run weekly lookback, write artifacts under output_dir",
++    )
++    parser.add_argument(
++        "--days",
++        type=int,
++        default=int(config.get("lookback_days", 7)),
++        help="Lookback window in days (default from config or 7)",
++    )
++    parser.add_argument(
++        "--output-dir",
++        default=str(config.get("output_dir", "logs/slippage_reports")),
++        help="Directory for JSON/CSV weekly artifacts",
++    )
++    parser.add_argument(
++        "--telegram",
++        action="store_true",
++        default=bool(config.get("notify_telegram", False)),
++        help="Send Telegram summary when configured",
++    )
++    parser.add_argument(
++        "--account",
++        action="store_true",
++        help="Include Alpaca account summary",
++    )
++    parser.add_argument("--signals", default=None, help="Override signals CSV path")
++    parser.add_argument("--orders", default=None, help="Override orders CSV path")
++    args = parser.parse_args()
++
+     print(f"Performance Report - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+-    report_account_performance()
+-    analyze_slippage()
++
++    if args.weekly:
++        run_weekly_slippage_report(
++            lookback_days=args.days,
++            output_dir=args.output_dir,
++            signals_path=args.signals,
++            orders_path=args.orders,
++            notify_telegram=args.telegram,
++            include_account=args.account,
++        )
++        return
++
++    if args.account:
++        report_account_performance()
++    analyze_slippage(
++        signals_path=args.signals,
++        orders_path=args.orders,
++        lookback_days=args.days if args.days > 0 else None,
++    )
+ 
+ 
+ if __name__ == "__main__":
+diff --git a/src/train_ai_model.py b/src/train_ai_model.py
+index 0091776..7a21ae4 100644
+--- a/src/train_ai_model.py
++++ b/src/train_ai_model.py
+@@ -16,7 +16,9 @@ from src.ml_model import (
+     archive_current_champion,
+     build_model_bundle,
+     build_promotion_report,
++    bundle_to_model_wrapper,
+     find_latest_archived_champion,
++    load_ai_score_model,
+     load_model_metadata,
+     restore_archived_champion,
+     save_challenger_bundle,
+@@ -24,8 +26,17 @@ from src.ml_model import (
+     train_ai_score_model,
+ )
+ from src.macro_loader import load_macro_data
++from src.retrain_holdout import (
++    exclude_holdout_from_ticker_data,
++    portfolio_holdout_window,
++    slice_ticker_data_to_holdout,
++)
+ from src.notifier import notify_info
+-from src.portfolio_backtester import run_portfolio_backtest
++from src.portfolio_backtester import (
++    PortfolioBacktestResult,
++    build_ai_score_frames,
++    run_portfolio_backtest,
++)
+ 
+ VIX_TICKER = "^VIX"
+ RETRAIN_LOG_PATH = Path("logs/retrain_history.csv")
+@@ -332,6 +343,114 @@ def _score_threshold_row(row: dict) -> tuple[float, float, float, float]:
+     )
+ 
+ 
++def _portfolio_oos_snapshot(
++    result: PortfolioBacktestResult,
++    eval_start: pd.Timestamp,
++    eval_end: pd.Timestamp,
++) -> dict:
++    return {
++        "evaluation_start": eval_start.strftime("%Y-%m-%d"),
++        "evaluation_end": eval_end.strftime("%Y-%m-%d"),
++        "total_return": float(result.total_return),
++        "benchmark_return": float(result.benchmark_return),
++        "max_drawdown": float(result.max_drawdown),
++        "sharpe_ratio": float(result.sharpe_ratio),
++        "trades": int(result.trades),
++        "win_rate": float(result.win_rate),
++    }
++
++
++def _run_retrain_oos_portfolio(
++    *,
++    settings,
++    ticker_data: dict[str, pd.DataFrame],
++    vix_df: pd.DataFrame | None,
++    macro_df: pd.DataFrame | None,
++    model_wrapper,
++    eval_start: pd.Timestamp,
++    eval_end: pd.Timestamp,
++) -> dict:
++    """Portfolio backtest on holdout-only price data for model promotion."""
++    benchmark_df = (
++        ticker_data.get(settings.market_regime_ticker)
++        if settings.market_regime_filter_enabled
++        else None
++    )
++    relative_strength_benchmark_df = (
++        ticker_data.get(settings.relative_strength_benchmark_ticker)
++        if settings.relative_strength_filter_enabled
++        else None
++    )
++    spy_df = ticker_data.get("SPY")
++
++    ai_score_frames = None
++    if settings.use_ai_score:
++        ai_score_frames = build_ai_score_frames(
++            ticker_data,
++            ai_model_bundle=model_wrapper,
++            vix_df=vix_df,
++            spy_df=spy_df,
++            macro_df=macro_df,
++        )
++
++    result, _, _ = run_portfolio_backtest(
++        ticker_data=ticker_data,
++        benchmark_df=benchmark_df,
++        relative_strength_benchmark_df=relative_strength_benchmark_df,
++        initial_cash=10000.0,
++        max_positions=settings.max_total_positions,
++        target_position_pct=settings.max_position_pct,
++        transaction_cost_pct=0.001,
++        ma_fast=settings.ma_fast,
++        ma_slow=settings.ma_slow,
++        rsi_buy_limit=settings.rsi_buy_limit,
++        use_ai_score=settings.use_ai_score,
++        ai_score_buy_threshold=settings.ai_score_buy_threshold,
++        market_regime_filter_enabled=settings.market_regime_filter_enabled,
++        market_regime_ma_fast=settings.market_regime_ma_fast,
++        market_regime_ma_slow=settings.market_regime_ma_slow,
++        relative_strength_filter_enabled=settings.relative_strength_filter_enabled,
++        relative_strength_lookback_days=settings.relative_strength_lookback_days,
++        relative_strength_min_excess_return=settings.relative_strength_min_excess_return,
++        volume_filter_enabled=settings.volume_filter_enabled,
++        volume_lookback_days=settings.volume_lookback_days,
++        min_volume_ratio=settings.min_volume_ratio,
++        volatility_filter_enabled=settings.volatility_filter_enabled,
++        volatility_lookback_days=settings.volatility_lookback_days,
++        max_volatility=settings.max_volatility,
++        rank_trend_weight=settings.rank_trend_weight,
++        rank_ai_weight=settings.rank_ai_weight,
++        rank_momentum_weight=settings.rank_momentum_weight,
++        rank_volatility_weight=settings.rank_volatility_weight,
++        ai_exit_enabled=getattr(settings, "ai_exit_enabled", False),
++        ai_exit_threshold=(
++            settings.ai_exit_threshold_bear
++            if getattr(settings, "ai_exit_dynamic_enabled", False)
++            else settings.ai_exit_threshold
++        ),
++        ai_exit_dynamic_enabled=getattr(settings, "ai_exit_dynamic_enabled", False),
++        ai_exit_vix_low=getattr(settings, "ai_exit_vix_low", 15.0),
++        ai_exit_vix_high=getattr(settings, "ai_exit_vix_high", 25.0),
++        ai_exit_threshold_bull=getattr(settings, "ai_exit_threshold_bull", 0.22),
++        ai_exit_threshold_bear=getattr(settings, "ai_exit_threshold_bear", 0.50),
++        vix_df=vix_df,
++        macro_df=macro_df,
++        ai_score_frames=ai_score_frames,
++        evaluation_start_date=eval_start,
++        evaluation_end_date=eval_end,
++    )
++    return _portfolio_oos_snapshot(result, eval_start, eval_end)
++
++
++def _load_champion_model_wrapper():
++    if not MODEL_PATH.exists():
++        return None
++    try:
++        return load_ai_score_model()
++    except (FileNotFoundError, ValueError):
++        return None
++
++
+ def _run_threshold_retune(
+     settings,
+     ticker_data: dict[str, pd.DataFrame],
+@@ -464,9 +583,19 @@ def main() -> None:
+     else:
+         print(f"  Macro data: {len(macro_df)} rows, columns: {list(macro_df.columns)}")
+ 
++    holdout_start, holdout_end = portfolio_holdout_window(training_data)
++    training_data_fit = exclude_holdout_from_ticker_data(training_data, holdout_start)
++    holdout_ticker_data = slice_ticker_data_to_holdout(
++        training_data, holdout_start, holdout_end
++    )
++    print(
++        f"Portfolio promotion holdout: {holdout_start.strftime('%Y-%m-%d')} "
++        f"to {holdout_end.strftime('%Y-%m-%d')} (excluded from challenger training)"
++    )
++
+     print("Training model with LightGBM + enhanced features (21 features)...")
+     model, metrics_df = train_ai_score_model(
+-        training_data=training_data,
++        training_data=training_data_fit,
+         prediction_horizon=20,
+         target_return_threshold=0.0,
+         vix_df=vix_df,
+@@ -509,7 +638,7 @@ def main() -> None:
+ 
+     threshold_retune_report, threshold_retune_results_df = _run_threshold_retune(
+         settings=settings,
+-        ticker_data=training_data,
++        ticker_data=training_data_fit,
+         vix_df=vix_df,
+         macro_df=macro_df,
+     )
+@@ -530,17 +659,55 @@ def main() -> None:
+     bundle = build_model_bundle(
+         trained_models=model.models,
+         metrics_df=metrics_df,
+-        training_data=training_data,
++        training_data=training_data_fit,
+         feature_columns=FEATURE_COLUMNS,
+         prediction_horizon=model.prediction_horizon,
+         target_return_threshold=model.target_return_threshold,
+     )
+ 
++    challenger_portfolio = None
++    champion_portfolio = None
++    if settings.use_ai_score:
++        if holdout_start > holdout_end:
++            raise ValueError(
++                "Invalid portfolio holdout window; cannot score promotion gates"
++            )
++        print(
++            "Running holdout-window portfolio evaluation for promotion gates "
++            "(full history for indicator warmup)..."
++        )
++        challenger_portfolio = _run_retrain_oos_portfolio(
++            settings=settings,
++            ticker_data=training_data,
++            vix_df=vix_df,
++            macro_df=macro_df,
++            model_wrapper=bundle_to_model_wrapper(bundle),
++            eval_start=holdout_start,
++            eval_end=holdout_end,
++        )
++        challenger_portfolio["holdout_excluded_from_training"] = True
++        bundle["metadata"]["portfolio_oos"] = challenger_portfolio
++        champion_wrapper = _load_champion_model_wrapper()
++        if champion_wrapper is not None:
++            champion_portfolio = _run_retrain_oos_portfolio(
++                settings=settings,
++                ticker_data=training_data,
++                vix_df=vix_df,
++                macro_df=macro_df,
++                model_wrapper=champion_wrapper,
++                eval_start=holdout_start,
++                eval_end=holdout_end,
++            )
++            champion_portfolio["holdout_excluded_from_training"] = True
++
+     challenger_model_path, challenger_metadata_path = save_challenger_bundle(bundle)
+     champion_metadata = load_model_metadata()
+     promotion_report = build_promotion_report(
+         challenger_metadata=bundle["metadata"],
+         champion_metadata=champion_metadata,
++        challenger_portfolio=challenger_portfolio,
++        champion_portfolio=champion_portfolio,
++        require_portfolio_oos=settings.use_ai_score,
+     )
+     promotion_report.update(
+         {
+diff --git a/tests/test_report_performance.py b/tests/test_report_performance.py
+index 4e5fa68..eec097e 100644
+--- a/tests/test_report_performance.py
++++ b/tests/test_report_performance.py
+@@ -1,14 +1,19 @@
+-import sys
+-import os
+-import pandas as pd
+-from unittest.mock import patch
++import json
+ from io import StringIO
++from pathlib import Path
++from unittest.mock import patch
++
++import pandas as pd
+ import pytest
+ 
+-# Add src to path to allow imports
+-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
++from src.report_performance import (
++    analyze_slippage,
++    compute_slippage_report,
++    format_slippage_report,
++    run_weekly_slippage_report,
++    write_slippage_artifacts,
++)
+ 
+-from report_performance import analyze_slippage
+ 
+ @pytest.fixture
+ def create_log_files(tmp_path):
+@@ -19,7 +24,7 @@ def create_log_files(tmp_path):
+         "timestamp": ["2023-01-01T10:00:00Z", "2023-01-01T10:00:00Z"],
+         "ticker": ["TICKER1", "TICKER2"],
+         "close": [100.0, 200.0],
+-        "volume": [1000, 500]
++        "volume": [1000, 500],
+     }
+     pd.DataFrame(signals_data).to_csv(signals_file, index=False)
+ 
+@@ -34,30 +39,55 @@ def create_log_files(tmp_path):
+         "filled_qty": [10, 5],
+         "filled_avg_price": [101.0, 199.0],
+         "reason": ["some_reason", "some_reason"],
+-        "event": ["STATUS_CHECK", "STATUS_CHECK"]
++        "event": ["STATUS_CHECK", "STATUS_CHECK"],
+     }
+     pd.DataFrame(orders_data).to_csv(orders_file, index=False)
+ 
+-    return str(signals_file), str(orders_file)
++    return signals_file, orders_file
++
+ 
+-@patch('sys.stdout', new_callable=StringIO)
++@patch("sys.stdout", new_callable=StringIO)
+ def test_analyze_slippage_with_usd_cost(mock_stdout, create_log_files):
+     signals_path, orders_path = create_log_files
+ 
+-    # Call analyze_slippage with the paths to the temporary log files
+     analyze_slippage(signals_path=signals_path, orders_path=orders_path)
+ 
+     output = mock_stdout.getvalue()
+-    
+-    # Check for TICKER1 (buy) slippage: (101 - 100) * 10 = 10
+-    # Check for TICKER2 (sell) slippage: (200 - 199) * 5 = 5
+-    # Total slippage: 10 + 5 = 15
+-
+     assert "Total Slippage Cost: $15.00" in output
+     assert "TICKER1" in output
+     assert "TICKER2" in output
+-    # Check for the summary table values
+-    # For TICKER1, total_slippage_usd is 10.0
+-    # For TICKER2, total_slippage_usd is 5.0
+     assert "10.0" in output
+     assert "5.0" in output
++
++
++def test_compute_slippage_report(create_log_files):
++    signals_path, orders_path = create_log_files
++    report = compute_slippage_report(signals_path=signals_path, orders_path=orders_path)
++    assert report is not None
++    assert report.matched_trades == 2
++    assert report.total_slippage_usd == pytest.approx(15.0)
++    assert "TICKER1" in {row["ticker"] for row in report.by_ticker}
++
++
++def test_write_slippage_artifacts(create_log_files, tmp_path: Path):
++    signals_path, orders_path = create_log_files
++    report = compute_slippage_report(signals_path=signals_path, orders_path=orders_path)
++    assert report is not None
++    run_dir = write_slippage_artifacts(report, tmp_path, run_id="test_run")
++    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
++    assert summary["total_slippage_usd"] == pytest.approx(15.0)
++    assert (tmp_path / "latest_summary.json").is_file()
++
++
++@patch("sys.stdout", new_callable=StringIO)
++def test_run_weekly_slippage_report(mock_stdout, create_log_files, tmp_path: Path):
++    signals_path, orders_path = create_log_files
++    report = run_weekly_slippage_report(
++        lookback_days=9999,
++        output_dir=tmp_path,
++        signals_path=signals_path,
++        orders_path=orders_path,
++    )
++    assert report is not None
++    assert format_slippage_report(report)
++    assert list(tmp_path.glob("slippage_*"))
+
+exec
+/bin/bash -lc "git diff -- src/train_ai_model.py | sed -n '180,360p'; git diff -- tests/test_model_governance.py tests/test_portfolio_backtest_gate.py" in /home/kimyo/trading-bot
+ succeeded in 148ms:
+     bundle = build_model_bundle(
+         trained_models=model.models,
+         metrics_df=metrics_df,
+-        training_data=training_data,
++        training_data=training_data_fit,
+         feature_columns=FEATURE_COLUMNS,
+         prediction_horizon=model.prediction_horizon,
+         target_return_threshold=model.target_return_threshold,
+     )
+ 
++    challenger_portfolio = None
++    champion_portfolio = None
++    if settings.use_ai_score:
++        if holdout_start > holdout_end:
++            raise ValueError(
++                "Invalid portfolio holdout window; cannot score promotion gates"
++            )
++        print(
++            "Running holdout-window portfolio evaluation for promotion gates "
++            "(full history for indicator warmup)..."
++        )
++        challenger_portfolio = _run_retrain_oos_portfolio(
++            settings=settings,
++            ticker_data=training_data,
++            vix_df=vix_df,
++            macro_df=macro_df,
++            model_wrapper=bundle_to_model_wrapper(bundle),
++            eval_start=holdout_start,
++            eval_end=holdout_end,
++        )
++        challenger_portfolio["holdout_excluded_from_training"] = True
++        bundle["metadata"]["portfolio_oos"] = challenger_portfolio
++        champion_wrapper = _load_champion_model_wrapper()
++        if champion_wrapper is not None:
++            champion_portfolio = _run_retrain_oos_portfolio(
++                settings=settings,
++                ticker_data=training_data,
++                vix_df=vix_df,
++                macro_df=macro_df,
++                model_wrapper=champion_wrapper,
++                eval_start=holdout_start,
++                eval_end=holdout_end,
++            )
++            champion_portfolio["holdout_excluded_from_training"] = True
++
+     challenger_model_path, challenger_metadata_path = save_challenger_bundle(bundle)
+     champion_metadata = load_model_metadata()
+     promotion_report = build_promotion_report(
+         challenger_metadata=bundle["metadata"],
+         champion_metadata=champion_metadata,
++        challenger_portfolio=challenger_portfolio,
++        champion_portfolio=champion_portfolio,
++        require_portfolio_oos=settings.use_ai_score,
+     )
+     promotion_report.update(
+         {
+diff --git a/tests/test_model_governance.py b/tests/test_model_governance.py
+index 37ff928..32b3bff 100644
+--- a/tests/test_model_governance.py
++++ b/tests/test_model_governance.py
+@@ -10,9 +10,11 @@ from src.ml_model import (
+     build_promotion_report,
+     find_latest_archived_champion,
+     load_model_metadata,
++    portfolio_oos_beats_champion,
+     restore_archived_champion,
+     save_model_bundle,
+ )
++from src.portfolio_backtest_validation import PortfolioBacktestThresholds
+ from src.train_ai_model import _evaluate_rollback_need
+ 
+ 
+@@ -53,10 +55,69 @@ class ModelGovernanceTest(unittest.TestCase):
+         challenger_metadata = {"oos_metrics": {"avg_roc_auc": 0.63}}
+         champion_metadata = {"oos_metrics": {"avg_roc_auc": 0.60}}
+ 
+-        report = build_promotion_report(challenger_metadata, champion_metadata)
++        report = build_promotion_report(
++            challenger_metadata,
++            champion_metadata,
++            require_portfolio_oos=False,
++        )
++
++        self.assertEqual(report["decision"], "PROMOTE")
++        self.assertTrue(report["auc_gate_passed"])
++
++    def test_build_promotion_report_requires_portfolio_gates(self) -> None:
++        challenger_metadata = {"oos_metrics": {"avg_roc_auc": 0.63}}
++        champion_metadata = {"oos_metrics": {"avg_roc_auc": 0.60}}
++        weak_portfolio = {
++            "total_return": 0.02,
++            "benchmark_return": 0.20,
++            "max_drawdown": -0.30,
++            "sharpe_ratio": -0.2,
++        }
++        strong_portfolio = {
++            "total_return": 0.15,
++            "benchmark_return": 0.10,
++            "max_drawdown": -0.08,
++            "sharpe_ratio": 1.1,
++        }
++
++        report = build_promotion_report(
++            challenger_metadata,
++            champion_metadata,
++            challenger_portfolio=weak_portfolio,
++            champion_portfolio=strong_portfolio,
++            portfolio_thresholds=PortfolioBacktestThresholds(max_drawdown_floor=-0.20),
++        )
++
++        self.assertEqual(report["decision"], "RETAIN_CHAMPION")
++        self.assertTrue(report["auc_gate_passed"])
++        self.assertFalse(report["portfolio_gate_passed"])
++
++    def test_build_promotion_report_promotes_on_auc_and_portfolio(self) -> None:
++        challenger_metadata = {"oos_metrics": {"avg_roc_auc": 0.63}}
++        champion_metadata = {"oos_metrics": {"avg_roc_auc": 0.60}}
++        challenger_portfolio = {
++            "total_return": 0.12,
++            "benchmark_return": 0.10,
++            "max_drawdown": -0.08,
++            "sharpe_ratio": 1.2,
++        }
++        champion_portfolio = {
++            "total_return": 0.08,
++            "benchmark_return": 0.10,
++            "max_drawdown": -0.10,
++            "sharpe_ratio": 0.9,
++        }
++
++        report = build_promotion_report(
++            challenger_metadata,
++            champion_metadata,
++            challenger_portfolio=challenger_portfolio,
++            champion_portfolio=champion_portfolio,
++        )
+ 
+         self.assertEqual(report["decision"], "PROMOTE")
+-        self.assertIn("challenger_avg_roc_auc", report["reason"])
++        self.assertTrue(report["portfolio_vs_champion_passed"])
++        self.assertTrue(portfolio_oos_beats_champion(challenger_portfolio, champion_portfolio))
+ 
+     def test_save_model_bundle_persists_metadata_json(self) -> None:
+         bundle = {
+diff --git a/tests/test_portfolio_backtest_gate.py b/tests/test_portfolio_backtest_gate.py
+index 520a2a7..3ad0db1 100644
+--- a/tests/test_portfolio_backtest_gate.py
++++ b/tests/test_portfolio_backtest_gate.py
+@@ -8,6 +8,7 @@ import pytest
+ from src.portfolio_backtest_validation import (
+     PortfolioBacktestThresholds,
+     check_portfolio_backtest_thresholds,
++    check_portfolio_summary_thresholds,
+ )
+ 
+ 
+@@ -34,6 +35,17 @@ def _write_minimal_bundle(dir_path: Path, summary_row: dict) -> None:
+     ).to_csv(dir_path / "portfolio_trades.csv", index=False)
+ 
+ 
++def test_summary_thresholds_pass_in_memory():
++    summary = {
++        "total_return": 0.10,
++        "benchmark_return": 0.12,
++        "max_drawdown": -0.08,
++        "sharpe_ratio": 1.2,
++    }
++    result = check_portfolio_summary_thresholds(summary)
++    assert result.passed
++
++
+ def test_thresholds_pass(tmp_path: Path):
+     _write_minimal_bundle(
+         tmp_path,
+
+exec
+/bin/bash -lc 'ls scripts | grep slippage || true; git status --short; rg "portfolio_holdout_window|evaluation_start_date|run_portfolio_backtest|build_ai_score_frames" -n src tests | head -80' in /home/kimyo/trading-bot
+ succeeded in 154ms:
+install_slippage_report_timer.sh
+run_weekly_slippage_report.sh
+ M TODO.md
+ M docs/runbook.md
+ M logs/ml/ai_model_metrics.csv
+ M logs/retrain_history.csv
+ M models/ai_score_model.joblib
+ M src/ml_model.py
+ M src/portfolio_backtest_validation.py
+ M src/report_performance.py
+ M src/train_ai_model.py
+ M tests/test_model_governance.py
+ M tests/test_portfolio_backtest_gate.py
+ M tests/test_report_performance.py
+?? .antigravitycli/
+?? config/slippage_report_config.json
+?? reports/agent_pipeline/phase20_golden/
+?? reports/agent_pipeline/phase20_portfolio_gate/
+?? reports/agent_pipeline/phase20_portfolio_gate_v2/
+?? reports/agent_pipeline/phase20_promotion/
+?? reports/agent_pipeline/phase20_promotion_v2/
+?? reports/agent_pipeline/phase20_promotion_v3/
+?? reports/agent_pipeline/phase20_promotion_v4/
+?? reports/agent_pipeline/phase20_slippage/
+?? scripts/install_slippage_report_timer.sh
+?? scripts/run_weekly_slippage_report.sh
+?? src/retrain_holdout.py
+?? tests/test_retrain_holdout.py
+src/walk_forward_validation.py:14:from src.portfolio_backtester import run_portfolio_backtest, build_ai_score_frames
+src/walk_forward_validation.py:121:        ai_score_frames_full = build_ai_score_frames(
+src/walk_forward_validation.py:132:        result, _, _ = run_portfolio_backtest(
+src/optimize_strategy.py:8:from src.portfolio_backtester import run_portfolio_backtest
+src/optimize_strategy.py:52:            result, _, _ = run_portfolio_backtest(
+src/final_battle_5m.py:8:from src.portfolio_backtester import run_portfolio_backtest, build_ai_score_frames
+src/final_battle_5m.py:14:    # 분할 익절 로직 등 최신 파라미터 반영을 위해 run_portfolio_backtest 호출
+src/final_battle_5m.py:15:    res, _, _ = run_portfolio_backtest(
+src/validate_model.py:27:from src.portfolio_backtester import run_portfolio_backtest, build_ai_score_frames
+src/validate_model.py:51:    result, _, trades_df = run_portfolio_backtest(
+src/validate_model.py:152:    result_nai, _, _ = run_portfolio_backtest(
+src/validate_model.py:176:    val_score_frames = build_ai_score_frames(
+src/validate_model.py:188:    full_score_frames = build_ai_score_frames(
+src/optimize_market_regime.py:9:from src.portfolio_backtester import build_ai_score_frames, run_portfolio_backtest
+src/optimize_market_regime.py:47:        ai_score_frames = build_ai_score_frames(
+src/optimize_market_regime.py:76:    baseline_result, _, _ = run_portfolio_backtest(**common_kwargs)
+src/optimize_market_regime.py:118:        result, _, _ = run_portfolio_backtest(
+src/compare_allocation.py:9:from src.portfolio_backtester import run_portfolio_backtest, save_portfolio_backtest_outputs
+src/compare_allocation.py:20:    result, equity_df, trades_df = run_portfolio_backtest(
+src/run_ai_backtest.py:6:    run_portfolio_backtest,
+src/run_ai_backtest.py:39:    baseline_result, baseline_equity, baseline_trades = run_portfolio_backtest(
+src/run_ai_backtest.py:67:    ai_result, ai_equity, ai_trades = run_portfolio_backtest(
+src/optimize_ai_threshold.py:8:from src.portfolio_backtester import build_ai_score_frames, run_portfolio_backtest
+src/optimize_ai_threshold.py:31:    ai_score_frames = build_ai_score_frames(
+src/optimize_ai_threshold.py:41:    baseline_result, _, _ = run_portfolio_backtest(
+src/optimize_ai_threshold.py:86:        result, _, _ = run_portfolio_backtest(
+tests/test_retrain_holdout.py:7:    portfolio_holdout_window,
+tests/test_retrain_holdout.py:28:    holdout_start, holdout_end = portfolio_holdout_window(ticker_data, months=6)
+src/train_ai_model.py:31:    portfolio_holdout_window,
+src/train_ai_model.py:37:    build_ai_score_frames,
+src/train_ai_model.py:38:    run_portfolio_backtest,
+src/train_ai_model.py:388:        ai_score_frames = build_ai_score_frames(
+src/train_ai_model.py:396:    result, _, _ = run_portfolio_backtest(
+src/train_ai_model.py:439:        evaluation_start_date=eval_start,
+src/train_ai_model.py:477:            result, _, _ = run_portfolio_backtest(
+src/train_ai_model.py:515:                evaluation_start_date=eval_start,
+src/train_ai_model.py:586:    holdout_start, holdout_end = portfolio_holdout_window(training_data)
+src/optimize_ai_exit.py:9:from src.portfolio_backtester import run_portfolio_backtest
+src/optimize_ai_exit.py:25:    result, _, trades_df = run_portfolio_backtest(
+tests/test_threshold_retune.py:70:        with patch("src.train_ai_model.run_portfolio_backtest", side_effect=fake_backtest):
+src/optimize_exit_strategy.py:7:from src.portfolio_backtester import build_ai_score_frames, run_portfolio_backtest
+src/optimize_exit_strategy.py:29:        ai_score_frames = build_ai_score_frames(
+src/optimize_exit_strategy.py:58:    baseline_result, _, _ = run_portfolio_backtest(**common_kwargs)
+src/optimize_exit_strategy.py:100:        result, _, _ = run_portfolio_backtest(
+src/optimize_volume_volatility.py:10:from src.portfolio_backtester import build_ai_score_frames, run_portfolio_backtest
+src/optimize_volume_volatility.py:86:        ai_score_frames = build_ai_score_frames(
+src/optimize_volume_volatility.py:109:    baseline_result, _, _ = run_portfolio_backtest(**common_kwargs)
+src/optimize_volume_volatility.py:128:            result, _, _ = run_portfolio_backtest(
+src/optimize_volume_volatility.py:154:            result, _, _ = run_portfolio_backtest(
+src/run_selected_strategy.py:6:    run_portfolio_backtest,
+src/run_selected_strategy.py:47:    result, equity_df, trades_df = run_portfolio_backtest(
+src/compare_profiles_5m.py:10:from src.portfolio_backtester import run_portfolio_backtest, build_ai_score_frames
+src/compare_profiles_5m.py:16:    result, _, _ = run_portfolio_backtest(
+src/generate_baseline_snapshot.py:8:    run_portfolio_backtest,
+src/generate_baseline_snapshot.py:45:    result, equity_df, trades_df = run_portfolio_backtest(
+src/optimize_hyperparameters_5m.py:8:from src.portfolio_backtester import run_portfolio_backtest, build_ai_score_frames
+src/optimize_hyperparameters_5m.py:14:    res, _, _ = run_portfolio_backtest(
+src/optimize_entry_ranking.py:8:from src.portfolio_backtester import build_ai_score_frames, run_portfolio_backtest
+src/optimize_entry_ranking.py:29:        ai_score_frames = build_ai_score_frames(
+src/optimize_entry_ranking.py:54:    baseline_result, _, _ = run_portfolio_backtest(**common_kwargs)
+src/optimize_entry_ranking.py:96:        result, _, _ = run_portfolio_backtest(
+src/retrain_holdout.py:10:def portfolio_holdout_window(
+tests/test_pms_backtest.py:7:from src.backtester import run_portfolio_backtest
+tests/test_pms_backtest.py:77:        result, equity_df = run_portfolio_backtest(self.config, self.all_data)
+tests/test_qlib_readiness.py:12:from src.portfolio_backtester import PortfolioBacktestResult, run_portfolio_backtest
+tests/test_qlib_readiness.py:108:                "src.generate_baseline_snapshot.run_portfolio_backtest",
+tests/test_qlib_readiness.py:130:    def test_run_portfolio_backtest_market_regime_filter_blocks_buys(self) -> None:
+tests/test_qlib_readiness.py:136:        result, equity_df, trades_df = run_portfolio_backtest(
+tests/test_qlib_readiness.py:155:    def test_run_portfolio_backtest_relative_strength_filter_blocks_underperformers(self) -> None:
+tests/test_qlib_readiness.py:176:        _, equity_df, _ = run_portfolio_backtest(
+tests/test_qlib_readiness.py:196:    def test_run_portfolio_backtest_volume_filter_blocks_low_volume(self) -> None:
+tests/test_qlib_readiness.py:203:        result, equity_df, trades_df = run_portfolio_backtest(
+tests/test_qlib_readiness.py:221:    def test_run_portfolio_backtest_volatility_filter_blocks_high_volatility(self) -> None:
+tests/test_qlib_readiness.py:228:        result, equity_df, trades_df = run_portfolio_backtest(
+tests/test_qlib_readiness.py:246:    def test_run_portfolio_backtest_applies_stop_loss_exit(self) -> None:
+tests/test_qlib_readiness.py:266:        result, _, trades_df = run_portfolio_backtest(
+tests/test_qlib_readiness.py:283:    def test_run_portfolio_backtest_applies_trailing_stop_exit(self) -> None:
+tests/test_qlib_readiness.py:303:        result, _, trades_df = run_portfolio_backtest(
+tests/test_qlib_readiness.py:320:    def test_run_portfolio_backtest_rank_ai_weight_prioritizes_higher_ai_score(self) -> None:
+tests/test_qlib_readiness.py:344:        _, equity_df, _ = run_portfolio_backtest(
+
+exec
+/bin/bash -lc "sed -n '1,220p' src/retrain_holdout.py; sed -n '1,220p' scripts/run_weekly_slippage_report.sh; sed -n '1,240p' scripts/install_slippage_report_timer.sh; cat config/slippage_report_config.json" in /home/kimyo/trading-bot
+ succeeded in 166ms:
+"""Holdout window helpers for retrain portfolio promotion (no ML deps)."""
+
+from __future__ import annotations
+
+import pandas as pd
+
+PORTFOLIO_HOLDOUT_MONTHS = 6
+
+
+def portfolio_holdout_window(
+    ticker_data: dict[str, pd.DataFrame],
+    *,
+    months: int = PORTFOLIO_HOLDOUT_MONTHS,
+) -> tuple[pd.Timestamp, pd.Timestamp]:
+    latest_dates = []
+    for df in ticker_data.values():
+        if df is None or df.empty or "date" not in df.columns:
+            continue
+        series = pd.to_datetime(df["date"], errors="coerce").dropna()
+        if not series.empty:
+            latest_dates.append(series.max())
+    if not latest_dates:
+        raise ValueError("No valid dates found in ticker_data")
+    eval_end = max(latest_dates)
+    eval_start = eval_end - pd.DateOffset(months=months)
+    return eval_start, eval_end
+
+
+def exclude_holdout_from_ticker_data(
+    ticker_data: dict[str, pd.DataFrame],
+    holdout_start: pd.Timestamp,
+) -> dict[str, pd.DataFrame]:
+    """Rows with date >= holdout_start are removed (challenger training set)."""
+    out: dict[str, pd.DataFrame] = {}
+    for ticker, df in ticker_data.items():
+        if df is None or df.empty or "date" not in df.columns:
+            continue
+        frame = df.copy()
+        frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
+        out[ticker] = frame[frame["date"] < holdout_start].reset_index(drop=True)
+    return out
+
+
+def slice_ticker_data_to_holdout(
+    ticker_data: dict[str, pd.DataFrame],
+    holdout_start: pd.Timestamp,
+    holdout_end: pd.Timestamp,
+) -> dict[str, pd.DataFrame]:
+    """Rows within [holdout_start, holdout_end] for portfolio OOS scoring."""
+    out: dict[str, pd.DataFrame] = {}
+    for ticker, df in ticker_data.items():
+        if df is None or df.empty or "date" not in df.columns:
+            continue
+        frame = df.copy()
+        frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
+        mask = (frame["date"] >= holdout_start) & (frame["date"] <= holdout_end)
+        sliced = frame.loc[mask].reset_index(drop=True)
+        if not sliced.empty:
+            out[ticker] = sliced
+    return out
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$PROJECT_DIR"
+
+TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
+LOG_DIR="$PROJECT_DIR/logs/slippage_report_runs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/slippage_${TIMESTAMP}.log"
+
+LOOKBACK_DAYS="$("$PROJECT_DIR/.venv/bin/python" - <<'PY'
+import json
+from pathlib import Path
+path = Path("config/slippage_report_config.json")
+if path.is_file():
+    print(int(json.loads(path.read_text()).get("lookback_days", 7)))
+else:
+    print(7)
+PY
+)"
+
+TELEGRAM_FLAG=""
+if "$PROJECT_DIR/.venv/bin/python" - <<'PY'
+import json
+from pathlib import Path
+path = Path("config/slippage_report_config.json")
+if path.is_file() and json.loads(path.read_text()).get("notify_telegram"):
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+then
+  TELEGRAM_FLAG="--telegram"
+fi
+
+{
+  echo "timestamp=$TIMESTAMP"
+  echo "lookback_days=$LOOKBACK_DAYS"
+  echo "--------------------------------------------------------------------------------"
+  PYTHONPATH=. "$PROJECT_DIR/.venv/bin/python" -m src.report_performance \
+    --weekly \
+    --days "$LOOKBACK_DAYS" \
+    $TELEGRAM_FLAG
+} >"$LOG_FILE" 2>&1
+
+echo "Weekly slippage report completed: $LOG_FILE"
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONFIG_FILE="$PROJECT_DIR/config/slippage_report_config.json"
+SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
+mkdir -p "$SYSTEMD_USER_DIR"
+
+SERVICE_FILE="$SYSTEMD_USER_DIR/trading-bot-slippage-report.service"
+TIMER_FILE="$SYSTEMD_USER_DIR/trading-bot-slippage-report.timer"
+
+ON_CALENDAR_LINES="$("$PROJECT_DIR/.venv/bin/python" - <<PY
+import json
+from pathlib import Path
+config = json.loads(Path("$CONFIG_FILE").read_text())
+timezone = str(config.get("timezone", "")).strip()
+times = config.get("on_calendar_times", ["Sun 18:00:00"])
+for item in times:
+    value = str(item).strip()
+    if timezone and "/" not in value:
+        value = f"{value} {timezone}"
+    print(f"OnCalendar={value}")
+PY
+)"
+
+chmod +x "$PROJECT_DIR/scripts/run_weekly_slippage_report.sh"
+
+cat > "$SERVICE_FILE" <<SERVICE
+[Unit]
+Description=Trading Bot weekly paper vs signal slippage report
+
+[Service]
+Type=oneshot
+WorkingDirectory=$PROJECT_DIR
+ExecStart=$PROJECT_DIR/scripts/run_weekly_slippage_report.sh
+SERVICE
+
+cat > "$TIMER_FILE" <<TIMER
+[Unit]
+Description=Weekly slippage report (paper fills vs signal price)
+
+[Timer]
+$ON_CALENDAR_LINES
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target
+TIMER
+
+systemctl --user daemon-reload
+
+echo "Created:"
+echo "  $SERVICE_FILE"
+echo "  $TIMER_FILE"
+echo
+echo "Schedule:"
+echo "$ON_CALENDAR_LINES"
+echo
+echo "To enable:"
+echo "  systemctl --user enable --now trading-bot-slippage-report.timer"
+echo
+echo "Manual run:"
+echo "  bash scripts/run_weekly_slippage_report.sh"
+{
+  "timezone": "America/New_York",
+  "on_calendar_times": ["Sun 18:00:00"],
+  "lookback_days": 7,
+  "output_dir": "logs/slippage_reports",
+  "notify_telegram": true
+}
+
+exec
+/bin/bash -lc "rg \"evaluation_start_date|evaluation_end_date\" -n src/portfolio_backtester.py; sed -n '1,180p' src/portfolio_backtester.py; sed -n '180,380p' src/portfolio_backtester.py" in /home/kimyo/trading-bot
+ succeeded in 183ms:
+261:    evaluation_start_date: str | pd.Timestamp | None = None,
+262:    evaluation_end_date: str | pd.Timestamp | None = None,
+354:    if evaluation_start_date is not None:
+355:        start_ts = pd.Timestamp(evaluation_start_date)
+357:    if evaluation_end_date is not None:
+358:        end_ts = pd.Timestamp(evaluation_end_date)
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+import pandas as pd
+
+from src.strategy import add_indicators, build_market_regime_frame
+from src.features import FEATURE_COLUMNS, build_features
+from src.ml_model import load_ai_score_model
+from src.portfolio_optimizer import compute_candidate_weights
+
+
+@dataclass
+class PortfolioBacktestResult:
+    initial_cash: float
+    final_equity: float
+    total_return: float
+    max_drawdown: float
+    trades: int
+    win_rate: float
+    benchmark_return: float
+    sharpe_ratio: float = 0.0
+
+
+def _prepare_ticker_frame(
+    ticker: str,
+    df: pd.DataFrame,
+    ma_fast: int = 20,
+    ma_slow: int = 50,
+    rsi_buy_limit: float = 70,
+    use_ai_score: bool = False,
+    ai_score_buy_threshold: float = 0.55,
+    ai_model_bundle=None,
+    ai_score_frame: pd.DataFrame | None = None,
+    relative_strength_lookback_days: int = 20,
+    volume_filter_enabled: bool = False,
+    volume_lookback_days: int = 20,
+    min_volume_ratio: float = 1.0,
+    volatility_filter_enabled: bool = False,
+    volatility_lookback_days: int = 20,
+    max_volatility: float = 0.04,
+) -> pd.DataFrame:
+    raw_df = df.copy()
+    df = add_indicators(df, ma_fast=ma_fast, ma_slow=ma_slow).copy()
+    df = df.sort_values("date").reset_index(drop=True)
+
+    df["ticker"] = ticker
+    df["ai_score"] = None
+    df["relative_return"] = df["close"].pct_change(relative_strength_lookback_days)
+    df["volume_ratio"] = df["volume"] / df["volume"].rolling(volume_lookback_days).mean()
+    df["volatility"] = df["close"].pct_change().rolling(volatility_lookback_days).std()
+    df["volatility_20d"] = df["volatility"]
+
+    if use_ai_score and ai_score_frame is not None:
+        score_df = ai_score_frame[["date", "ai_score"]].copy()
+        score_df["date"] = pd.to_datetime(score_df["date"])
+        df["date"] = pd.to_datetime(df["date"])
+        df = df.merge(score_df, on="date", how="left", suffixes=("", "_model"))
+        if "ai_score_model" in df.columns:
+            df["ai_score"] = df["ai_score_model"]
+            df = df.drop(columns=["ai_score_model"])
+    elif use_ai_score:
+        try:
+            if ai_model_bundle is None:
+                raise ValueError("AI score model was not loaded")
+            score_df = build_ai_score_frame(raw_df, ai_model_bundle, vix_df=None, spy_df=None)
+            score_df["date"] = pd.to_datetime(score_df["date"])
+            df["date"] = pd.to_datetime(df["date"])
+            df = df.merge(score_df, on="date", how="left", suffixes=("", "_model"))
+            if "ai_score_model" in df.columns:
+                df["ai_score"] = df["ai_score_model"]
+                df = df.drop(columns=["ai_score_model"])
+
+        except Exception:
+            df["ai_score"] = None
+
+    base_buy_signal = (df["ma_fast"] > df["ma_slow"]) & (df["rsi"] < rsi_buy_limit)
+
+    if use_ai_score:
+        df["buy_signal"] = base_buy_signal & (
+            pd.to_numeric(df["ai_score"], errors="coerce") >= ai_score_buy_threshold
+        )
+    else:
+        df["buy_signal"] = base_buy_signal
+
+    if volume_filter_enabled:
+        df["buy_signal"] = df["buy_signal"] & (
+            pd.to_numeric(df["volume_ratio"], errors="coerce") >= min_volume_ratio
+        )
+
+    if volatility_filter_enabled:
+        df["buy_signal"] = df["buy_signal"] & (
+            pd.to_numeric(df["volatility"], errors="coerce") <= max_volatility
+        )
+
+    df["sell_signal"] = df["ma_fast"] < df["ma_slow"]
+
+    return df[
+        [
+            "date",
+            "ticker",
+            "close",
+            "ma20",
+            "ma50",
+            "ma_fast",
+            "ma_slow",
+            "rsi",
+            "ai_score",
+            "relative_return",
+            "volume_ratio",
+            "volatility",
+            "volatility_20d",
+            "buy_signal",
+            "sell_signal",
+        ]
+    ]
+
+
+def build_ai_score_frame(
+    df: pd.DataFrame,
+    ai_model_bundle,
+    vix_df: pd.DataFrame | None = None,
+    spy_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    feature_df = build_features(
+        df,
+        prediction_horizon=ai_model_bundle.prediction_horizon,
+        target_return_threshold=ai_model_bundle.target_return_threshold,
+        vix_df=vix_df,
+        spy_df=spy_df,
+        macro_df=macro_df,
+    )
+    score_df = feature_df[["date"]].copy()
+    score_df["ai_score"] = ai_model_bundle.predict_proba(
+        df, vix_df=vix_df, spy_df=spy_df, macro_df=macro_df
+    ).values
+    return score_df[["date", "ai_score"]]
+
+
+def build_ai_score_frames(
+    ticker_data: dict[str, pd.DataFrame],
+    ai_model_bundle=None,
+    vix_df: pd.DataFrame | None = None,
+    spy_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
+) -> dict[str, pd.DataFrame]:
+    if ai_model_bundle is None:
+        ai_model_bundle = load_ai_score_model()
+
+    score_frames = {}
+    for ticker, df in ticker_data.items():
+        score_frames[ticker] = build_ai_score_frame(
+            df, ai_model_bundle, vix_df=vix_df, spy_df=spy_df, macro_df=macro_df
+        )
+    return score_frames
+
+
+def _apply_market_regime_filter(
+    market_df: pd.DataFrame,
+    benchmark_df: pd.DataFrame,
+    market_regime_ma_fast: int,
+    market_regime_ma_slow: int,
+) -> pd.DataFrame:
+    regime_df = build_market_regime_frame(
+        benchmark_df,
+        ma_fast=market_regime_ma_fast,
+        ma_slow=market_regime_ma_slow,
+    )
+    filtered_df = market_df.merge(regime_df, on="date", how="left")
+    filtered_df["market_regime_bullish"] = filtered_df["market_regime_bullish"] == True
+    filtered_df["buy_signal"] = filtered_df["buy_signal"] & filtered_df["market_regime_bullish"]
+    return filtered_df
+
+
+def _build_benchmark_relative_return_frame(
+    benchmark_df: pd.DataFrame,
+    lookback_days: int,
+) -> pd.DataFrame:
+) -> pd.DataFrame:
+    if benchmark_df.empty:
+        raise ValueError("No benchmark price data available for relative strength filter")
+    if "date" not in benchmark_df.columns or "close" not in benchmark_df.columns:
+        raise ValueError("Benchmark data must contain date and close columns")
+
+    frame = benchmark_df[["date", "close"]].copy()
+    frame["date"] = pd.to_datetime(frame["date"])
+    frame = frame.sort_values("date").reset_index(drop=True)
+    frame["benchmark_relative_return"] = frame["close"].pct_change(lookback_days)
+    return frame[["date", "benchmark_relative_return"]]
+
+
+def _apply_relative_strength_filter(
+    market_df: pd.DataFrame,
+    benchmark_df: pd.DataFrame,
+    lookback_days: int,
+    min_excess_return: float,
+) -> pd.DataFrame:
+    benchmark_returns = _build_benchmark_relative_return_frame(
+        benchmark_df,
+        lookback_days=lookback_days,
+    )
+    filtered_df = market_df.merge(benchmark_returns, on="date", how="left")
+    filtered_df["relative_strength_excess_return"] = (
+        pd.to_numeric(filtered_df["relative_return"], errors="coerce")
+        - pd.to_numeric(filtered_df["benchmark_relative_return"], errors="coerce")
+    )
+    filtered_df["relative_strength_pass"] = (
+        filtered_df["relative_strength_excess_return"] >= min_excess_return
+    )
+    filtered_df["buy_signal"] = filtered_df["buy_signal"] & filtered_df["relative_strength_pass"]
+    return filtered_df
+
+
+def run_portfolio_backtest(
+    ticker_data: dict[str, pd.DataFrame],
+    benchmark_df: pd.DataFrame | None = None,
+    relative_strength_benchmark_df: pd.DataFrame | None = None,
+    initial_cash: float = 10000.0,
+    max_positions: int = 3,
+    target_position_pct: float = 0.30,
+    transaction_cost_pct: float = 0.001,
+    ma_fast: int = 20,
+    ma_slow: int = 50,
+    rsi_buy_limit: float = 70,
+    use_ai_score: bool = False,
+    ai_score_buy_threshold: float = 0.55,
+    market_regime_filter_enabled: bool = False,
+    market_regime_ma_fast: int = 50,
+    market_regime_ma_slow: int = 200,
+    stop_loss_pct: float = 0.0,
+    take_profit_pct: float = 0.0,
+    trailing_stop_pct: float = 0.0,
+    rank_trend_weight: float = 1.0,
+    rank_ai_weight: float = 0.0,
+    rank_momentum_weight: float = 0.0,
+    rank_volatility_weight: float = 0.0,
+    relative_strength_filter_enabled: bool = False,
+    relative_strength_lookback_days: int = 20,
+    relative_strength_min_excess_return: float = 0.0,
+    volume_filter_enabled: bool = False,
+    volume_lookback_days: int = 20,
+    min_volume_ratio: float = 1.0,
+    volatility_filter_enabled: bool = False,
+    volatility_lookback_days: int = 20,
+    max_volatility: float = 0.04,
+    ai_score_frames: dict[str, pd.DataFrame] | None = None,
+    allocation_method: str = "equal_weight",
+    mvo_lookback_days: int = 60,
+    mvo_min_weight: float = 0.05,
+    mvo_max_weight: float = 0.40,
+    ai_exit_enabled: bool = False,
+    ai_exit_threshold: float = 0.30,
+    ai_exit_dynamic_enabled: bool = False,
+    ai_exit_vix_low: float = 15.0,
+    ai_exit_vix_high: float = 25.0,
+    ai_exit_threshold_bull: float = 0.55,
+    ai_exit_threshold_bear: float = 0.28,
+    vix_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
+    evaluation_start_date: str | pd.Timestamp | None = None,
+    evaluation_end_date: str | pd.Timestamp | None = None,
+) -> tuple[PortfolioBacktestResult, pd.DataFrame, pd.DataFrame]:
+    if relative_strength_lookback_days <= 0:
+        raise ValueError("relative_strength_lookback_days must be positive")
+    if volume_lookback_days <= 0:
+        raise ValueError("volume_lookback_days must be positive")
+    if min_volume_ratio < 0:
+        raise ValueError("min_volume_ratio must be non-negative")
+    if volatility_lookback_days <= 0:
+        raise ValueError("volatility_lookback_days must be positive")
+    if max_volatility < 0:
+        raise ValueError("max_volatility must be non-negative")
+    if not 0 <= stop_loss_pct < 1:
+        raise ValueError("stop_loss_pct must be between 0 and 1")
+    if take_profit_pct < 0:
+        raise ValueError("take_profit_pct must be non-negative")
+    if not 0 <= trailing_stop_pct < 1:
+        raise ValueError("trailing_stop_pct must be between 0 and 1")
+
+    ai_model_bundle = None
+    if use_ai_score:
+        try:
+            ai_model_bundle = load_ai_score_model()
+        except Exception:
+            ai_model_bundle = None
+
+    # SPY data for relative return feature
+    spy_df = ticker_data.get("SPY")
+
+    # Pre-compute AI score frames with full context (VIX + macro)
+    _ai_score_frames = ai_score_frames
+    if use_ai_score and ai_model_bundle is not None and _ai_score_frames is None:
+        _ai_score_frames = build_ai_score_frames(
+            ticker_data,
+            ai_model_bundle=ai_model_bundle,
+            vix_df=vix_df,
+            spy_df=spy_df,
+            macro_df=macro_df,
+        )
+
+    prepared_frames = [
+        _prepare_ticker_frame(
+            ticker,
+            df,
+            ma_fast=ma_fast,
+            ma_slow=ma_slow,
+            rsi_buy_limit=rsi_buy_limit,
+            use_ai_score=use_ai_score,
+            ai_score_buy_threshold=ai_score_buy_threshold,
+            ai_model_bundle=ai_model_bundle,
+            ai_score_frame=_ai_score_frames.get(ticker) if _ai_score_frames else None,
+            relative_strength_lookback_days=relative_strength_lookback_days,
+            volume_filter_enabled=volume_filter_enabled,
+            volume_lookback_days=volume_lookback_days,
+            min_volume_ratio=min_volume_ratio,
+            volatility_filter_enabled=volatility_filter_enabled,
+            volatility_lookback_days=volatility_lookback_days,
+            max_volatility=max_volatility,
+        )
+        for ticker, df in ticker_data.items()
+    ]
+
+    market_df = pd.concat(prepared_frames, ignore_index=True)
+    market_df["date"] = pd.to_datetime(market_df["date"])
+    market_df = market_df.sort_values(["date", "ticker"]).reset_index(drop=True)
+    if market_regime_filter_enabled:
+        if benchmark_df is None:
+            raise ValueError("benchmark_df is required when market_regime_filter_enabled=True")
+        market_df = _apply_market_regime_filter(
+            market_df,
+            benchmark_df,
+            market_regime_ma_fast=market_regime_ma_fast,
+            market_regime_ma_slow=market_regime_ma_slow,
+        )
+    if relative_strength_filter_enabled:
+        benchmark_for_relative_strength = relative_strength_benchmark_df
+        if benchmark_for_relative_strength is None:
+            benchmark_for_relative_strength = benchmark_df
+        if benchmark_for_relative_strength is None:
+            raise ValueError(
+                "relative_strength_benchmark_df is required when "
+                "relative_strength_filter_enabled=True"
+            )
+        market_df = _apply_relative_strength_filter(
+            market_df,
+            benchmark_for_relative_strength,
+            lookback_days=relative_strength_lookback_days,
+            min_excess_return=relative_strength_min_excess_return,
+        )
+
+    all_dates = sorted(market_df["date"].unique())
+    trading_dates = all_dates
+    if evaluation_start_date is not None:
+        start_ts = pd.Timestamp(evaluation_start_date)
+        trading_dates = [date for date in trading_dates if pd.Timestamp(date) >= start_ts]
+    if evaluation_end_date is not None:
+        end_ts = pd.Timestamp(evaluation_end_date)
+        trading_dates = [date for date in trading_dates if pd.Timestamp(date) <= end_ts]
+    if not trading_dates:
+        raise ValueError("No dates available inside the requested evaluation window")
+
+    # VIX lookup index for dynamic AI exit threshold
+    _vix_by_date: dict = {}
+    if ai_exit_dynamic_enabled and vix_df is not None and not vix_df.empty:
+        _vix_tmp = vix_df.copy()
+        _vix_tmp["date"] = pd.to_datetime(_vix_tmp["date"])
+        _vix_tmp = _vix_tmp.sort_values("date")
+        close_col = "adj_close" if "adj_close" in _vix_tmp.columns else "close"
+        _vix_by_date = dict(zip(_vix_tmp["date"], _vix_tmp[close_col]))
+
+    cash = initial_cash
+    positions: dict[str, dict] = {}
+
+    trades: list[dict] = []
+    equity_rows: list[dict] = []
+
+    for current_date in trading_dates:
+        day_df = market_df[market_df["date"] == current_date].copy()
+        day_prices = {
+
+exec
+/bin/bash -lc "sed -n '380,620p' src/portfolio_backtester.py" in /home/kimyo/trading-bot
+ succeeded in 140ms:
+        day_prices = {
+            row["ticker"]: float(row["close"])
+            for _, row in day_df.iterrows()
+        }
+
+        for ticker in list(positions.keys()):
+            ticker_row = day_df[day_df["ticker"] == ticker]
+
+            if ticker_row.empty:
+                continue
+
+            row = ticker_row.iloc[0]
+            close = float(row["close"])
+            position = positions[ticker]
+            position["highest_price"] = max(
+                float(position.get("highest_price", position["entry_price"])),
+                close,
+            )
+
+            exit_reason = None
+            gross_return_pct = (close / float(position["entry_price"])) - 1.0
+            drawdown_from_high = (close / float(position["highest_price"])) - 1.0
+
+            ai_exit_triggered = False
+            if ai_exit_enabled:
+                ai_score_val = pd.to_numeric(row.get("ai_score"), errors="coerce")
+                if not pd.isna(ai_score_val):
+                    effective_threshold = ai_exit_threshold
+                    if ai_exit_dynamic_enabled and _vix_by_date:
+                        ts = pd.Timestamp(current_date)
+                        vix_val = _vix_by_date.get(ts)
+                        if vix_val is None:
+                            past = {k: v for k, v in _vix_by_date.items() if k <= ts}
+                            vix_val = past[max(past)] if past else None
+                        if vix_val is not None:
+                            if float(vix_val) < ai_exit_vix_low:
+                                effective_threshold = ai_exit_threshold_bull
+                            elif float(vix_val) > ai_exit_vix_high:
+                                effective_threshold = ai_exit_threshold_bear
+                    ai_exit_triggered = float(ai_score_val) < effective_threshold
+
+            if stop_loss_pct > 0 and gross_return_pct <= -stop_loss_pct:
+                exit_reason = "STOP_LOSS"
+            elif trailing_stop_pct > 0 and drawdown_from_high <= -trailing_stop_pct:
+                exit_reason = "TRAILING_STOP"
+            elif ai_exit_triggered:
+                exit_reason = "AI_EXIT"
+            elif bool(row["sell_signal"]):
+                exit_reason = "SELL_SIGNAL"
+            elif take_profit_pct > 0 and gross_return_pct >= take_profit_pct:
+                exit_reason = "TAKE_PROFIT"
+
+            if exit_reason is not None:
+                position = positions.pop(ticker)
+                qty = position["qty"]
+                entry_price = position["entry_price"]
+                entry_date = position["entry_date"]
+
+                gross_value = qty * close
+                cost = gross_value * transaction_cost_pct
+                net_value = gross_value - cost
+                cash += net_value
+
+                return_pct = (net_value / position["cost_basis"]) - 1.0
+
+                trades.append(
+                    {
+                        "ticker": ticker,
+                        "entry_date": entry_date,
+                        "exit_date": current_date,
+                        "entry_price": entry_price,
+                        "exit_price": close,
+                        "qty": qty,
+                        "cost_basis": position["cost_basis"],
+                        "exit_value": net_value,
+                        "return_pct": return_pct,
+                        "exit_reason": exit_reason,
+                    }
+                )
+
+        positions_value = sum(
+            pos["qty"] * day_prices.get(ticker, pos["last_price"])
+            for ticker, pos in positions.items()
+        )
+        equity = cash + positions_value
+
+        slots_left = max_positions - len(positions)
+
+        if slots_left > 0:
+            buy_candidates = day_df[
+                (day_df["buy_signal"]) &
+                (~day_df["ticker"].isin(positions.keys()))
+            ].copy()
+
+            buy_candidates["trend_strength"] = (
+                buy_candidates["ma_fast"] / buy_candidates["ma_slow"]
+            )
+            buy_candidates["rank_ai_score"] = pd.to_numeric(
+                buy_candidates["ai_score"],
+                errors="coerce",
+            ).fillna(0.0)
+            buy_candidates["rank_momentum"] = pd.to_numeric(
+                buy_candidates["relative_return"],
+                errors="coerce",
+            ).fillna(0.0)
+            buy_candidates["rank_volatility"] = pd.to_numeric(
+                buy_candidates["volatility"],
+                errors="coerce",
+            ).fillna(0.0)
+            buy_candidates["rank_score"] = (
+                rank_trend_weight * (buy_candidates["trend_strength"] - 1.0)
+                + rank_ai_weight * buy_candidates["rank_ai_score"]
+                + rank_momentum_weight * buy_candidates["rank_momentum"]
+                - rank_volatility_weight * buy_candidates["rank_volatility"]
+            )
+
+            buy_candidates = buy_candidates.sort_values(
+                ["rank_score", "trend_strength", "rsi"],
+                ascending=[False, False, True],
+            )
+
+            selected = buy_candidates.head(slots_left)
+            candidate_tickers = selected["ticker"].tolist()
+
+            # Compute dynamic weights when using MVO/BL
+            if allocation_method != "equal_weight" and len(candidate_tickers) > 1:
+                candidate_ai_scores = {
+                    row["ticker"]: float(
+                        pd.to_numeric(row["ai_score"], errors="coerce") or 0.5
+                    )
+                    for _, row in selected.iterrows()
+                }
+                alloc_weights = compute_candidate_weights(
+                    market_df=market_df,
+                    candidate_tickers=candidate_tickers,
+                    current_date=current_date,
+                    ai_scores=candidate_ai_scores,
+                    allocation_method=allocation_method,
+                    lookback_days=mvo_lookback_days,
+                    min_weight=mvo_min_weight,
+                    max_weight=mvo_max_weight,
+                )
+                # Total capital same as equal-weight baseline: N * target_position_pct * equity
+                total_to_deploy = len(candidate_tickers) * target_position_pct * equity
+            else:
+                alloc_weights = {t: 1.0 / max(len(candidate_tickers), 1) for t in candidate_tickers}
+                total_to_deploy = None  # use original target_position_pct per ticker
+
+            for _, row in selected.iterrows():
+                ticker = row["ticker"]
+                close = float(row["close"])
+
+                if close <= 0:
+                    continue
+
+                if total_to_deploy is not None:
+                    target_value = total_to_deploy * alloc_weights.get(
+                        ticker, 1.0 / len(candidate_tickers)
+                    )
+                else:
+                    target_value = equity * target_position_pct
+
+                available_value = min(cash, target_value)
+
+                if available_value <= 0:
+                    continue
+
+                cost = available_value * transaction_cost_pct
+                net_investment = available_value - cost
+
+                if net_investment <= 0:
+                    continue
+
+                qty = net_investment / close
+                cash -= available_value
+
+                positions[ticker] = {
+                    "qty": qty,
+                    "entry_price": close,
+                    "entry_date": current_date,
+                    "cost_basis": available_value,
+                    "last_price": close,
+                    "highest_price": close,
+                }
+
+        for ticker, pos in positions.items():
+            if ticker in day_prices:
+                pos["last_price"] = day_prices[ticker]
+
+        positions_value = sum(
+            pos["qty"] * pos["last_price"]
+            for pos in positions.values()
+        )
+        equity = cash + positions_value
+
+        equity_rows.append(
+            {
+                "date": current_date,
+                "cash": cash,
+                "positions_value": positions_value,
+                "equity": equity,
+                "positions_count": len(positions),
+                "open_symbols": ",".join(sorted(positions.keys())),
+            }
+        )
+
+    equity_df = pd.DataFrame(equity_rows)
+
+    if equity_df.empty:
+        raise ValueError("No equity rows generated")
+
+    equity_df["daily_return"] = equity_df["equity"].pct_change().fillna(0.0)
+    equity_df["running_max"] = equity_df["equity"].cummax()
+    equity_df["drawdown"] = equity_df["equity"] / equity_df["running_max"] - 1.0
+
+    trades_df = pd.DataFrame(trades)
+
+    final_equity = float(equity_df["equity"].iloc[-1])
+    total_return = final_equity / initial_cash - 1.0
+    max_drawdown = float(equity_df["drawdown"].min())
+
+    trades_count = int(len(trades_df))
+
+    if trades_count > 0:
+        win_rate = float((trades_df["return_pct"] > 0).mean())
+    else:
+        win_rate = 0.0
+
+    benchmark_values = []
+    shares = {}
+
+    first_date = equity_df["date"].iloc[0]
+    first_day = market_df[market_df["date"] == first_date]
+
+    equal_cash = initial_cash / len(ticker_data)
+
+    for _, row in first_day.iterrows():
+        ticker = row["ticker"]
+        close = float(row["close"])
+        shares[ticker] = equal_cash / close
+
+
+exec
+/bin/bash -lc "sed -n '620,760p' src/portfolio_backtester.py" in /home/kimyo/trading-bot
+ succeeded in 118ms:
+
+    for current_date in equity_df["date"]:
+        day_df = market_df[market_df["date"] == current_date]
+        prices = {
+            row["ticker"]: float(row["close"])
+            for _, row in day_df.iterrows()
+        }
+
+        value = 0.0
+        for ticker, qty in shares.items():
+            price = prices.get(ticker)
+            if price is not None:
+                value += qty * price
+
+        benchmark_values.append(value)
+
+    equity_df["benchmark_equity"] = benchmark_values
+    benchmark_return = (
+        float(equity_df["benchmark_equity"].iloc[-1]) / initial_cash - 1.0
+    )
+
+    # Annualized Sharpe (252 trading days, risk-free=0)
+    daily_returns = equity_df["daily_return"]
+    std = float(daily_returns.std())
+    sharpe_ratio = float(daily_returns.mean() / std * (252 ** 0.5)) if std > 1e-10 else 0.0
+
+    result = PortfolioBacktestResult(
+        initial_cash=initial_cash,
+        final_equity=final_equity,
+        total_return=total_return,
+        max_drawdown=max_drawdown,
+        trades=trades_count,
+        win_rate=win_rate,
+        benchmark_return=benchmark_return,
+        sharpe_ratio=sharpe_ratio,
+    )
+
+    return result, equity_df, trades_df
+
+
+def save_portfolio_backtest_outputs(
+    output_dir: str | Path,
+    result: PortfolioBacktestResult,
+    equity_df: pd.DataFrame,
+    trades_df: pd.DataFrame,
+) -> None:
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    summary_df = pd.DataFrame(
+        [
+            {
+                "initial_cash": result.initial_cash,
+                "final_equity": result.final_equity,
+                "total_return": result.total_return,
+                "benchmark_return": result.benchmark_return,
+                "max_drawdown": result.max_drawdown,
+                "sharpe_ratio": result.sharpe_ratio,
+                "trades": result.trades,
+                "win_rate": result.win_rate,
+            }
+        ]
+    )
+
+    summary_df.to_csv(output_dir / "portfolio_summary.csv", index=False)
+    equity_df.to_csv(output_dir / "portfolio_equity.csv", index=False)
+    trades_df.to_csv(output_dir / "portfolio_trades.csv", index=False)
+
+exec
+/bin/bash -lc "sed -n '1,220p' src/features.py; sed -n '1,260p' src/ml_model.py" in /home/kimyo/trading-bot
+ succeeded in 185ms:
+from __future__ import annotations
+
+import pandas as pd
+from ta.momentum import RSIIndicator
+from ta.trend import MACD
+from ta.volatility import AverageTrueRange
+
+
+FEATURE_COLUMNS = [
+    "return_1d",
+    "return_5d",
+    "return_10d",
+    "return_20d",
+    "volatility_10d",
+    "volatility_20d",
+    "volume_change_5d",
+    "ma_ratio_10_50",
+    "ma_ratio_20_200",
+    "rsi_14",
+    "macd",
+    "macd_signal",
+    "atr_pct",
+    "high_52w_ratio",
+    "low_52w_ratio",
+    "vix_level",
+    "spy_rel_return_20d",
+    # Macro context features (Phase 5-B)
+    "yield_spread_10y3m",
+    "dxy_20d_return",
+    "gold_20d_return",
+    "vix_percentile_52w",
+    # Options market signals (Phase 9-C)
+    "skew_level",
+    "vvix_level",
+    "vvix_20d_return",
+]
+
+REQUIRED_PRICE_COLUMNS = {"date", "high", "low", "close", "volume"}
+MAX_FEATURE_LOOKBACK = 252
+
+
+def build_features(
+    df: pd.DataFrame,
+    prediction_horizon: int = 5,
+    target_return_threshold: float = 0.0,
+    vix_df: pd.DataFrame | None = None,
+    spy_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    if prediction_horizon <= 0:
+        raise ValueError("prediction_horizon must be positive")
+
+    missing = REQUIRED_PRICE_COLUMNS - set(df.columns)
+    if missing:
+        raise ValueError(f"Missing required price columns: {sorted(missing)}")
+
+    minimum_rows = MAX_FEATURE_LOOKBACK + prediction_horizon
+    if len(df) < minimum_rows:
+        raise ValueError(
+            f"Not enough rows to build features: need at least {minimum_rows}, got {len(df)}"
+        )
+
+    df = df.copy()
+    df = df.sort_values("date").reset_index(drop=True)
+
+    # 신규 상장 등으로 앞부분에 NaN이 있는 경우 제거 (ta 라이브러리 NaN 전파 방지)
+    df = df.dropna(subset=["open", "high", "low", "close", "volume"]).reset_index(drop=True)
+
+    if len(df) < minimum_rows:
+        raise ValueError(
+            f"Not enough rows to build features after dropping NaN: "
+            f"need at least {minimum_rows}, got {len(df)}"
+        )
+
+    df["return_1d"] = df["close"].pct_change(1)
+    df["return_5d"] = df["close"].pct_change(5)
+    df["return_10d"] = df["close"].pct_change(10)
+    df["return_20d"] = df["close"].pct_change(20)
+
+    df["volatility_10d"] = df["return_1d"].rolling(10).std()
+    df["volatility_20d"] = df["return_1d"].rolling(20).std()
+
+    df["volume_change_5d"] = df["volume"].pct_change(5)
+
+    df["ma10"] = df["close"].rolling(10).mean()
+    df["ma20"] = df["close"].rolling(20).mean()
+    df["ma50"] = df["close"].rolling(50).mean()
+    df["ma200"] = df["close"].rolling(200).mean()
+
+    df["ma_ratio_10_50"] = df["ma10"] / df["ma50"] - 1.0
+    df["ma_ratio_20_200"] = df["ma20"] / df["ma200"] - 1.0
+
+    df["rsi_14"] = RSIIndicator(close=df["close"], window=14).rsi()
+
+    macd = MACD(close=df["close"])
+    df["macd"] = macd.macd()
+    df["macd_signal"] = macd.macd_signal()
+
+    atr = AverageTrueRange(
+        high=df["high"],
+        low=df["low"],
+        close=df["close"],
+        window=14,
+    )
+    df["atr_pct"] = atr.average_true_range() / df["close"]
+
+    # 52주(252거래일) 고점/저점 대비 현재 위치
+    df["high_52w"] = df["close"].rolling(252).max()
+    df["low_52w"] = df["close"].rolling(252).min()
+    df["high_52w_ratio"] = df["close"] / df["high_52w"]
+    df["low_52w_ratio"] = df["close"] / df["low_52w"]
+
+    # VIX 공포지수 + 52주 백분위 (제공되지 않으면 0)
+    if vix_df is not None and not vix_df.empty and "close" in vix_df.columns:
+        vix_aligned = pd.merge(
+            df[["date"]],
+            vix_df[["date", "close"]].rename(columns={"close": "vix_level"}),
+            on="date",
+            how="left",
+        )
+        vix_series = vix_aligned["vix_level"].ffill().bfill()
+        df["vix_level"] = vix_series.values
+        # 52주 VIX 백분위: 현재 VIX가 지난 1년 중 어느 수준인지 (0=최저공포, 1=최고공포)
+        df["vix_percentile_52w"] = (
+            vix_series.rolling(252).rank(pct=True).values
+        )
+    else:
+        df["vix_level"] = 0.0
+        df["vix_percentile_52w"] = 0.0
+
+    # SPY 대비 상대 수익률 20일 (제공되지 않으면 0)
+    if spy_df is not None and not spy_df.empty and "close" in spy_df.columns:
+        spy_aligned = pd.merge(
+            df[["date"]],
+            spy_df[["date", "close"]].rename(columns={"close": "spy_close"}),
+            on="date",
+            how="left",
+        )
+        spy_aligned["spy_close"] = spy_aligned["spy_close"].ffill().bfill()
+        spy_return_20d = spy_aligned["spy_close"].pct_change(20)
+        df["spy_rel_return_20d"] = df["return_20d"] - spy_return_20d.values
+    else:
+        df["spy_rel_return_20d"] = 0.0
+
+    # 매크로 피처: 금리 스프레드, 달러, 금 (제공되지 않으면 0)
+    if macro_df is not None and not macro_df.empty:
+        mac = pd.merge(df[["date"]], macro_df, on="date", how="left").ffill().bfill()
+        if "tnx_close" in mac.columns and "irx_close" in mac.columns:
+            # 10Y-3M 스프레드: 음수 = 역전 (경기침체/위험회피 신호)
+            df["yield_spread_10y3m"] = (mac["tnx_close"] - mac["irx_close"]).values
+        else:
+            df["yield_spread_10y3m"] = 0.0
+        if "dxy_close" in mac.columns:
+            df["dxy_20d_return"] = mac["dxy_close"].pct_change(20).values
+        else:
+            df["dxy_20d_return"] = 0.0
+        if "gold_close" in mac.columns:
+            df["gold_20d_return"] = mac["gold_close"].pct_change(20).values
+        else:
+            df["gold_20d_return"] = 0.0
+            
+        # Options market signals
+        df["skew_level"] = mac["skew_close"].values if "skew_close" in mac.columns else 100.0
+        df["vvix_level"] = mac["vvix_close"].values if "vvix_close" in mac.columns else 90.0
+        if "vvix_close" in mac.columns:
+            df["vvix_20d_return"] = mac["vvix_close"].pct_change(20).values
+        else:
+            df["vvix_20d_return"] = 0.0
+    else:
+        df["yield_spread_10y3m"] = 0.0
+        df["dxy_20d_return"] = 0.0
+        df["gold_20d_return"] = 0.0
+        df["skew_level"] = 100.0
+        df["vvix_level"] = 90.0
+        df["vvix_20d_return"] = 0.0
+
+    df["future_return"] = df["close"].shift(-prediction_horizon) / df["close"] - 1.0
+    df["target"] = (df["future_return"] > target_return_threshold).astype(int)
+
+    feature_df = df.dropna().reset_index(drop=True)
+    if feature_df.empty:
+        raise ValueError("Feature frame is empty after indicator construction")
+
+    return feature_df
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from datetime import datetime, timezone
+import json
+from pathlib import Path
+from typing import Any, List, Dict, Tuple, Optional
+
+import joblib
+import pandas as pd
+import numpy as np
+from lightgbm import LGBMClassifier
+from xgboost import XGBClassifier
+from sklearn.metrics import accuracy_score, brier_score_loss, precision_score, recall_score, roc_auc_score
+from sklearn.model_selection import TimeSeriesSplit
+
+from src.features import FEATURE_COLUMNS, build_features
+from src.market_regime import compute_daily_regime, get_current_regime
+
+MODEL_PATH = Path("models/ai_score_model.joblib")
+MODEL_METADATA_PATH = Path("models/ai_score_model_metadata.json")
+CHALLENGER_DIR = Path("models/challengers")
+CHAMPION_ARCHIVE_DIR = Path("models/champion_archive")
+
+
+class BaseModel(ABC):
+    @abstractmethod
+    def predict_proba(
+        self,
+        df: pd.DataFrame,
+        vix_df: pd.DataFrame | None = None,
+        spy_df: pd.DataFrame | None = None,
+        macro_df: pd.DataFrame | None = None,
+    ) -> pd.Series:
+        pass
+
+    @abstractmethod
+    def predict(
+        self,
+        df: pd.DataFrame,
+        vix_df: pd.DataFrame | None = None,
+        spy_df: pd.DataFrame | None = None,
+        macro_df: pd.DataFrame | None = None,
+    ) -> pd.Series:
+        pass
+
+
+class SoftVotingEnsemble:
+    """LightGBM과 XGBoost 모델의 예측 확률을 평균하여 최종 결과를 도출한다."""
+    def __init__(self, lgbm_model, xgb_model):
+        self.lgbm_model = lgbm_model
+        self.xgb_model = xgb_model
+
+    def predict_proba(self, X):
+        lgbm_proba = self.lgbm_model.predict_proba(X)[:, 1]
+        xgb_proba = self.xgb_model.predict_proba(X)[:, 1]
+        # Soft Voting: 두 모델의 확률 평균
+        avg_proba = (lgbm_proba + xgb_proba) / 2.0
+        # predict_proba 인터페이스 준수 ([prob_0, prob_1])
+        return np.vstack([1.0 - avg_proba, avg_proba]).T
+
+    def predict(self, X):
+        proba = self.predict_proba(X)[:, 1]
+        return (proba >= 0.5).astype(int)
+
+
+class RegimeAwareModelWrapper(BaseModel):
+    def __init__(
+        self,
+        models: Dict[str, any],
+        feature_columns: List[str],
+        prediction_horizon: int,
+        target_return_threshold: float,
+    ):
+        self.models = models  # e.g., {"BULL": model_a, "BEAR": model_b, "NEUTRAL": model_c}
+        self.feature_columns = feature_columns
+        self.prediction_horizon = prediction_horizon
+        self.target_return_threshold = target_return_threshold
+
+    def _prepare_features(
+        self,
+        df: pd.DataFrame,
+        vix_df: pd.DataFrame | None = None,
+        spy_df: pd.DataFrame | None = None,
+        macro_df: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
+        return build_features(
+            df,
+            prediction_horizon=self.prediction_horizon,
+            target_return_threshold=self.target_return_threshold,
+            vix_df=vix_df,
+            spy_df=spy_df,
+            macro_df=macro_df,
+        )
+
+    def _get_model_for_regime(self, spy_df, vix_df):
+        regime = get_current_regime(spy_df, vix_df)
+        # Fallback to NEUTRAL if specific regime model missing
+        return self.models.get(regime, self.models.get("NEUTRAL"))
+
+    def predict_proba(
+        self,
+        df: pd.DataFrame,
+        vix_df: pd.DataFrame | None = None,
+        spy_df: pd.DataFrame | None = None,
+        macro_df: pd.DataFrame | None = None,
+    ) -> pd.Series:
+        feature_df = self._prepare_features(df, vix_df=vix_df, spy_df=spy_df, macro_df=macro_df)
+        model = self._get_model_for_regime(spy_df, vix_df)
+        
+        available_cols = [c for c in self.feature_columns if c in feature_df.columns]
+        X = feature_df[available_cols]
+        
+        # SoftVotingEnsemble 또는 일반 모델 호환성 유지
+        if hasattr(model, "predict_proba"):
+            proba = model.predict_proba(X)
+            return pd.Series(proba[:, 1], index=feature_df.index)
+        
+        return pd.Series([0.5] * len(X), index=feature_df.index)
+
+    def predict(
+        self,
+        df: pd.DataFrame,
+        vix_df: pd.DataFrame | None = None,
+        spy_df: pd.DataFrame | None = None,
+        macro_df: pd.DataFrame | None = None,
+    ) -> pd.Series:
+        feature_df = self._prepare_features(df, vix_df=vix_df, spy_df=spy_df, macro_df=macro_df)
+        model = self._get_model_for_regime(spy_df, vix_df)
+        
+        available_cols = [c for c in self.feature_columns if c in feature_df.columns]
+        X = feature_df[available_cols]
+        pred = model.predict(X)
+        return pd.Series(pred, index=feature_df.index)
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _summarize_metrics(metrics_df: pd.DataFrame) -> dict[str, Any]:
+    if metrics_df is None or metrics_df.empty:
+        return {"avg_roc_auc": 0.0, "regimes": {}}
+
+    summary = {"avg_roc_auc": float(metrics_df["roc_auc"].mean()) if "roc_auc" in metrics_df.columns else 0.0, "regimes": {}}
+    if "regime" in metrics_df.columns:
+        for regime, regime_df in metrics_df.groupby("regime"):
+            summary["regimes"][str(regime)] = {
+                "avg_roc_auc": float(regime_df["roc_auc"].mean()) if "roc_auc" in regime_df.columns else 0.0,
+                "folds": int(len(regime_df)),
+            }
+    return summary
+
+
+def build_model_metadata(
+    *,
+    training_data: Dict[str, pd.DataFrame],
+    trained_models: Dict[str, Any],
+    metrics_df: pd.DataFrame,
+    feature_columns: List[str],
+    prediction_horizon: int,
+    target_return_threshold: float,
+) -> dict[str, Any]:
+    date_bounds = []
+    for df in training_data.values():
+        if df is None or df.empty or "date" not in df.columns:
+            continue
+        series = pd.to_datetime(df["date"], errors="coerce").dropna()
+        if not series.empty:
+            date_bounds.append((series.min(), series.max()))
+
+    training_start = min((start for start, _ in date_bounds), default=None)
+    training_end = max((end for _, end in date_bounds), default=None)
+
+    return {
+        "saved_at": _utc_now_iso(),
+        "training_window_start": training_start.strftime("%Y-%m-%d") if training_start is not None else None,
+        "training_window_end": training_end.strftime("%Y-%m-%d") if training_end is not None else None,
+        "ticker_count": int(len(training_data)),
+        "feature_set_version": f"features_v{len(feature_columns)}",
+        "feature_columns": list(feature_columns),
+        "prediction_horizon": int(prediction_horizon),
+        "target_return_threshold": float(target_return_threshold),
+        "trained_regimes": sorted(trained_models.keys()),
+        "oos_metrics": _summarize_metrics(metrics_df),
+    }
+
+
+def build_model_bundle(
+    *,
+    trained_models: Dict[str, Any],
+    metrics_df: pd.DataFrame,
+    training_data: Dict[str, pd.DataFrame],
+    feature_columns: List[str],
+    prediction_horizon: int,
+    target_return_threshold: float,
+) -> dict[str, Any]:
+    return {
+        "models": trained_models,
+        "feature_columns": feature_columns,
+        "prediction_horizon": prediction_horizon,
+        "target_return_threshold": target_return_threshold,
+        "metadata": build_model_metadata(
+            training_data=training_data,
+            trained_models=trained_models,
+            metrics_df=metrics_df,
+            feature_columns=feature_columns,
+            prediction_horizon=prediction_horizon,
+            target_return_threshold=target_return_threshold,
+        ),
+    }
+
+
+def save_model_bundle(
+    bundle: dict[str, Any],
+    *,
+    model_path: Path = MODEL_PATH,
+    metadata_path: Path = MODEL_METADATA_PATH,
+) -> tuple[Path, Path]:
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    metadata_path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(bundle, model_path)
+    metadata = bundle.get("metadata", {})
+    metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
+    return model_path, metadata_path
+
+
+def load_model_metadata(metadata_path: Path = MODEL_METADATA_PATH) -> dict[str, Any] | None:
+    if not metadata_path.exists():
+        return None
+    return json.loads(metadata_path.read_text(encoding="utf-8"))
+
+
+def save_challenger_bundle(
+    bundle: dict[str, Any],
+    *,
+    challenger_dir: Path = CHALLENGER_DIR,
+) -> tuple[Path, Path]:
+    challenger_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    model_path = challenger_dir / f"ai_score_model_{timestamp}.joblib"
+    metadata_path = challenger_dir / f"ai_score_model_{timestamp}_metadata.json"
+    return save_model_bundle(bundle, model_path=model_path, metadata_path=metadata_path)
+
+
+def archive_current_champion(
+    *,
+    model_path: Path = MODEL_PATH,
+    metadata_path: Path = MODEL_METADATA_PATH,
+    archive_dir: Path = CHAMPION_ARCHIVE_DIR,
+) -> tuple[Path, Path] | None:
+    if not model_path.exists() or not metadata_path.exists():
+        return None
+
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    archived_model_path = archive_dir / f"ai_score_model_{timestamp}.joblib"
+    archived_metadata_path = archive_dir / f"ai_score_model_{timestamp}_metadata.json"
+    archived_model_path.write_bytes(model_path.read_bytes())
+    archived_metadata_path.write_bytes(metadata_path.read_bytes())
+
+exec
+/bin/bash -lc "python - <<'PY'
+import pandas as pd
+from pathlib import Path
+for p in ['logs/signals.csv','logs/orders.csv','logs/trades.csv','logs/order_log.csv','logs/signal_log.csv']:
+ path=Path(p)
+ if path.exists():
+  print(p, pd.read_csv(path, nrows=3).columns.tolist())
+  print(pd.read_csv(path, nrows=3).to_string())
+PY" in /home/kimyo/trading-bot
+ exited 127 in 458ms:
+pyenv: python: command not found
+
+The `python' command exists in these Python versions:
+  3.9.19
+
+Note: See 'pyenv help global' for tips on allowing multiple
+      Python versions to be found at the same time.
+
+exec
+/bin/bash -lc ".venv/bin/python - <<'PY'
+import pandas as pd
+from pathlib import Path
+for p in ['logs/signals.csv','logs/orders.csv','logs/trades.csv','logs/order_log.csv','logs/signal_log.csv']:
+ path=Path(p)
+ if path.exists():
+  df=pd.read_csv(path, nrows=3)
+  print('\\n',p, df.columns.tolist())
+  print(df.to_string())
+PY" in /home/kimyo/trading-bot
+ succeeded in 912ms:
+
+ logs/trades.csv ['timestamp', 'ticker', 'signal', 'close', 'ma20', 'ma50', 'rsi']
+             timestamp ticker signal   close  ma20  ma50      rsi
+0  2026-05-26T22:35:10   AAPL   HOLD  310.71   NaN   NaN  78.6302
+1  2026-05-26T22:35:10   MSFT   HOLD  416.60   NaN   NaN  55.1051
+2  2026-05-26T22:35:10   NVDA   HOLD  216.10   NaN   NaN  53.7138
+
+exec
+/bin/bash -lc 'rg "SIGNAL_LOG_PATH|ORDER_LOG_PATH|log_order|STATUS_CHECK" -n src logs | head -120' in /home/kimyo/trading-bot
+ succeeded in 185ms:
+exec
+/bin/bash -lc 'rg "SIGNAL_LOG_PATH|ORDER_LOG_PATH|STATUS_CHECK|order_log|signal_log|trades.csv" -n . | head -200' in /home/kimyo/trading-bot
+ succeeded in 163ms:
+./src/portfolio_backtest_validation.py:97:    trades_path = output_dir / "portfolio_trades.csv"
+./tests/test_report_performance.py:42:        "event": ["STATUS_CHECK", "STATUS_CHECK"],
+./src/portfolio_backtester.py:686:    trades_df.to_csv(output_dir / "portfolio_trades.csv", index=False)
+./src/generate_qlib_snapshot.py:53:    parser.add_argument("--trades-csv", default=None, help="Optional trades CSV path.")
+./src/generate_qlib_snapshot.py:90:        trade_rows=_count_rows(args.trades_csv),
+./src/generate_qlib_snapshot.py:95:            "trades_csv": str(Path(args.trades_csv).expanduser().resolve()) if args.trades_csv else None,
+./src/risk_manager.py:9:from src.config import ORDER_LOG_PATH
+./src/risk_manager.py:80:def _load_order_log(path: str | Path = ORDER_LOG_PATH) -> pd.DataFrame:
+./src/risk_manager.py:101:        rows = rows[event != "STATUS_CHECK"]
+./src/risk_manager.py:116:    rows = _buy_order_rows(_load_order_log())
+./src/risk_manager.py:133:    rows = _buy_order_rows(_load_order_log())
+./src/config.py:14:SIGNAL_LOG_PATH = "logs/signals.csv"
+./src/config.py:15:LOG_PATH = SIGNAL_LOG_PATH
+./src/config.py:16:ORDER_LOG_PATH = "logs/orders.csv"
+./src/main.py:819:                    f"  CLOSE_STATUS_CHECK: status={checked_order['status']}, "
+./src/main.py:1280:                f"  BUY_STATUS_CHECK: status={checked_order['status']}, "
+./src/report.py:6:from src.config import LOG_PATH, ORDER_LOG_PATH
+./src/report.py:177:    print_recent_csv(ORDER_LOG_PATH, "Recent Orders", limit=10)
+./src/logger.py:6:from src.config import SIGNAL_LOG_PATH, ORDER_LOG_PATH, EXECUTION_AUDIT_LOG_PATH
+./src/logger.py:18:    log_file = Path(SIGNAL_LOG_PATH)
+./src/logger.py:46:    log_file = Path(ORDER_LOG_PATH)
+./src/logger.py:78:    log_file = Path(ORDER_LOG_PATH)
+./src/logger.py:92:        "event": "STATUS_CHECK",
+./src/dashboard.py:36:TRADES_PATH = BASELINE_DIR / "portfolio_trades.csv"
+./src/dashboard.py:37:ORDER_LOG_PATH = Path("logs/orders.csv")
+./src/dashboard.py:38:SIGNAL_LOG_PATH = Path("logs/signals.csv")
+./src/dashboard.py:211:        signals = pd.read_csv(SIGNAL_LOG_PATH) if SIGNAL_LOG_PATH.exists() else pd.DataFrame()
+./src/run_backtest.py:29:            trades_path = output_dir / f"{ticker}_trades.csv"
+./src/report_performance.py:15:from src.config import ORDER_LOG_PATH, SIGNAL_LOG_PATH
+./src/report_performance.py:47:    filled_orders = orders_df[orders_df.get("event") == "STATUS_CHECK"].copy()
+./src/report_performance.py:50:        mask = orders_df.apply(lambda row: "STATUS_CHECK" in row.values, axis=1)
+./src/report_performance.py:55:            if "STATUS_CHECK" in vals:
+./src/report_performance.py:56:                idx = vals.index("STATUS_CHECK")
+./src/report_performance.py:108:    signals_path = Path(signals_path or SIGNAL_LOG_PATH)
+./src/report_performance.py:109:    orders_path = Path(orders_path or ORDER_LOG_PATH)
+./reports/agent_pipeline/phase20_promotion_v4/git_diff.patch:583:     ).to_csv(dir_path / "portfolio_trades.csv", index=False)
+./src/qlib_backtest_runner.py:374:def save_trades_csv(trades_df: pd.DataFrame, output_path: str | Path) -> Path:
+./src/qlib_backtest_runner.py:838:        trades_path = save_trades_csv(trades_df, output_dir / "qlib_trades.csv")
+./src/qlib_backtest_runner.py:862:        trades_path = save_trades_csv(trades_df, output_dir / "qlib_trades.csv")
+./src/qlib_backtest_runner.py:878:        "--trades-csv",
+./reports/agent_pipeline/phase20_promotion_v4/review_packet.md:637:     ).to_csv(dir_path / "portfolio_trades.csv", index=False)
+./reports/agent_pipeline/phase20_promotion_v4/codex_review_command.log:857:     ).to_csv(dir_path / "portfolio_trades.csv", index=False)
+./reports/agent_pipeline/drill_slippage_scoped_02/gemini_cli.log:16:I've modified `src/report_performance.py` and will now create `tests/test_report_performance.py`. The test will use a temporary directory, create dummy `signals.csv` and `orders.csv` files, then use `monkeypatch` to redirect `SIGNAL_LOG_PATH` and `ORDER_LOG_PATH` to these files. I will capture stdout from `src.report_performance.analyze_slippage` and verify the total slippage cost is correctly calculated as `$5.00` based on my sample data. I'm now writing the test file.
+./app/streamlit_app.py:31:from src.config import LOG_PATH, ORDER_LOG_PATH, ALPACA_PAPER
+./app/streamlit_app.py:453:    orders_df = read_csv_if_exists(ORDER_LOG_PATH)
+./app/streamlit_app.py:685:    trades_path = run_dir / "portfolio_trades.csv"
+./app/streamlit_app.py:769:    orders_df = read_csv_if_exists(ORDER_LOG_PATH)
+./app/streamlit_app.py:798:    orders_df = read_csv_if_exists(ORDER_LOG_PATH)
+./app/streamlit_app.py:887:    trades_df.to_csv(output_dir / "portfolio_trades.csv", index=False)
+./tests/test_portfolio_backtest_golden.py:38:    (tmp_path / "portfolio_trades.csv").write_text(
+./tests/test_portfolio_backtest_golden.py:39:        (FIXTURE_DIR / "portfolio_trades.csv").read_text()
+./tests/test_snapshot_workflow.py:38:            trades_path = temp_path / "trades.csv"
+./tests/test_snapshot_workflow.py:56:                "--trades-csv",
+./tests/test_portfolio_backtest_gate.py:35:    ).to_csv(dir_path / "portfolio_trades.csv", index=False)
+./reports/agent_pipeline/phase20_portfolio_gate_v2/codex_review_command.log:210:    ).to_csv(dir_path / "portfolio_trades.csv", index=False)
+./reports/agent_pipeline/phase20_promotion/git_diff.patch:527:     ).to_csv(dir_path / "portfolio_trades.csv", index=False)
+./reports/agent_pipeline/phase20_promotion_v3/git_diff.patch:573:     ).to_csv(dir_path / "portfolio_trades.csv", index=False)
+./reports/agent_pipeline/phase20_promotion_v2/git_diff.patch:564:     ).to_csv(dir_path / "portfolio_trades.csv", index=False)
+./reports/agent_pipeline/phase20_promotion_v3/review_packet.md:627:     ).to_csv(dir_path / "portfolio_trades.csv", index=False)
+./reports/agent_pipeline/phase20_promotion/review_packet.md:581:     ).to_csv(dir_path / "portfolio_trades.csv", index=False)
+./reports/agent_pipeline/phase20_promotion/codex_review_command.log:643:     ).to_csv(dir_path / "portfolio_trades.csv", index=False)
+./reports/agent_pipeline/phase20_promotion_v3/codex_review_command.log:835:     ).to_csv(dir_path / "portfolio_trades.csv", index=False)
+./reports/agent_pipeline/phase20_promotion_v3/codex_review_command.log:2000:    trades_df.to_csv(output_dir / "portfolio_trades.csv", index=False)
+./reports/agent_pipeline/phase20_promotion_v2/review_packet.md:618:     ).to_csv(dir_path / "portfolio_trades.csv", index=False)
+./reports/agent_pipeline/phase20_promotion_v2/codex_review_command.log:648:     ).to_csv(dir_path / "portfolio_trades.csv", index=False)
+./reports/agent_pipeline/phase20_slippage/review_packet.md:362:-from src.config import SIGNAL_LOG_PATH, ORDER_LOG_PATH
+./reports/agent_pipeline/phase20_slippage/review_packet.md:370:-        signals_path = SIGNAL_LOG_PATH
+./reports/agent_pipeline/phase20_slippage/review_packet.md:372:-        orders_path = ORDER_LOG_PATH
+./reports/agent_pipeline/phase20_slippage/review_packet.md:380:+from src.config import ORDER_LOG_PATH, SIGNAL_LOG_PATH
+./reports/agent_pipeline/phase20_slippage/review_packet.md:414:     filled_orders = orders_df[orders_df.get("event") == "STATUS_CHECK"].copy()
+./reports/agent_pipeline/phase20_slippage/review_packet.md:416:-    # 2. 만약 비어있다면, 다른 컬럼에 밀려있는지 확인 (예: filled_avg_price 컬럼에 STATUS_CHECK이 있는 경우)
+./reports/agent_pipeline/phase20_slippage/review_packet.md:419:-        # 마지막 컬럼들 중 'STATUS_CHECK'이 포함된 행 찾기
+./reports/agent_pipeline/phase20_slippage/review_packet.md:420:         mask = orders_df.apply(lambda row: "STATUS_CHECK" in row.values, axis=1)
+./reports/agent_pipeline/phase20_slippage/review_packet.md:424:-        # 필터링된 행들에 대해 'STATUS_CHECK'이 위치한 인덱스를 기준으로 재배치
+./reports/agent_pipeline/phase20_slippage/review_packet.md:429:             if "STATUS_CHECK" in vals:
+./reports/agent_pipeline/phase20_slippage/review_packet.md:430:                 idx = vals.index("STATUS_CHECK")
+./reports/agent_pipeline/phase20_slippage/review_packet.md:431:-                # STATUS_CHECK이 마지막(10번 인덱스)에 있다고 가정하고 밀린 경우 대응
+./reports/agent_pipeline/phase20_slippage/review_packet.md:491:+    signals_path = Path(signals_path or SIGNAL_LOG_PATH)
+./reports/agent_pipeline/phase20_slippage/review_packet.md:492:+    orders_path = Path(orders_path or ORDER_LOG_PATH)
+./reports/agent_pipeline/phase20_slippage/review_packet.md:1110:     ).to_csv(dir_path / "portfolio_trades.csv", index=False)
+./reports/agent_pipeline/phase20_slippage/review_packet.md:1171:-        "event": ["STATUS_CHECK", "STATUS_CHECK"]
+./reports/agent_pipeline/phase20_slippage/review_packet.md:1172:+        "event": ["STATUS_CHECK", "STATUS_CHECK"],
+./reports/agent_pipeline/phase20_slippage/git_diff.patch:300:-from src.config import SIGNAL_LOG_PATH, ORDER_LOG_PATH
+./reports/agent_pipeline/phase20_slippage/git_diff.patch:308:-        signals_path = SIGNAL_LOG_PATH
+./reports/agent_pipeline/phase20_slippage/git_diff.patch:310:-        orders_path = ORDER_LOG_PATH
+./reports/agent_pipeline/phase20_slippage/git_diff.patch:318:+from src.config import ORDER_LOG_PATH, SIGNAL_LOG_PATH
+./reports/agent_pipeline/phase20_slippage/git_diff.patch:352:     filled_orders = orders_df[orders_df.get("event") == "STATUS_CHECK"].copy()
+./reports/agent_pipeline/phase20_slippage/git_diff.patch:354:-    # 2. 만약 비어있다면, 다른 컬럼에 밀려있는지 확인 (예: filled_avg_price 컬럼에 STATUS_CHECK이 있는 경우)
+./reports/agent_pipeline/phase20_slippage/git_diff.patch:357:-        # 마지막 컬럼들 중 'STATUS_CHECK'이 포함된 행 찾기
+./reports/agent_pipeline/phase20_slippage/git_diff.patch:358:         mask = orders_df.apply(lambda row: "STATUS_CHECK" in row.values, axis=1)
+./reports/agent_pipeline/phase20_slippage/git_diff.patch:362:-        # 필터링된 행들에 대해 'STATUS_CHECK'이 위치한 인덱스를 기준으로 재배치
+./reports/agent_pipeline/phase20_slippage/git_diff.patch:367:             if "STATUS_CHECK" in vals:
+./reports/agent_pipeline/phase20_slippage/git_diff.patch:368:                 idx = vals.index("STATUS_CHECK")
+./reports/agent_pipeline/phase20_slippage/git_diff.patch:369:-                # STATUS_CHECK이 마지막(10번 인덱스)에 있다고 가정하고 밀린 경우 대응
+./reports/agent_pipeline/phase20_slippage/git_diff.patch:429:+    signals_path = Path(signals_path or SIGNAL_LOG_PATH)
+./reports/agent_pipeline/phase20_slippage/git_diff.patch:430:+    orders_path = Path(orders_path or ORDER_LOG_PATH)
+./reports/agent_pipeline/phase20_slippage/git_diff.patch:1048:     ).to_csv(dir_path / "portfolio_trades.csv", index=False)
+./reports/agent_pipeline/phase20_slippage/git_diff.patch:1109:-        "event": ["STATUS_CHECK", "STATUS_CHECK"]
+./reports/agent_pipeline/phase20_slippage/git_diff.patch:1110:+        "event": ["STATUS_CHECK", "STATUS_CHECK"],
+
+exec
+/bin/bash -lc "sed -n '1,130p' src/logger.py; sed -n '1260,1305p' src/main.py; sed -n '800,835p' src/main.py" in /home/kimyo/trading-bot
+ succeeded in 164ms:
+from pathlib import Path
+from datetime import datetime
+
+import pandas as pd
+
+from src.config import SIGNAL_LOG_PATH, ORDER_LOG_PATH, EXECUTION_AUDIT_LOG_PATH
+
+
+def log_signal(
+    ticker: str,
+    signal: str,
+    close: float,
+    ma20: float,
+    ma50: float,
+    rsi: float,
+    ai_score: float = None,
+) -> None:
+    log_file = Path(SIGNAL_LOG_PATH)
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+
+    row = {
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "ticker": ticker,
+        "signal": signal,
+        "ai_score": round(float(ai_score), 4) if ai_score is not None else None,
+        "close": round(float(close), 4),
+        "ma20": round(float(ma20), 4),
+        "ma50": round(float(ma50), 4),
+        "rsi": round(float(rsi), 4),
+    }
+
+    df = pd.DataFrame([row])
+    write_header = not log_file.exists()
+    df.to_csv(log_file, mode="a", header=write_header, index=False)
+
+
+def log_order(
+    ticker: str,
+    notional: float,
+    order_id: str,
+    status: str,
+    side: str,
+    order_type: str,
+    reason: str = "",
+) -> None:
+    log_file = Path(ORDER_LOG_PATH)
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+
+    row = {
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "ticker": ticker,
+        "notional": round(float(notional), 2),
+        "order_id": order_id,
+        "status": status,
+        "side": side,
+        "order_type": order_type,
+        "reason": reason,
+        "filled_qty": "",
+        "filled_avg_price": "",
+        "event": "SUBMITTED",
+    }
+
+    df = pd.DataFrame([row])
+    write_header = not log_file.exists()
+    df.to_csv(log_file, mode="a", header=write_header, index=False)
+
+
+def log_order_status(
+    ticker: str,
+    order_id: str,
+    status: str,
+    side: str,
+    order_type: str,
+    filled_qty: str,
+    filled_avg_price: str,
+    reason: str = "",
+) -> None:
+    log_file = Path(ORDER_LOG_PATH)
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+
+    row = {
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "ticker": ticker,
+        "notional": 0.0,
+        "order_id": order_id,
+        "status": status,
+        "side": side,
+        "order_type": order_type,
+        "reason": reason,
+        "filled_qty": filled_qty,
+        "filled_avg_price": filled_avg_price,
+        "event": "STATUS_CHECK",
+    }
+
+    df = pd.DataFrame([row])
+    write_header = not log_file.exists()
+    df.to_csv(log_file, mode="a", header=write_header, index=False)
+
+
+def log_execution_audit(
+    event_type: str,
+    ticker: str,
+    action: str,
+    status: str,
+    reason: str = "",
+    *,
+    profile_name: str = "",
+    regime: str = "",
+    signal: str = "",
+    ai_score: float = None,
+    llm_verdict: str = "",
+    order_id: str = "",
+    order_type: str = "",
+    side: str = "",
+    notional: float = None,
+    quantity: float = None,
+    filled_qty: float = None,
+    filled_avg_price: float = None,
+) -> None:
+    log_file = Path(EXECUTION_AUDIT_LOG_PATH)
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+
+    def _round_or_none(value, digits: int):
+        if value is None or value == "":
+            return None
+        return round(float(value), digits)
+
+    row = {
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "event_type": event_type,
+                ai_score=ai_score,
+                llm_verdict=llm_verdict,
+                order_id=str(order.id),
+                order_type=str(order.type),
+                side=str(order.side),
+                notional=order_amount,
+            )
+
+            checked_order = wait_for_order_status(str(order.id))
+            log_order_status(
+                ticker=ticker,
+                order_id=checked_order["id"],
+                status=checked_order["status"],
+                side=checked_order["side"],
+                order_type=checked_order["type"],
+                filled_qty=checked_order["filled_qty"],
+                filled_avg_price=checked_order["filled_avg_price"],
+                reason=risk_reason,
+            )
+            print(
+                f"  BUY_STATUS_CHECK: status={checked_order['status']}, "
+                f"filled_qty={checked_order['filled_qty']}, "
+                f"filled_avg_price={checked_order['filled_avg_price']}"
+            )
+            log_execution_audit(
+                event_type="BUY_STATUS",
+                ticker=ticker,
+                action="BUY",
+                status=str(checked_order["status"]),
+                reason=risk_reason,
+                profile_name=profile_name,
+                regime=current_regime,
+                signal=signal,
+                ai_score=ai_score,
+                llm_verdict=llm_verdict,
+                order_id=str(checked_order["id"]),
+                order_type=str(checked_order["type"]),
+                side=str(checked_order["side"]),
+                notional=order_amount,
+                filled_qty=checked_order["filled_qty"],
+                filled_avg_price=checked_order["filled_avg_price"],
+            )
+
+            notify_order(
+                action="BUY",
+                ticker=ticker,
+                    signal=signal,
+                    ai_score=ai_score,
+                    order_id=str(order.id),
+                    order_type=str(order.type),
+                    side=str(order.side),
+                )
+
+                checked_order = wait_for_order_status(str(order.id))
+                log_order_status(
+                    ticker=ticker,
+                    order_id=checked_order["id"],
+                    status=checked_order["status"],
+                    side=checked_order["side"],
+                    order_type=checked_order["type"],
+                    filled_qty=checked_order["filled_qty"],
+                    filled_avg_price=checked_order["filled_avg_price"],
+                    reason=exit_decision.reason,
+                )
+                print(
+                    f"  CLOSE_STATUS_CHECK: status={checked_order['status']}, "
+                    f"filled_qty={checked_order['filled_qty']}, "
+                    f"filled_avg_price={checked_order['filled_avg_price']}"
+                )
+                log_execution_audit(
+                    event_type="FULL_EXIT_STATUS",
+                    ticker=ticker,
+                    action="SELL",
+                    status=str(checked_order["status"]),
+                    reason=exit_decision.reason,
+                    profile_name=profile_name,
+                    regime=current_regime,
+                    signal=signal,
+                    ai_score=ai_score,
+                    order_id=str(checked_order["id"]),
+                    order_type=str(checked_order["type"]),
+                    side=str(checked_order["side"]),
+
+exec
+/bin/bash -lc "sed -n '1,200p' tests/test_retrain_holdout.py; nl -ba src/report_performance.py | sed -n '110,150p'; nl -ba scripts/install_slippage_report_timer.sh | sed -n '1,80p'; nl -ba src/train_ai_model.py | sed -n '370,430p'" in /home/kimyo/trading-bot
+ succeeded in 147ms:
+"""Holdout slicing for retrain portfolio promotion ([Cursor] slice)."""
+
+import pandas as pd
+
+from src.retrain_holdout import (
+    exclude_holdout_from_ticker_data,
+    portfolio_holdout_window,
+    slice_ticker_data_to_holdout,
+)
+
+
+def _frame(start: str, days: int) -> pd.DataFrame:
+    dates = pd.date_range(start, periods=days, freq="B")
+    return pd.DataFrame(
+        {
+            "date": dates,
+            "open": 1.0,
+            "high": 1.0,
+            "low": 1.0,
+            "close": 1.0,
+            "volume": 100.0,
+        }
+    )
+
+
+def test_holdout_window_and_slices_do_not_overlap():
+    ticker_data = {"AAPL": _frame("2024-01-01", 400)}
+    holdout_start, holdout_end = portfolio_holdout_window(ticker_data, months=6)
+    fit = exclude_holdout_from_ticker_data(ticker_data, holdout_start)
+    holdout = slice_ticker_data_to_holdout(ticker_data, holdout_start, holdout_end)
+
+    fit_max = pd.to_datetime(fit["AAPL"]["date"]).max()
+    holdout_min = pd.to_datetime(holdout["AAPL"]["date"]).min()
+    assert fit_max < holdout_min
+    assert holdout_end >= holdout_min
+   110	
+   111	    if since is None and lookback_days is not None:
+   112	        since = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+   113	
+   114	    try:
+   115	        signals_df = pd.read_csv(signals_path)
+   116	        orders_df = pd.read_csv(orders_path)
+   117	    except FileNotFoundError:
+   118	        return None
+   119	
+   120	    signals_df = _filter_since(signals_df, since)
+   121	    orders_df = _filter_since(orders_df, since)
+   122	
+   123	    filled_orders = _extract_filled_orders(orders_df)
+   124	    if filled_orders.empty:
+   125	        return None
+   126	
+   127	    signals_df["ts_short"] = pd.to_datetime(signals_df["timestamp"], utc=True).dt.floor("min")
+   128	    filled_orders["ts_short"] = pd.to_datetime(filled_orders["timestamp"], utc=True).dt.floor("min")
+   129	
+   130	    merged = pd.merge(
+   131	        filled_orders,
+   132	        signals_df,
+   133	        on=["ticker", "ts_short"],
+   134	        how="inner",
+   135	        suffixes=("_order", "_signal"),
+   136	    )
+   137	    if merged.empty:
+   138	        return None
+   139	
+   140	    merged["side_lower"] = merged["side"].astype(str).str.lower()
+   141	    sign = np.where(merged["side_lower"].str.contains("sell", na=False), -1, 1)
+   142	    merged["slippage_pct"] = (
+   143	        sign * (merged["filled_avg_price"] - merged["close"]) / merged["close"] * 100
+   144	    )
+   145	    merged["filled_qty"] = pd.to_numeric(merged["filled_qty"], errors="coerce")
+   146	    merged["slippage_usd"] = (
+   147	        sign * (merged["filled_avg_price"] - merged["close"]) * merged["filled_qty"]
+   148	    )
+   149	
+   150	    by_ticker_df = merged.groupby("ticker").agg(
+     1	#!/usr/bin/env bash
+     2	set -euo pipefail
+     3	
+     4	PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+     5	CONFIG_FILE="$PROJECT_DIR/config/slippage_report_config.json"
+     6	SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
+     7	mkdir -p "$SYSTEMD_USER_DIR"
+     8	
+     9	SERVICE_FILE="$SYSTEMD_USER_DIR/trading-bot-slippage-report.service"
+    10	TIMER_FILE="$SYSTEMD_USER_DIR/trading-bot-slippage-report.timer"
+    11	
+    12	ON_CALENDAR_LINES="$("$PROJECT_DIR/.venv/bin/python" - <<PY
+    13	import json
+    14	from pathlib import Path
+    15	config = json.loads(Path("$CONFIG_FILE").read_text())
+    16	timezone = str(config.get("timezone", "")).strip()
+    17	times = config.get("on_calendar_times", ["Sun 18:00:00"])
+    18	for item in times:
+    19	    value = str(item).strip()
+    20	    if timezone and "/" not in value:
+    21	        value = f"{value} {timezone}"
+    22	    print(f"OnCalendar={value}")
+    23	PY
+    24	)"
+    25	
+    26	chmod +x "$PROJECT_DIR/scripts/run_weekly_slippage_report.sh"
+    27	
+    28	cat > "$SERVICE_FILE" <<SERVICE
+    29	[Unit]
+    30	Description=Trading Bot weekly paper vs signal slippage report
+    31	
+    32	[Service]
+    33	Type=oneshot
+    34	WorkingDirectory=$PROJECT_DIR
+    35	ExecStart=$PROJECT_DIR/scripts/run_weekly_slippage_report.sh
+    36	SERVICE
+    37	
+    38	cat > "$TIMER_FILE" <<TIMER
+    39	[Unit]
+    40	Description=Weekly slippage report (paper fills vs signal price)
+    41	
+    42	[Timer]
+    43	$ON_CALENDAR_LINES
+    44	Persistent=true
+    45	AccuracySec=1min
+    46	
+    47	[Install]
+    48	WantedBy=timers.target
+    49	TIMER
+    50	
+    51	systemctl --user daemon-reload
+    52	
+    53	echo "Created:"
+    54	echo "  $SERVICE_FILE"
+    55	echo "  $TIMER_FILE"
+    56	echo
+    57	echo "Schedule:"
+    58	echo "$ON_CALENDAR_LINES"
+    59	echo
+    60	echo "To enable:"
+    61	echo "  systemctl --user enable --now trading-bot-slippage-report.timer"
+    62	echo
+    63	echo "Manual run:"
+    64	echo "  bash scripts/run_weekly_slippage_report.sh"
+   370	    eval_start: pd.Timestamp,
+   371	    eval_end: pd.Timestamp,
+   372	) -> dict:
+   373	    """Portfolio backtest on holdout-only price data for model promotion."""
+   374	    benchmark_df = (
+   375	        ticker_data.get(settings.market_regime_ticker)
+   376	        if settings.market_regime_filter_enabled
+   377	        else None
+   378	    )
+   379	    relative_strength_benchmark_df = (
+   380	        ticker_data.get(settings.relative_strength_benchmark_ticker)
+   381	        if settings.relative_strength_filter_enabled
+   382	        else None
+   383	    )
+   384	    spy_df = ticker_data.get("SPY")
+   385	
+   386	    ai_score_frames = None
+   387	    if settings.use_ai_score:
+   388	        ai_score_frames = build_ai_score_frames(
+   389	            ticker_data,
+   390	            ai_model_bundle=model_wrapper,
+   391	            vix_df=vix_df,
+   392	            spy_df=spy_df,
+   393	            macro_df=macro_df,
+   394	        )
+   395	
+   396	    result, _, _ = run_portfolio_backtest(
+   397	        ticker_data=ticker_data,
+   398	        benchmark_df=benchmark_df,
+   399	        relative_strength_benchmark_df=relative_strength_benchmark_df,
+   400	        initial_cash=10000.0,
+   401	        max_positions=settings.max_total_positions,
+   402	        target_position_pct=settings.max_position_pct,
+   403	        transaction_cost_pct=0.001,
+   404	        ma_fast=settings.ma_fast,
+   405	        ma_slow=settings.ma_slow,
+   406	        rsi_buy_limit=settings.rsi_buy_limit,
+   407	        use_ai_score=settings.use_ai_score,
+   408	        ai_score_buy_threshold=settings.ai_score_buy_threshold,
+   409	        market_regime_filter_enabled=settings.market_regime_filter_enabled,
+   410	        market_regime_ma_fast=settings.market_regime_ma_fast,
+   411	        market_regime_ma_slow=settings.market_regime_ma_slow,
+   412	        relative_strength_filter_enabled=settings.relative_strength_filter_enabled,
+   413	        relative_strength_lookback_days=settings.relative_strength_lookback_days,
+   414	        relative_strength_min_excess_return=settings.relative_strength_min_excess_return,
+   415	        volume_filter_enabled=settings.volume_filter_enabled,
+   416	        volume_lookback_days=settings.volume_lookback_days,
+   417	        min_volume_ratio=settings.min_volume_ratio,
+   418	        volatility_filter_enabled=settings.volatility_filter_enabled,
+   419	        volatility_lookback_days=settings.volatility_lookback_days,
+   420	        max_volatility=settings.max_volatility,
+   421	        rank_trend_weight=settings.rank_trend_weight,
+   422	        rank_ai_weight=settings.rank_ai_weight,
+   423	        rank_momentum_weight=settings.rank_momentum_weight,
+   424	        rank_volatility_weight=settings.rank_volatility_weight,
+   425	        ai_exit_enabled=getattr(settings, "ai_exit_enabled", False),
+   426	        ai_exit_threshold=(
+   427	            settings.ai_exit_threshold_bear
+   428	            if getattr(settings, "ai_exit_dynamic_enabled", False)
+   429	            else settings.ai_exit_threshold
+   430	        ),
+
+exec
+/bin/bash -lc 'rg "stop_loss_pct|take_profit_pct|trailing_stop_pct|allocation_method|mvo_" -n src/config.py src/train_ai_model.py src/*.py | head -120' in /home/kimyo/trading-bot
+ succeeded in 220ms:
+src/compare_allocation.py:38:        allocation_method=method,
+src/final_battle_5m.py:82:    v4.take_profit_pct = 0.15 # 15%에서 전량 익절 (비교용)
+src/final_battle_5m.py:88:    v5.take_profit_pct = 0.50 # 목표가를 50%로 대폭 상향 (추세 끝까지 먹기)
+src/final_battle_5m.py:89:    v5.stop_loss_pct = 0.15
+src/risk_manager.py:218:    stop_loss_pct = float(getattr(settings, "stop_loss_pct", 0.0))
+src/risk_manager.py:220:    projected_single_name_loss = projected_position_value * stop_loss_pct
+src/risk_manager.py:343:    if unrealized_plpc <= -settings.stop_loss_pct:
+src/risk_manager.py:346:    if unrealized_plpc >= settings.take_profit_pct:
+src/main.py:159:    stop_loss_pct: float,
+src/main.py:160:    take_profit_pct: float,
+src/main.py:162:    trailing_stop_pct: float,
+src/main.py:168:    if stop_loss_pct > 0 and unrealized_plpc <= -stop_loss_pct:
+src/main.py:174:        and trailing_stop_pct > 0
+src/main.py:175:        and trailing_drawdown >= trailing_stop_pct
+src/main.py:182:    if take_profit_pct > 0 and unrealized_plpc >= take_profit_pct:
+src/main.py:596:                trailing_pct = float(getattr(settings, "trailing_stop_pct", 0.05))
+src/main.py:613:                    stop_loss_pct=float(getattr(settings, "stop_loss_pct", 0.0)),
+src/main.py:614:                    take_profit_pct=float(getattr(settings, "take_profit_pct", 0.0)),
+src/main.py:616:                    trailing_stop_pct=trailing_pct,
+src/main.py:1139:    # 3) MVO 가중치 적용 (Pass 2: allocation_method에 따라 주문 금액 조정)
+src/main.py:1140:    allocation_method = getattr(settings, "allocation_method", "equal_weight")
+src/main.py:1141:    if allocation_method != "equal_weight" and len(approved_buys) > 1:
+src/main.py:1147:        mvo_weights = compute_weights_from_ticker_data(
+src/main.py:1151:            allocation_method=allocation_method,
+src/main.py:1156:            mvo_amount = portfolio_value * mvo_weights.get(t, 1.0 / len(approved_buys))
+src/main.py:1158:            candidate["order_amount"] = min(mvo_amount, settings.max_test_order_amount)
+src/main.py:1162:                f"{c['ticker']}={mvo_weights.get(c['ticker'], 0):.3f}"
+src/report.py:93:    print(f"STOP_LOSS_PCT={pct(settings.stop_loss_pct)}")
+src/report.py:94:    print(f"TAKE_PROFIT_PCT={pct(settings.take_profit_pct)}")
+src/optimize_exit_strategy.py:71:            "stop_loss_pct": 0.0,
+src/optimize_exit_strategy.py:72:            "take_profit_pct": 0.0,
+src/optimize_exit_strategy.py:73:            "trailing_stop_pct": 0.0,
+src/optimize_exit_strategy.py:89:    for index, (stop_loss_pct, take_profit_pct, trailing_stop_pct) in enumerate(
+src/optimize_exit_strategy.py:93:        if stop_loss_pct == 0.0 and take_profit_pct == 0.0 and trailing_stop_pct == 0.0:
+src/optimize_exit_strategy.py:98:            f"stop={stop_loss_pct}, take={take_profit_pct}, trailing={trailing_stop_pct}"
+src/optimize_exit_strategy.py:102:            stop_loss_pct=stop_loss_pct,
+src/optimize_exit_strategy.py:103:            take_profit_pct=take_profit_pct,
+src/optimize_exit_strategy.py:104:            trailing_stop_pct=trailing_stop_pct,
+src/optimize_exit_strategy.py:114:                "stop_loss_pct": stop_loss_pct,
+src/optimize_exit_strategy.py:115:                "take_profit_pct": take_profit_pct,
+src/optimize_exit_strategy.py:116:                "trailing_stop_pct": trailing_stop_pct,
+src/optimize_exit_strategy.py:150:                "stop_loss_pct",
+src/optimize_exit_strategy.py:151:                "take_profit_pct",
+src/optimize_exit_strategy.py:152:                "trailing_stop_pct",
+src/settings.py:74:    stop_loss_pct: float = 0.05
+src/settings.py:75:    take_profit_pct: float = 0.1
+src/settings.py:80:    allocation_method: str = "equal_weight"
+src/settings.py:112:    trailing_stop_pct: float = 0.05
+src/settings.py:224:    if not 0 <= settings.stop_loss_pct < 1:
+src/settings.py:225:        raise ValueError("stop_loss_pct must be between 0 and 1")
+src/settings.py:226:    if settings.take_profit_pct < 0:
+src/settings.py:227:        raise ValueError("take_profit_pct must be non-negative")
+src/settings.py:228:    if not 0 <= settings.trailing_stop_pct < 1:
+src/settings.py:229:        raise ValueError("trailing_stop_pct must be between 0 and 1")
+src/settings.py:356:    stop_loss_pct: float
+src/settings.py:357:    take_profit_pct: float
+src/settings.py:360:    trailing_stop_pct: Optional[float] = None
+src/settings.py:424:    print(f"Stop Loss: {config.stop_loss_pct:.2%}")
+src/settings.py:425:    print(f"Take Profit: {config.take_profit_pct:.2%}")
+src/dashboard.py:76:            stop_loss_pct=s_sl/100.0, take_profit_pct=s_tp/100.0,
+src/backtester.py:135:                    ts_triggered = self.config.trailing_stop_pct and price < peak * (1 - self.config.trailing_stop_pct)
+src/backtester.py:136:                    sl_triggered = self.config.stop_loss_pct and price < entry * (1 - self.config.stop_loss_pct)
+src/backtester.py:137:                    tp_triggered = self.config.take_profit_pct and price > entry * (1 + self.config.take_profit_pct)
+src/portfolio_optimizer.py:10:def compute_mvo_weights(
+src/portfolio_optimizer.py:132:    allocation_method: str = "mvo",
+src/portfolio_optimizer.py:141:    if n <= 1 or allocation_method == "equal_weight":
+src/portfolio_optimizer.py:168:    if allocation_method == "mvo":
+src/portfolio_optimizer.py:169:        weights = compute_mvo_weights(returns_df, min_weight=min_weight, max_weight=max_weight)
+src/portfolio_optimizer.py:170:    elif allocation_method == "bl_mvo":
+src/portfolio_optimizer.py:189:    allocation_method: str = "mvo",
+src/portfolio_optimizer.py:202:    if n <= 1 or allocation_method == "equal_weight":
+src/portfolio_optimizer.py:227:    if allocation_method == "mvo":
+src/portfolio_optimizer.py:228:        weights = compute_mvo_weights(returns_df, min_weight=min_weight, max_weight=max_weight)
+src/portfolio_optimizer.py:229:    elif allocation_method == "bl_mvo":
+src/run_portfolio_backtest.py:81:        allocation_method=args.allocation,
+src/run_portfolio_backtest.py:110:    print(f"allocation_method={args.allocation}")
+src/portfolio_backtester.py:231:    stop_loss_pct: float = 0.0,
+src/portfolio_backtester.py:232:    take_profit_pct: float = 0.0,
+src/portfolio_backtester.py:233:    trailing_stop_pct: float = 0.0,
+src/portfolio_backtester.py:248:    allocation_method: str = "equal_weight",
+src/portfolio_backtester.py:249:    mvo_lookback_days: int = 60,
+src/portfolio_backtester.py:250:    mvo_min_weight: float = 0.05,
+src/portfolio_backtester.py:251:    mvo_max_weight: float = 0.40,
+src/portfolio_backtester.py:274:    if not 0 <= stop_loss_pct < 1:
+src/portfolio_backtester.py:275:        raise ValueError("stop_loss_pct must be between 0 and 1")
+src/portfolio_backtester.py:276:    if take_profit_pct < 0:
+src/portfolio_backtester.py:277:        raise ValueError("take_profit_pct must be non-negative")
+src/portfolio_backtester.py:278:    if not 0 <= trailing_stop_pct < 1:
+src/portfolio_backtester.py:279:        raise ValueError("trailing_stop_pct must be between 0 and 1")
+src/portfolio_backtester.py:421:            if stop_loss_pct > 0 and gross_return_pct <= -stop_loss_pct:
+src/portfolio_backtester.py:423:            elif trailing_stop_pct > 0 and drawdown_from_high <= -trailing_stop_pct:
+src/portfolio_backtester.py:429:            elif take_profit_pct > 0 and gross_return_pct >= take_profit_pct:
+src/portfolio_backtester.py:505:            if allocation_method != "equal_weight" and len(candidate_tickers) > 1:
+src/portfolio_backtester.py:517:                    allocation_method=allocation_method,
+src/portfolio_backtester.py:518:                    lookback_days=mvo_lookback_days,
+src/portfolio_backtester.py:519:                    min_weight=mvo_min_weight,
+src/portfolio_backtester.py:520:                    max_weight=mvo_max_weight,
+
+exec
+/bin/bash -lc "nl -ba src/report_performance.py | sed -n '30,60p'" in /home/kimyo/trading-bot
+ succeeded in 176ms:
+    30	        return asdict(self)
+    31	
+    32	
+    33	def _utc_now_iso() -> str:
+    34	    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    35	
+    36	
+    37	def _filter_since(df: pd.DataFrame, since: datetime | None, column: str = "timestamp") -> pd.DataFrame:
+    38	    if since is None or df.empty or column not in df.columns:
+    39	        return df
+    40	    frame = df.copy()
+    41	    frame["_ts"] = pd.to_datetime(frame[column], utc=True, errors="coerce")
+    42	    cutoff = pd.Timestamp(since).tz_convert("UTC") if pd.Timestamp(since).tzinfo else pd.Timestamp(since, tz="UTC")
+    43	    return frame[frame["_ts"] >= cutoff].drop(columns=["_ts"])
+    44	
+    45	
+    46	def _extract_filled_orders(orders_df: pd.DataFrame) -> pd.DataFrame:
+    47	    filled_orders = orders_df[orders_df.get("event") == "STATUS_CHECK"].copy()
+    48	
+    49	    if filled_orders.empty:
+    50	        mask = orders_df.apply(lambda row: "STATUS_CHECK" in row.values, axis=1)
+    51	        filled_orders = orders_df[mask].copy()
+    52	
+    53	        def remap_row(row: pd.Series) -> pd.Series:
+    54	            vals = list(row)
+    55	            if "STATUS_CHECK" in vals:
+    56	                idx = vals.index("STATUS_CHECK")
+    57	                if idx == 10:
+    58	                    return pd.Series(
+    59	                        [
+    60	                            vals[0],
+
+exec
+/bin/bash -lc "nl -ba src/report_performance.py | sed -n '205,225p'" in /home/kimyo/trading-bot
+ succeeded in 164ms:
+   205	        json.dumps(report.to_dict(), indent=2, sort_keys=True),
+   206	        encoding="utf-8",
+   207	    )
+   208	    if report.by_ticker:
+   209	        pd.DataFrame(report.by_ticker).to_csv(run_dir / "by_ticker.csv", index=False)
+   210	
+   211	    latest = output_dir / "latest_summary.json"
+   212	    latest.write_text(
+   213	        json.dumps(report.to_dict(), indent=2, sort_keys=True),
+   214	        encoding="utf-8",
+   215	    )
+   216	    return run_dir
+   217	
+   218	
+   219	def analyze_slippage(
+   220	    signals_path: str | Path | None = None,
+   221	    orders_path: str | Path | None = None,
+   222	    *,
+   223	    lookback_days: int | None = None,
+   224	) -> SlippageReport | None:
+   225	    report = compute_slippage_report(
+
+exec
+/bin/bash -lc "nl -ba src/report_performance.py | sed -n '235,260p'" in /home/kimyo/trading-bot
+ succeeded in 146ms:
+   235	
+   236	
+   237	def _maybe_notify_slippage(report: SlippageReport) -> None:
+   238	    try:
+   239	        from src.notifier import notify_info
+   240	    except ImportError:
+   241	        return
+   242	    notify_info(
+   243	        "Weekly paper vs signal slippage",
+   244	        (
+   245	            f"Matched trades: {report.matched_trades}\n"
+   246	            f"Avg slippage: {report.overall_avg_slippage_pct:.4f}%\n"
+   247	            f"Total cost: ${report.total_slippage_usd:.2f}"
+   248	        ),
+   249	    )
+   250	
+   251	
+   252	def run_weekly_slippage_report(
+   253	    *,
+   254	    lookback_days: int = 7,
+   255	    output_dir: str | Path = "logs/slippage_reports",
+   256	    signals_path: str | Path | None = None,
+   257	    orders_path: str | Path | None = None,
+   258	    notify_telegram: bool = False,
+   259	    include_account: bool = False,
+   260	) -> SlippageReport | None:
+
+exec
+/bin/bash -lc "nl -ba src/report_performance.py | sed -n '260,282p'" in /home/kimyo/trading-bot
+ succeeded in 187ms:
+   260	) -> SlippageReport | None:
+   261	    report = compute_slippage_report(
+   262	        signals_path=signals_path,
+   263	        orders_path=orders_path,
+   264	        lookback_days=lookback_days,
+   265	    )
+   266	    if report is None:
+   267	        print("Weekly slippage report: no matched paper fills in lookback window.")
+   268	        return None
+   269	
+   270	    run_dir = write_slippage_artifacts(report, output_dir)
+   271	    print(format_slippage_report(report))
+   272	    print(f"\nSaved weekly slippage report to {run_dir}")
+   273	    if notify_telegram:
+   274	        _maybe_notify_slippage(report)
+   275	    if include_account:
+   276	        report_account_performance()
+   277	    return report
+   278	
+   279	
+   280	def report_account_performance() -> None:
+   281	    """Alpaca paper 계좌의 현재 실적 요약."""
+   282	    account = get_account_summary()
+
+codex
+The slippage automation mostly works for matched fills, but the no-fill weekly path leaves stale latest artifacts. More importantly, the new model promotion OOS gate does not evaluate the configured portfolio strategy, which can make promotion decisions incorrect.
+
+Full review comments:
+
+- [P1] Pass live exit/allocation settings into OOS gate — /home/kimyo/trading-bot/src/train_ai_model.py:396-420
+  When `settings` uses non-default exits or allocation (the project defaults include stop loss, take profit, and trailing stop), this holdout promotion run falls back to `run_portfolio_backtest` defaults (`0` exits and `equal_weight`) because those settings are not forwarded. That means the promotion decision can be based on a materially different portfolio strategy than the configured/live one, so a challenger can be promoted or retained for the wrong OOS P&L/Sharpe.
+
+- [P2] Persist a fresh weekly artifact when there are no fills — /home/kimyo/trading-bot/src/report_performance.py:266-268
+  For weeks with no matched paper fills, the scheduled report returns before writing `latest_summary.json`. If a previous report exists, dashboards or runbook checks will continue reading stale slippage data while the timer appears to have completed successfully; write a zero-trade/no-data summary (or clear/update `latest_summary.json`) for this branch.

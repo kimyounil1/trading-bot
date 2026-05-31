@@ -1,0 +1,30 @@
+On branch main
+Your branch is ahead of 'origin/main' by 7 commits.
+  (use "git push" to publish your local commits)
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   TODO.md
+	modified:   docs/runbook.md
+	modified:   logs/ml/ai_model_metrics.csv
+	modified:   logs/retrain_history.csv
+	modified:   models/ai_score_model.joblib
+	modified:   src/ml_model.py
+	modified:   src/portfolio_backtest_validation.py
+	modified:   src/report_performance.py
+	modified:   src/train_ai_model.py
+	modified:   tests/test_model_governance.py
+	modified:   tests/test_portfolio_backtest_gate.py
+	modified:   tests/test_report_performance.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	.antigravitycli/
+	config/slippage_report_config.json
+	scripts/install_slippage_report_timer.sh
+	scripts/run_weekly_slippage_report.sh
+	src/retrain_holdout.py
+	tests/test_retrain_holdout.py
+
+no changes added to commit (use "git add" and/or "git commit -a")

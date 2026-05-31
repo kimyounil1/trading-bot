@@ -1,0 +1,18 @@
+On branch main
+Your branch is ahead of 'origin/main' by 12 commits.
+  (use "git push" to publish your local commits)
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   logs/ml/ai_model_metrics.csv
+	modified:   logs/retrain_history.csv
+	modified:   models/ai_score_model.joblib
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	.antigravitycli/
+	tests/fixtures/audit_daily/golden_output/audit_20260530.json
+	tests/fixtures/audit_daily/golden_output/latest_summary.json
+
+no changes added to commit (use "git add" and/or "git commit -a")

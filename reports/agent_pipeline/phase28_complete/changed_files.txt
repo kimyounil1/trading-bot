@@ -1,0 +1,8 @@
+TODO.md
+config/strategy_config.json
+docs/TODO_ARCHIVE.md
+docs/runbook.md
+scripts/run_ops_reports.sh
+scripts/run_pass_complete.sh
+src/main.py
+src/settings.py

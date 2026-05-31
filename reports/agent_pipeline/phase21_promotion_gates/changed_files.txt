@@ -1,0 +1,8 @@
+TODO.md
+logs/ml/ai_model_metrics.csv
+logs/retrain_history.csv
+models/ai_score_model.joblib
+src/ml_model.py
+src/train_ai_model.py
+src/walk_forward_validation.py
+tests/test_model_governance.py

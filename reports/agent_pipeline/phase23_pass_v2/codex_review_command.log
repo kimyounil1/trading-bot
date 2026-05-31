@@ -1,0 +1,4721 @@
+$ codex --ask-for-approval never --sandbox read-only review /home/kimyo/trading-bot/reports/agent_pipeline/phase23_pass_v2/review_packet.md -c 'model_reasoning_effort="low"'
+exit_code=0
+
+## stdout
+The balanced pass wrapper now invokes the AGY pytest slice before calling the orchestrator, while the orchestrator's --balanced-pass mode invokes it again. This breaks the wrapper's skip behavior and duplicates a pass step.
+
+Review comment:
+
+- [P2] Avoid running the AGY slice twice — /home/kimyo/trading-bot/scripts/run_balanced_pass.sh:36-36
+  When `scripts/run_balanced_pass.sh` is used normally, it already runs `scripts/run_agy_slice.sh` above, then passes `--balanced-pass` to `agent_orchestrator.py`, whose new `args.balanced_pass` branch runs the same AGY slice again. This also makes `SKIP_AGY=1` ineffective for the wrapper because the orchestrator still runs the slice, so pass completion can be unnecessarily slow or fail after an explicitly skipped AGY step.
+
+
+## stderr
+OpenAI Codex v0.133.0
+--------
+workdir: /home/kimyo/trading-bot
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: low
+reasoning summaries: none
+session id: 019e7898-7314-78d3-a3e1-7c7e58895ca7
+--------
+user
+/home/kimyo/trading-bot/reports/agent_pipeline/phase23_pass_v2/review_packet.md
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+exec
+/bin/bash -lc "sed -n '1,240p' reports/agent_pipeline/phase23_pass_v2/review_packet.md" in /home/kimyo/trading-bot
+ succeeded in 149ms:
+# Agent Review Packet - Run: phase23_pass_v2
+
+## Implementation Agent
+cursor
+
+## Task Description
+Codex follow-up: model artifact untracked, phases 20-23 complete
+
+## Changed Files
+- .cursor/skills/pass-complete/SKILL.md
+- .gitignore
+- AGENTS.md
+- AGY.md
+- CURSOR.md
+- GEMINI.md
+- README.md
+- TODO.md
+- config/slippage_report_config.json
+- docs/RESEARCH_MODELS.md
+- docs/TODO_ARCHIVE.md
+- docs/agent_review_harness.md
+- docs/gemini_codex_harness.md
+- docs/runbook.md
+- models/.gitkeep
+- models/ai_score_model.joblib
+- prompts/agy/README.md
+- prompts/agy/phase20_portfolio_gate.md
+- prompts/agy/phase21_ml_quality.md
+- prompts/agy/phase21_promotion_rollback.md
+- scripts/agent_orchestrator.py
+- scripts/agent_workload_report.py
+- scripts/check_portfolio_backtest_gate.py
+- scripts/install_slippage_report_timer.sh
+- scripts/run_agy_slice.sh
+- scripts/run_balanced_pass.sh
+- scripts/run_daily_audit_summary.sh
+- scripts/run_gemini_post_workflow.sh
+- scripts/run_guard_impact_report.sh
+- scripts/run_leverage_stress_report.sh
+- scripts/run_llm_cache_report.sh
+- scripts/run_model_quality_report.sh
+- scripts/run_pass_complete.sh
+- scripts/run_retrain.sh
+- scripts/run_weekly_slippage_report.sh
+- src/daily_audit_summary.py
+- src/guard_impact_metrics.py
+- src/guard_impact_report.py
+- src/leverage_stress_report.py
+- src/llm_cache_report.py
+- src/ml_model.py
+- src/ml_quality_report.py
+- src/model_governance.py
+- src/portfolio_backtest_validation.py
+- src/portfolio_backtester.py
+- src/report_performance.py
+- src/retrain_holdout.py
+- src/retrain_notifications.py
+- src/train_ai_model.py
+- src/walk_forward_validation.py
+- tests/fixtures/audit_daily/golden_execution_audit.csv
+- tests/fixtures/audit_daily/golden_latest_summary.json
+- tests/fixtures/audit_daily/golden_output/skip_reasons_20260530.csv
+- tests/fixtures/llm_monitoring/golden_llm_cache.json
+- tests/fixtures/ml_quality/golden_fold_metrics.csv
+- tests/fixtures/ml_quality/golden_fold_stability_report.json
+- tests/fixtures/ml_quality/golden_model_calibration_bins.csv
+- tests/fixtures/ml_quality/golden_model_calibration_report.json
+- tests/fixtures/portfolio_backtest/portfolio_equity.csv
+- tests/fixtures/portfolio_backtest/portfolio_summary.csv
+- tests/fixtures/portfolio_backtest/portfolio_trades.csv
+- tests/test_daily_audit_summary.py
+- tests/test_daily_audit_summary_schema.py
+- tests/test_guard_impact_report.py
+- tests/test_leverage_stress_report.py
+- tests/test_llm_cache_report_schema.py
+- tests/test_ml_quality_report.py
+- tests/test_ml_quality_report_schema.py
+- tests/test_model_governance.py
+- tests/test_model_governance_rollback.py
+- tests/test_portfolio_backtest_gate.py
+- tests/test_portfolio_backtest_golden.py
+- tests/test_promotion_rollback_path.py
+- tests/test_report_performance.py
+- tests/test_retrain_holdout.py
+- tests/test_retrain_notifications.py
+
+## Git Diff Summary
+```
+ .cursor/skills/pass-complete/SKILL.md              |  81 ++++
+ .gitignore                                         |   4 +
+ AGENTS.md                                          |  11 +-
+ AGY.md                                             |  48 +-
+ CURSOR.md                                          |  24 +-
+ GEMINI.md                                          |  14 +-
+ README.md                                          |  21 +-
+ TODO.md                                            | 240 +++-------
+ config/slippage_report_config.json                 |   7 +
+ docs/RESEARCH_MODELS.md                            |  10 +
+ docs/TODO_ARCHIVE.md                               |  29 ++
+ docs/agent_review_harness.md                       |  24 +-
+ docs/gemini_codex_harness.md                       |   2 +-
+ docs/runbook.md                                    |  31 +-
+ models/.gitkeep                                    |   0
+ models/ai_score_model.joblib                       | Bin 1757990 -> 0 bytes
+ prompts/agy/README.md                              |  13 +
+ prompts/agy/phase20_portfolio_gate.md              |  35 ++
+ prompts/agy/phase21_ml_quality.md                  |  11 +
+ prompts/agy/phase21_promotion_rollback.md          |  14 +
+ scripts/agent_orchestrator.py                      |  60 ++-
+ scripts/agent_workload_report.py                   | 247 ++++++++++
+ scripts/check_portfolio_backtest_gate.py           |  81 ++++
+ scripts/install_slippage_report_timer.sh           |  64 +++
+ scripts/run_agy_slice.sh                           |  17 +
+ scripts/run_balanced_pass.sh                       |  39 ++
+ scripts/run_daily_audit_summary.sh                 |   9 +
+ scripts/run_gemini_post_workflow.sh                |  21 +-
+ scripts/run_guard_impact_report.sh                 |   9 +
+ scripts/run_leverage_stress_report.sh              |   9 +
+ scripts/run_llm_cache_report.sh                    |   9 +
+ scripts/run_model_quality_report.sh                |  14 +
+ scripts/run_pass_complete.sh                       |  81 ++++
+ scripts/run_retrain.sh                             |  10 +
+ scripts/run_weekly_slippage_report.sh              |  46 ++
+ src/daily_audit_summary.py                         | 293 ++++++++++++
+ src/guard_impact_metrics.py                        |  37 ++
+ src/guard_impact_report.py                         | 179 ++++++++
+ src/leverage_stress_report.py                      | 166 +++++++
+ src/llm_cache_report.py                            | 149 ++++++
+ src/ml_model.py                                    | 140 +++++-
+ src/ml_quality_report.py                           | 497 ++++++++++++++++++++
+ src/model_governance.py                            | 121 +++++
+ src/portfolio_backtest_validation.py               | 236 ++++++++++
+ src/portfolio_backtester.py                        |  11 +
+ src/report_performance.py                          | 409 ++++++++++++++---
+ src/retrain_holdout.py                             |  60 +++
+ src/retrain_notifications.py                       |  41 ++
+ src/train_ai_model.py                              | 403 ++++++++++-------
+ src/walk_forward_validation.py                     |  53 ++-
+ .../audit_daily/golden_execution_audit.csv         |   6 +
+ .../audit_daily/golden_latest_summary.json         |  41 ++
+ .../golden_output/skip_reasons_20260530.csv        |   5 +
+ .../fixtures/llm_monitoring/golden_llm_cache.json  |  23 +
+ tests/fixtures/ml_quality/golden_fold_metrics.csv  |   5 +
+ .../ml_quality/golden_fold_stability_report.json   |  36 ++
+ .../ml_quality/golden_model_calibration_bins.csv   |  21 +
+ .../golden_model_calibration_report.json           |  15 +
+ .../portfolio_backtest/portfolio_equity.csv        | 501 +++++++++++++++++++++
+ .../portfolio_backtest/portfolio_summary.csv       |   2 +
+ .../portfolio_backtest/portfolio_trades.csv        |  43 ++
+ tests/test_daily_audit_summary.py                  |  82 ++++
+ tests/test_daily_audit_summary_schema.py           |  83 ++++
+ tests/test_guard_impact_report.py                  |  45 ++
+ tests/test_leverage_stress_report.py               |  39 ++
+ tests/test_llm_cache_report_schema.py              |  32 ++
+ tests/test_ml_quality_report.py                    | 141 ++++++
+ tests/test_ml_quality_report_schema.py             |  59 +++
+ tests/test_model_governance.py                     | 116 ++++-
+ tests/test_model_governance_rollback.py            |  65 +++
+ tests/test_portfolio_backtest_gate.py              | 135 ++++++
+ tests/test_portfolio_backtest_golden.py            |  42 ++
+ tests/test_promotion_rollback_path.py              |  76 ++++
+ tests/test_report_performance.py                   |  85 +++-
+ tests/test_retrain_holdout.py                      |  35 ++
+ tests/test_retrain_notifications.py                |  65 +++
+ 76 files changed, 5421 insertions(+), 507 deletions(-)
+```
+
+## Test Execution Results (runtime_harness.log)
+```
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/kimyo/trading-bot
+plugins: anyio-4.13.0
+collected 11 items
+
+tests/test_report_performance.py .....                                   [ 45%]
+tests/test_reappraise_regime.py ...                                      [ 72%]
+tests/test_portfolio_backtest_golden.py ...                              [100%]
+
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6
+  /home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 11 passed, 1 warning in 0.69s =========================
+```
+
+## Git Patch
+```diff
+diff --git a/.cursor/skills/pass-complete/SKILL.md b/.cursor/skills/pass-complete/SKILL.md
+new file mode 100644
+index 0000000..c0710d4
+--- /dev/null
++++ b/.cursor/skills/pass-complete/SKILL.md
+@@ -0,0 +1,81 @@
++---
++name: pass-complete
++description: >-
++  Close a Cursor+AGY development pass: run pytest, invoke the agent orchestrator
++  for Codex scoped review, read NEXT_TODO.codex.md, and loop on fixes. Use when
++  finishing implementation, after [AGY] tests, before marking TODO [x], or when
++  the user says pass complete, Codex review, or run_pass_complete.
++---
++# Pass complete (Cursor-first)
++
++Replace the legacy pattern where **Gemini CLI** called `agent_orchestrator.py --run-gemini`.
++In this repo **Cursor** implements, **AGY** owns `[AGY]` tests, **Codex** reviews via the orchestrator.
++
++## When to apply
++
++- After Cursor feature work **and** `[AGY]` pytest/harness work are done on the branch.
++- AGY tasks live under `prompts/agy/*.md` — run in a **separate AGY account session**, then return here.
++- Before checking `[x]` on any `TODO.md` item (Definition of Done §4).
++- When the user asks to close a pass, run Codex review, or check `NEXT_TODO`.
++
++## Do not
++
++- Run `--run-gemini` unless the user explicitly requests legacy headless mode.
++- Skip Codex because credits failed once — report failure and retry with `SKIP_PYTEST=1`.
++- Mark TODO complete without reading `NEXT_TODO.codex.md` when Codex succeeded.
++
++## Steps (execute in the shell)
++
++1. Choose `RUN_ID` (e.g. `phase20_ci`, `cursor_$(date +%Y%m%dT%H%M%S)`).
++
++2. Run **balanced pass** (AGY pytest + orchestrator + Codex) — preferred:
++
++```bash
++cd <repo-root>
++RUN_ID=<run_id> bash scripts/run_balanced_pass.sh
++# or: .venv/bin/python scripts/agent_orchestrator.py --run-id <run_id> --balanced-pass --task-file prompts/agy/<task>.md
++```
++
++Legacy (Codex only, tests already green):
++
++```bash
++RUN_ID=<run_id> bash scripts/run_pass_complete.sh "<one-line summary>"
++```
++
+
+exec
+/bin/bash -lc "git status --short && git diff -- src/ml_model.py src/train_ai_model.py src/model_governance.py src/report_performance.py src/portfolio_backtest_validation.py scripts/check_portfolio_backtest_gate.py | sed -n '1,260p'" in /home/kimyo/trading-bot
+ succeeded in 174ms:
+?? .antigravitycli/
+?? reports/agent_pipeline/phase20_golden/
+?? reports/agent_pipeline/phase20_portfolio_gate/
+?? reports/agent_pipeline/phase20_portfolio_gate_v2/
+?? reports/agent_pipeline/phase20_promotion/
+?? reports/agent_pipeline/phase20_promotion_v2/
+?? reports/agent_pipeline/phase20_promotion_v3/
+?? reports/agent_pipeline/phase20_promotion_v4/
+?? reports/agent_pipeline/phase20_slippage/
+?? reports/agent_pipeline/phase20_slippage_v2/
+?? reports/agent_pipeline/phase21_promotion_gates/
+?? reports/agent_pipeline/phase21_quality/
+?? reports/agent_pipeline/phase21_quality_v2/
+?? reports/agent_pipeline/phase23_pass/
+?? reports/agent_pipeline/phase23_pass_v2/
+?? tests/fixtures/audit_daily/golden_output/audit_20260530.json
+?? tests/fixtures/audit_daily/golden_output/latest_summary.json
+
+exec
+/bin/bash -lc 'git log --oneline -3 && git show --stat --oneline HEAD | head -80' in /home/kimyo/trading-bot
+ succeeded in 159ms:
+d56873c chore: untrack champion model artifact; document local-only policy [cursor]
+fbfe66b feat(phase23): risk reports, crowding backtest, research-only docs
+6ee2976 feat(phase22): daily audit summary, context skips, and retrain alerts
+d56873c chore: untrack champion model artifact; document local-only policy [cursor]
+ .gitignore                   |   4 ++++
+ README.md                    |   2 +-
+ TODO.md                      |   3 ++-
+ docs/runbook.md              |   2 +-
+ models/.gitkeep              |   0
+ models/ai_score_model.joblib | Bin 1757990 -> 0 bytes
+ 6 files changed, 8 insertions(+), 3 deletions(-)
+
+exec
+/bin/bash -lc "git diff --stat HEAD~3..HEAD && git diff HEAD~3..HEAD -- src/ml_model.py src/train_ai_model.py src/model_governance.py src/report_performance.py src/portfolio_backtest_validation.py scripts/check_portfolio_backtest_gate.py | sed -n '1,260p'" in /home/kimyo/trading-bot
+ succeeded in 194ms:
+ .gitignore                                         |   4 +
+ README.md                                          |   2 +-
+ TODO.md                                            |  21 +-
+ docs/RESEARCH_MODELS.md                            |  10 +
+ docs/TODO_ARCHIVE.md                               |   7 +
+ docs/runbook.md                                    |  24 +-
+ models/.gitkeep                                    |   0
+ models/ai_score_model.joblib                       | Bin 1757990 -> 0 bytes
+ scripts/run_daily_audit_summary.sh                 |   9 +
+ scripts/run_guard_impact_report.sh                 |   9 +
+ scripts/run_leverage_stress_report.sh              |   9 +
+ scripts/run_llm_cache_report.sh                    |   9 +
+ scripts/run_retrain.sh                             |  10 +
+ src/daily_audit_summary.py                         | 293 +++++++++++++++++++++
+ src/guard_impact_metrics.py                        |  37 +++
+ src/guard_impact_report.py                         | 179 +++++++++++++
+ src/leverage_stress_report.py                      | 166 ++++++++++++
+ src/llm_cache_report.py                            | 149 +++++++++++
+ src/portfolio_backtester.py                        |  11 +
+ src/retrain_notifications.py                       |  41 +++
+ src/train_ai_model.py                              |   5 +-
+ .../audit_daily/golden_execution_audit.csv         |   6 +
+ .../audit_daily/golden_latest_summary.json         |  41 +++
+ .../golden_output/skip_reasons_20260530.csv        |   5 +
+ .../fixtures/llm_monitoring/golden_llm_cache.json  |  23 ++
+ tests/test_daily_audit_summary.py                  |  82 ++++++
+ tests/test_daily_audit_summary_schema.py           |  83 ++++++
+ tests/test_guard_impact_report.py                  |  45 ++++
+ tests/test_leverage_stress_report.py               |  39 +++
+ tests/test_llm_cache_report_schema.py              |  32 +++
+ tests/test_retrain_notifications.py                |  65 +++++
+ 31 files changed, 1400 insertions(+), 16 deletions(-)
+diff --git a/src/train_ai_model.py b/src/train_ai_model.py
+index 34d38cd..0471583 100644
+--- a/src/train_ai_model.py
++++ b/src/train_ai_model.py
+@@ -38,6 +38,7 @@ from src.retrain_holdout import (
+     slice_ticker_data_to_holdout,
+ )
+ from src.notifier import notify_info
++from src.retrain_notifications import notify_champion_retained_if_needed, run_retrain_cli
+ from src.portfolio_backtester import (
+     PortfolioBacktestResult,
+     build_ai_score_frames,
+@@ -646,6 +647,8 @@ def main() -> None:
+         if archived is not None:
+             promotion_report["archived_previous_champion_model_path"] = str(archived[0])
+             promotion_report["archived_previous_champion_metadata_path"] = str(archived[1])
++    else:
++        notify_champion_retained_if_needed(promotion_report, promotion_report_path)
+ 
+     archived = find_latest_archived_champion(CHAMPION_ARCHIVE_DIR)
+     rollback_report = resolve_rollback_decision(
+@@ -687,4 +690,4 @@ def main() -> None:
+ 
+ 
+ if __name__ == "__main__":
+-    main()
++    run_retrain_cli(main, _append_retrain_log)
+
+exec
+/bin/bash -lc "sed -n '1,260p' src/daily_audit_summary.py && sed -n '1,220p' src/retrain_notifications.py && sed -n '1,240p' src/llm_cache_report.py" in /home/kimyo/trading-bot
+ succeeded in 171ms:
+"""Aggregate daily execution audit logs (skips, API errors, stale data)."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from collections import Counter
+from datetime import date, datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+
+from src.config import EXECUTION_AUDIT_LOG_PATH
+
+DEFAULT_OUTPUT_DIR = Path("logs/audit_daily")
+
+SKIP_EVENT_TYPES = frozenset({"SKIP_BUY", "SKIP_EXIT"})
+API_ERROR_EVENT_TYPES = frozenset({"BUY_ERROR", "EXIT_ERROR"})
+ORDER_SUBMITTED_EVENT_TYPES = frozenset({"BUY_SUBMITTED", "FULL_EXIT", "PARTIAL_EXIT"})
+
+DAILY_AUDIT_SUMMARY_KEYS = (
+    "generated_at",
+    "row_count",
+    "event_type_counts",
+    "skip_by_event",
+    "skip_reason_counts",
+    "api_error_count",
+    "api_error_samples",
+    "stale_bar_count",
+    "orders_submitted_count",
+    "unique_tickers",
+    "context_skip_counts",
+    "context_skip_rate_of_skips",
+)
+
+SKIP_REASONS_CSV_COLUMNS = ("reason", "count")
+
+CONTEXT_SKIP_BUCKETS = ("earnings", "macro_event", "stale", "other")
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _parse_audit_timestamps(series: pd.Series) -> pd.Series:
+    return pd.to_datetime(series, errors="coerce", utc=True)
+
+
+def load_execution_audit(
+    audit_path: str | Path = EXECUTION_AUDIT_LOG_PATH,
+    *,
+    day: date | None = None,
+    lookback_days: int | None = None,
+) -> pd.DataFrame:
+    path = Path(audit_path)
+    if not path.is_file():
+        return pd.DataFrame()
+
+    df = pd.read_csv(path)
+    if df.empty or "timestamp" not in df.columns:
+        return df
+
+    df = df.copy()
+    df["_ts"] = _parse_audit_timestamps(df["timestamp"])
+    df = df.dropna(subset=["_ts"])
+
+    if day is not None:
+        start = pd.Timestamp(day, tz="UTC")
+        end = start + pd.Timedelta(days=1)
+        df = df[(df["_ts"] >= start) & (df["_ts"] < end)]
+    elif lookback_days is not None and lookback_days > 0:
+        cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=lookback_days)
+        df = df[df["_ts"] >= cutoff]
+
+    return df.drop(columns=["_ts"])
+
+
+def _normalize_skip_reason(reason: str) -> str:
+    text = str(reason or "").strip()
+    if not text:
+        return "unknown"
+    lower = text.lower()
+    if "stale" in lower:
+        return "stale_price_data"
+    if "dry_run" in lower or "dry-run" in lower:
+        return "dry_run_only"
+    if "cooldown" in lower:
+        return "cooldown"
+    if "max orders" in lower:
+        return "max_orders"
+    if "regime" in lower or "bear" in lower:
+        return "regime_or_signal"
+    if "llm" in lower or "reject" in lower:
+        return "llm_or_policy"
+    return text[:80]
+
+
+def _classify_context_skip(reason: str) -> str:
+    lower = str(reason or "").lower()
+    if "earnings" in lower:
+        return "earnings"
+    if "macro event" in lower or "macro_event" in lower:
+        return "macro_event"
+    if "stale" in lower:
+        return "stale"
+    return "other"
+
+
+def aggregate_context_skips(df: pd.DataFrame) -> tuple[dict[str, int], dict[str, float]]:
+    if df is None or df.empty or "event_type" not in df.columns:
+        empty = {bucket: 0 for bucket in CONTEXT_SKIP_BUCKETS}
+        return empty, {bucket: 0.0 for bucket in CONTEXT_SKIP_BUCKETS}
+
+    event_types = df["event_type"].astype(str)
+    reasons = df["reason"].astype(str) if "reason" in df.columns else pd.Series(dtype=str)
+    skip_mask = event_types.isin(SKIP_EVENT_TYPES)
+    skip_reasons = reasons[skip_mask].tolist()
+    counts = Counter(_classify_context_skip(r) for r in skip_reasons)
+    total_skips = max(len(skip_reasons), 1)
+    context_counts = {bucket: int(counts.get(bucket, 0)) for bucket in CONTEXT_SKIP_BUCKETS}
+    context_rates = {
+        bucket: round(context_counts[bucket] / total_skips, 4) for bucket in CONTEXT_SKIP_BUCKETS
+    }
+    return context_counts, context_rates
+
+
+def validate_daily_audit_summary(report: dict[str, Any]) -> dict[str, Any]:
+    for key in DAILY_AUDIT_SUMMARY_KEYS:
+        if key not in report:
+            raise ValueError(f"Missing daily audit summary key: {key}")
+    if not isinstance(report["row_count"], int) or report["row_count"] < 0:
+        raise ValueError("row_count must be a non-negative int")
+    if not isinstance(report["api_error_count"], int) or report["api_error_count"] < 0:
+        raise ValueError("api_error_count must be a non-negative int")
+    for bucket in CONTEXT_SKIP_BUCKETS:
+        if bucket not in report["context_skip_counts"]:
+            raise ValueError(f"Missing context skip bucket: {bucket}")
+    return report
+
+
+def validate_skip_reasons_csv(path: str | Path) -> pd.DataFrame:
+    frame = pd.read_csv(path)
+    missing = [col for col in SKIP_REASONS_CSV_COLUMNS if col not in frame.columns]
+    if missing:
+        raise ValueError(f"skip_reasons CSV missing columns: {missing}")
+    if (frame["count"] < 0).any():
+        raise ValueError("skip_reasons count must be non-negative")
+    return frame
+
+
+def aggregate_execution_audit(df: pd.DataFrame) -> dict[str, Any]:
+    if df is None or df.empty:
+        return {
+            "generated_at": _utc_now_iso(),
+            "row_count": 0,
+            "event_type_counts": {},
+            "skip_by_event": {},
+            "skip_reason_counts": {},
+            "api_error_count": 0,
+            "api_error_samples": [],
+            "stale_bar_count": 0,
+            "orders_submitted_count": 0,
+            "unique_tickers": 0,
+            "context_skip_counts": {bucket: 0 for bucket in CONTEXT_SKIP_BUCKETS},
+            "context_skip_rate_of_skips": {bucket: 0.0 for bucket in CONTEXT_SKIP_BUCKETS},
+        }
+
+    event_types = df["event_type"].astype(str) if "event_type" in df.columns else pd.Series(dtype=str)
+    reasons = df["reason"].astype(str) if "reason" in df.columns else pd.Series(dtype=str)
+
+    skip_mask = event_types.isin(SKIP_EVENT_TYPES)
+    skip_reasons = Counter(
+        _normalize_skip_reason(r) for r in reasons[skip_mask].tolist()
+    )
+    skip_by_event = Counter(event_types[skip_mask].tolist())
+
+    api_mask = event_types.isin(API_ERROR_EVENT_TYPES)
+    api_error_count = int(api_mask.sum())
+
+    stale_mask = reasons.str.contains("stale", case=False, na=False)
+    stale_bar_count = int(stale_mask.sum())
+
+    orders_submitted = int(event_types.isin(ORDER_SUBMITTED_EVENT_TYPES).sum())
+    tickers = df["ticker"].astype(str).nunique() if "ticker" in df.columns else 0
+
+    api_samples = (
+        df.loc[api_mask, ["timestamp", "event_type", "ticker", "reason"]]
+        .head(10)
+        .to_dict(orient="records")
+        if api_mask.any()
+        else []
+    )
+    context_counts, context_rates = aggregate_context_skips(df)
+
+    return {
+        "generated_at": _utc_now_iso(),
+        "row_count": int(len(df)),
+        "event_type_counts": dict(Counter(event_types.tolist())),
+        "skip_by_event": dict(skip_by_event),
+        "skip_reason_counts": dict(skip_reasons.most_common()),
+        "api_error_count": api_error_count,
+        "api_error_samples": api_samples,
+        "stale_bar_count": stale_bar_count,
+        "orders_submitted_count": orders_submitted,
+        "unique_tickers": int(tickers),
+        "context_skip_counts": context_counts,
+        "context_skip_rate_of_skips": context_rates,
+    }
+
+
+def format_daily_audit_report(report: dict[str, Any]) -> str:
+    lines = [
+        "=== Daily Execution Audit Summary ===",
+        f"Rows: {report.get('row_count', 0)} | Tickers: {report.get('unique_tickers', 0)}",
+        f"Orders submitted (buy/exit events): {report.get('orders_submitted_count', 0)}",
+        f"API errors: {report.get('api_error_count', 0)} | Stale bar mentions: {report.get('stale_bar_count', 0)}",
+    ]
+    skip_by = report.get("skip_by_event") or {}
+    if skip_by:
+        lines.append("Skips by event: " + ", ".join(f"{k}={v}" for k, v in sorted(skip_by.items())))
+    skip_reasons = report.get("skip_reason_counts") or {}
+    if skip_reasons:
+        top = ", ".join(f"{k}={v}" for k, v in list(skip_reasons.items())[:8])
+        lines.append(f"Top skip reasons: {top}")
+    context = report.get("context_skip_counts") or {}
+    if any(context.values()):
+        lines.append(
+            "Context skips: "
+            + ", ".join(f"{k}={v}" for k, v in sorted(context.items()) if v)
+        )
+    return "\n".join(lines)
+
+
+def write_daily_audit_artifacts(
+    report: dict[str, Any],
+    output_dir: str | Path = DEFAULT_OUTPUT_DIR,
+    *,
+    day: date | None = None,
+) -> Path:
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    stamp = (day or date.today()).strftime("%Y%m%d")
+    day_path = output_dir / f"audit_{stamp}.json"
+    day_path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+    latest = output_dir / "latest_summary.json"
+    latest.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+    if report.get("skip_reason_counts"):
+        pd.DataFrame(
+            [{"reason": k, "count": v} for k, v in report["skip_reason_counts"].items()]
+        ).to_csv(output_dir / f"skip_reasons_{stamp}.csv", index=False)
+    return day_path
+
+
+def run_daily_audit_summary(
+    *,
+    audit_path: str | Path = EXECUTION_AUDIT_LOG_PATH,
+    output_dir: str | Path = DEFAULT_OUTPUT_DIR,
+    day: date | None = None,
+    lookback_days: int | None = None,
+"""Telegram and log hooks for retrain success, partial success, and failure."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Callable
+
+from src.notifier import notify_error, notify_info
+
+AppendRetrainLogFn = Callable[[str, object, float], None]
+
+
+def notify_champion_retained_if_needed(promotion_report: dict, report_path: Path) -> None:
+    if promotion_report.get("decision") == "PROMOTE":
+        return
+    notify_info(
+        "ℹ️ Retrain finished; champion retained",
+        f"Decision: {promotion_report.get('decision')}\n"
+        f"Promotion report: {report_path}",
+    )
+
+
+def notify_retrain_failure(
+    exc: Exception,
+    elapsed_sec: float,
+    *,
+    append_retrain_log: AppendRetrainLogFn,
+) -> None:
+    append_retrain_log("failure", None, elapsed_sec)
+    notify_error("AI Retrain Failed", exc)
+
+
+def run_retrain_cli(main_fn: Callable[[], None], append_retrain_log: AppendRetrainLogFn) -> None:
+    import time
+
+    started = time.time()
+    try:
+        main_fn()
+    except Exception as exc:
+        notify_retrain_failure(exc, time.time() - started, append_retrain_log=append_retrain_log)
+        raise SystemExit(1) from exc
+"""Monitor LLM consensus cache size, coverage, and reuse (hit proxy)."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from collections import Counter
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+DEFAULT_CACHE_PATH = Path("data/llm_cache.json")
+DEFAULT_OUTPUT_DIR = Path("logs/llm_monitoring")
+
+LLM_CACHE_REPORT_KEYS = (
+    "generated_at",
+    "cache_path",
+    "entry_count",
+    "unique_tickers",
+    "unique_days",
+    "approved_count",
+    "rejected_count",
+    "estimated_cache_hit_rate",
+    "entries_per_ticker_day",
+    "top_tickers",
+)
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def load_llm_cache(cache_path: str | Path = DEFAULT_CACHE_PATH) -> dict[str, Any]:
+    path = Path(cache_path)
+    if not path.is_file():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def _parse_cache_key(cache_key: str) -> tuple[str, str]:
+    if "_" not in cache_key:
+        return cache_key, "unknown"
+    ticker, day = cache_key.rsplit("_", 1)
+    return ticker, day
+
+
+def summarize_llm_cache(cache: dict[str, Any]) -> dict[str, Any]:
+    if not cache:
+        return {
+            "generated_at": _utc_now_iso(),
+            "cache_path": str(DEFAULT_CACHE_PATH),
+            "entry_count": 0,
+            "unique_tickers": 0,
+            "unique_days": 0,
+            "approved_count": 0,
+            "rejected_count": 0,
+            "estimated_cache_hit_rate": 0.0,
+            "entries_per_ticker_day": 0.0,
+            "top_tickers": [],
+        }
+
+    tickers: list[str] = []
+    days: set[str] = set()
+    approved = 0
+    rejected = 0
+    ticker_counter: Counter[str] = Counter()
+
+    for key, payload in cache.items():
+        ticker, day = _parse_cache_key(str(key))
+        tickers.append(ticker)
+        days.add(day)
+        ticker_counter[ticker] += 1
+        if bool(payload.get("is_approved")):
+            approved += 1
+        else:
+            rejected += 1
+
+    entry_count = len(cache)
+    unique_tickers = len(set(tickers))
+    unique_days = len(days)
+    # One cache row per ticker-day when live runs once per day → reuse rate proxy.
+    possible_slots = max(unique_tickers * unique_days, 1)
+    hit_rate = round(min(entry_count / possible_slots, 1.0), 4)
+
+    return {
+        "generated_at": _utc_now_iso(),
+        "cache_path": str(DEFAULT_CACHE_PATH),
+        "entry_count": entry_count,
+        "unique_tickers": unique_tickers,
+        "unique_days": unique_days,
+        "approved_count": approved,
+        "rejected_count": rejected,
+        "estimated_cache_hit_rate": hit_rate,
+        "entries_per_ticker_day": round(entry_count / possible_slots, 4),
+        "top_tickers": [
+            {"ticker": ticker, "count": count}
+            for ticker, count in ticker_counter.most_common(10)
+        ],
+    }
+
+
+def validate_llm_cache_report(report: dict[str, Any]) -> dict[str, Any]:
+    for key in LLM_CACHE_REPORT_KEYS:
+        if key not in report:
+            raise ValueError(f"Missing LLM cache report key: {key}")
+    if report["entry_count"] < 0:
+        raise ValueError("entry_count must be non-negative")
+    return report
+
+
+def build_llm_cache_report(cache_path: str | Path = DEFAULT_CACHE_PATH) -> dict[str, Any]:
+    report = summarize_llm_cache(load_llm_cache(cache_path))
+    report["cache_path"] = str(cache_path)
+    return validate_llm_cache_report(report)
+
+
+def write_llm_cache_artifacts(
+    report: dict[str, Any],
+    output_dir: Path = DEFAULT_OUTPUT_DIR,
+) -> Path:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / "latest_summary.json"
+    path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+    return path
+
+
+def run_llm_cache_report(
+    cache_path: str | Path = DEFAULT_CACHE_PATH,
+    output_dir: Path = DEFAULT_OUTPUT_DIR,
+) -> dict[str, Any]:
+    report = build_llm_cache_report(cache_path)
+    write_llm_cache_artifacts(report, output_dir)
+    return report
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="LLM cache monitoring report")
+    parser.add_argument("--cache-path", default=str(DEFAULT_CACHE_PATH))
+    parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
+    args = parser.parse_args()
+    report = run_llm_cache_report(args.cache_path, Path(args.output_dir))
+    print(json.dumps(report, indent=2))
+
+
+if __name__ == "__main__":
+    main()
+
+exec
+/bin/bash -lc "git diff HEAD~3..HEAD -- src/portfolio_backtester.py src/leverage_stress_report.py src/guard_impact_report.py src/guard_impact_metrics.py src/train_ai_model.py | sed -n '1,260p'" in /home/kimyo/trading-bot
+ succeeded in 171ms:
+diff --git a/src/guard_impact_metrics.py b/src/guard_impact_metrics.py
+new file mode 100644
+index 0000000..68cdb8f
+--- /dev/null
++++ b/src/guard_impact_metrics.py
+@@ -0,0 +1,37 @@
++"""Pure helpers for guard impact report (no backtest imports)."""
++
++from __future__ import annotations
++
++from typing import Any
++
++GUARD_IMPACT_REPORT_KEYS = (
++    "generated_at",
++    "baseline",
++    "with_crowding_guard",
++    "delta",
++    "crowding_guard_enabled_in_config",
++)
++
++
++def result_metrics(result) -> dict[str, Any]:
++    return {
++        "total_return_pct": round(float(result.total_return) * 100.0, 4),
++        "max_drawdown_pct": round(float(result.max_drawdown) * 100.0, 4),
++        "sharpe_ratio": round(float(result.sharpe_ratio), 4),
++        "trade_count": int(result.trades),
++        "win_rate_pct": round(float(result.win_rate) * 100.0, 4),
++    }
++
++
++def delta_metrics(baseline: dict[str, Any], guarded: dict[str, Any]) -> dict[str, Any]:
++    return {
++        key: round(guarded[key] - baseline[key], 4)
++        for key in ("total_return_pct", "max_drawdown_pct", "sharpe_ratio", "trade_count", "win_rate_pct")
++    }
++
++
++def validate_guard_impact_report(report: dict[str, Any]) -> dict[str, Any]:
++    for key in GUARD_IMPACT_REPORT_KEYS:
++        if key not in report:
++            raise ValueError(f"Missing guard impact report key: {key}")
++    return report
+diff --git a/src/guard_impact_report.py b/src/guard_impact_report.py
+new file mode 100644
+index 0000000..29dadbc
+--- /dev/null
++++ b/src/guard_impact_report.py
+@@ -0,0 +1,179 @@
++"""Compare portfolio backtest metrics with factor/crowding guard on vs off."""
++
++from __future__ import annotations
++
++import argparse
++import json
++from dataclasses import replace
++from datetime import datetime, timezone
++from pathlib import Path
++from typing import Any
++from unittest.mock import patch
++
++import pandas as pd
++
++from src.data_loader import load_price_data_batch
++from src.macro_loader import load_macro_data
++from src.portfolio_backtester import build_ai_score_frames, run_portfolio_backtest
++from src.settings import StrategySettings, load_settings
++
++from src.guard_impact_metrics import (
++    GUARD_IMPACT_REPORT_KEYS,
++    delta_metrics,
++    result_metrics,
++    validate_guard_impact_report,
++)
++
++DEFAULT_OUTPUT_DIR = Path("logs/guard_impact")
++
++
++def _utc_now_iso() -> str:
++    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
++
++
++def build_guard_impact_report(
++    *,
++    settings: StrategySettings,
++    ticker_data: dict[str, pd.DataFrame],
++    benchmark_df: pd.DataFrame | None,
++    relative_strength_benchmark_df: pd.DataFrame | None,
++    vix_df: pd.DataFrame | None,
++    macro_df: pd.DataFrame | None,
++    ai_score_frames: dict[str, pd.DataFrame] | None,
++) -> dict[str, Any]:
++    common_kwargs = dict(
++        ticker_data=ticker_data,
++        benchmark_df=benchmark_df,
++        relative_strength_benchmark_df=relative_strength_benchmark_df,
++        initial_cash=10000.0,
++        max_positions=settings.max_total_positions,
++        target_position_pct=settings.max_position_pct,
++        transaction_cost_pct=0.001,
++        ma_fast=settings.ma_fast,
++        ma_slow=settings.ma_slow,
++        rsi_buy_limit=settings.rsi_buy_limit,
++        use_ai_score=settings.use_ai_score,
++        ai_score_buy_threshold=settings.ai_score_buy_threshold,
++        market_regime_filter_enabled=settings.market_regime_filter_enabled,
++        market_regime_ma_fast=settings.market_regime_ma_fast,
++        market_regime_ma_slow=settings.market_regime_ma_slow,
++        relative_strength_filter_enabled=settings.relative_strength_filter_enabled,
++        relative_strength_lookback_days=settings.relative_strength_lookback_days,
++        relative_strength_min_excess_return=settings.relative_strength_min_excess_return,
++        volume_filter_enabled=settings.volume_filter_enabled,
++        volume_lookback_days=settings.volume_lookback_days,
++        min_volume_ratio=settings.min_volume_ratio,
++        volatility_filter_enabled=settings.volatility_filter_enabled,
++        volatility_lookback_days=settings.volatility_lookback_days,
++        max_volatility=settings.max_volatility,
++        rank_trend_weight=settings.rank_trend_weight,
++        rank_ai_weight=settings.rank_ai_weight,
++        rank_momentum_weight=settings.rank_momentum_weight,
++        rank_volatility_weight=settings.rank_volatility_weight,
++        ai_exit_enabled=getattr(settings, "ai_exit_enabled", False),
++        ai_exit_threshold=getattr(settings, "ai_exit_threshold", 0.35),
++        ai_exit_dynamic_enabled=getattr(settings, "ai_exit_dynamic_enabled", False),
++        ai_exit_vix_low=getattr(settings, "ai_exit_vix_low", 15.0),
++        ai_exit_vix_high=getattr(settings, "ai_exit_vix_high", 25.0),
++        ai_exit_threshold_bull=getattr(settings, "ai_exit_threshold_bull", 0.55),
++        ai_exit_threshold_bear=getattr(settings, "ai_exit_threshold_bear", 0.28),
++        vix_df=vix_df,
++        macro_df=macro_df,
++        ai_score_frames=ai_score_frames,
++    )
++
++    settings_off = replace(settings, crowding_guard_enabled=False)
++    settings_on = replace(settings, crowding_guard_enabled=True)
++
++    with patch("src.risk_manager.load_settings", return_value=settings_off):
++        baseline_result, _, baseline_trades = run_portfolio_backtest(
++            **common_kwargs,
++            crowding_guard_enabled=False,
++        )
++    with patch("src.risk_manager.load_settings", return_value=settings_on):
++        guarded_result, _, guarded_trades = run_portfolio_backtest(
++            **common_kwargs,
++            crowding_guard_enabled=True,
++        )
++
++    baseline = result_metrics(baseline_result)
++    guarded = result_metrics(guarded_result)
++    blocked_buys = max(0, len(baseline_trades) - len(guarded_trades))
++
++    guarded["estimated_crowding_blocked_trades"] = blocked_buys
++    delta = delta_metrics(baseline, guarded)
++
++    return validate_guard_impact_report(
++        {
++            "generated_at": _utc_now_iso(),
++            "baseline": baseline,
++            "with_crowding_guard": guarded,
++            "delta": delta,
++            "crowding_guard_enabled_in_config": bool(settings.crowding_guard_enabled),
++        }
++    )
++
++
++def write_guard_impact_artifacts(report: dict[str, Any], output_dir: Path = DEFAULT_OUTPUT_DIR) -> Path:
++    output_dir.mkdir(parents=True, exist_ok=True)
++    path = output_dir / "latest_summary.json"
++    path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
++    return path
++
++
++def run_guard_impact_report() -> dict[str, Any]:
++    settings = load_settings()
++    tickers_to_load = list(settings.tickers)
++    if settings.market_regime_filter_enabled:
++        tickers_to_load.append(settings.market_regime_ticker)
++    if settings.relative_strength_filter_enabled:
++        tickers_to_load.append(settings.relative_strength_benchmark_ticker)
++    if settings.use_ai_score and "^VIX" not in tickers_to_load:
++        tickers_to_load.append("^VIX")
++    tickers_to_load = list(dict.fromkeys(tickers_to_load))
++    loaded = load_price_data_batch(tickers_to_load, period="2y")
++    ticker_data = {t: loaded[t] for t in settings.tickers if t in loaded}
++    vix_df = loaded.get("^VIX")
++    macro_df = load_macro_data(period="2y") if settings.use_ai_score else None
++    benchmark_df = (
++        loaded.get(settings.market_regime_ticker)
++        if settings.market_regime_filter_enabled
++        else None
++    )
++    rs_df = (
++        loaded.get(settings.relative_strength_benchmark_ticker)
++        if settings.relative_strength_filter_enabled
++        else None
++    )
++    ai_score_frames = None
++    if settings.use_ai_score:
++        ai_score_frames = build_ai_score_frames(
++            ticker_data=ticker_data,
++            vix_df=vix_df,
++            macro_df=macro_df,
++        )
++
++    report = build_guard_impact_report(
++        settings=settings,
++        ticker_data=ticker_data,
++        benchmark_df=benchmark_df,
++        relative_strength_benchmark_df=rs_df,
++        vix_df=vix_df,
++        macro_df=macro_df,
++        ai_score_frames=ai_score_frames,
++    )
++    write_guard_impact_artifacts(report)
++    return report
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(description="Crowding guard backtest impact report")
++    parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
++    args = parser.parse_args()
++    report = run_guard_impact_report()
++    write_guard_impact_artifacts(report, Path(args.output_dir))
++    print(json.dumps(report, indent=2))
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/src/leverage_stress_report.py b/src/leverage_stress_report.py
+new file mode 100644
+index 0000000..5d9c843
+--- /dev/null
++++ b/src/leverage_stress_report.py
+@@ -0,0 +1,166 @@
++"""Stress portfolio equity under gap-down and correlation-spike scenarios."""
++
++from __future__ import annotations
++
++import argparse
++import json
++from datetime import datetime, timezone
++from pathlib import Path
++from typing import Any
++
++import pandas as pd
++
++DEFAULT_OUTPUT_DIR = Path("logs/leverage_stress")
++DEFAULT_EQUITY_PATH = Path("logs/portfolio_backtest/portfolio_equity.csv")
++
++LEVERAGE_STRESS_REPORT_KEYS = (
++    "generated_at",
++    "input",
++    "scenarios",
++)
++
++STRESS_SCENARIOS = (
++    {"name": "gap_down_5pct", "gap_down_pct": 0.05, "correlation_multiplier": 1.0},
++    {"name": "gap_down_10pct", "gap_down_pct": 0.10, "correlation_multiplier": 1.0},
++    {"name": "correlation_spike_1p5x", "gap_down_pct": 0.0, "correlation_multiplier": 1.5},
++    {"name": "gap_down_10pct_corr_1p5x", "gap_down_pct": 0.10, "correlation_multiplier": 1.5},
+
+exec
+/bin/bash -lc "git diff HEAD~3..HEAD -- src/leverage_stress_report.py src/portfolio_backtester.py | sed -n '1,260p'" in /home/kimyo/trading-bot
+ succeeded in 168ms:
+diff --git a/src/leverage_stress_report.py b/src/leverage_stress_report.py
+new file mode 100644
+index 0000000..5d9c843
+--- /dev/null
++++ b/src/leverage_stress_report.py
+@@ -0,0 +1,166 @@
++"""Stress portfolio equity under gap-down and correlation-spike scenarios."""
++
++from __future__ import annotations
++
++import argparse
++import json
++from datetime import datetime, timezone
++from pathlib import Path
++from typing import Any
++
++import pandas as pd
++
++DEFAULT_OUTPUT_DIR = Path("logs/leverage_stress")
++DEFAULT_EQUITY_PATH = Path("logs/portfolio_backtest/portfolio_equity.csv")
++
++LEVERAGE_STRESS_REPORT_KEYS = (
++    "generated_at",
++    "input",
++    "scenarios",
++)
++
++STRESS_SCENARIOS = (
++    {"name": "gap_down_5pct", "gap_down_pct": 0.05, "correlation_multiplier": 1.0},
++    {"name": "gap_down_10pct", "gap_down_pct": 0.10, "correlation_multiplier": 1.0},
++    {"name": "correlation_spike_1p5x", "gap_down_pct": 0.0, "correlation_multiplier": 1.5},
++    {"name": "gap_down_10pct_corr_1p5x", "gap_down_pct": 0.10, "correlation_multiplier": 1.5},
++)
++
++
++def _utc_now_iso() -> str:
++    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
++
++
++def load_equity_series(path: str | Path = DEFAULT_EQUITY_PATH) -> pd.Series:
++    frame = pd.read_csv(path)
++    if "equity" not in frame.columns:
++        raise ValueError("equity CSV must contain an 'equity' column")
++    date_col = "date" if "date" in frame.columns else frame.columns[0]
++    series = pd.to_numeric(frame["equity"], errors="coerce").dropna()
++    series.index = pd.to_datetime(frame[date_col], errors="coerce")
++    return series.sort_index()
++
++
++def stress_equity_series(
++    equity: pd.Series,
++    *,
++    gap_down_pct: float,
++    leverage: float,
++    correlation_multiplier: float,
++) -> pd.Series:
++    if equity.empty:
++        raise ValueError("equity series must not be empty")
++    returns = equity.pct_change().fillna(0.0).astype(float)
++    if gap_down_pct > 0:
++        shock_idx = returns.idxmin() if len(returns) > 1 else returns.index[0]
++        returns = returns.copy()
++        returns.loc[shock_idx] = float(returns.loc[shock_idx]) - gap_down_pct * leverage
++    if correlation_multiplier != 1.0:
++        returns = returns.apply(
++            lambda value: float(value) * correlation_multiplier if value < 0 else float(value)
++        )
++    stressed = (1.0 + returns).cumprod() * float(equity.iloc[0])
++    stressed.name = "stressed_equity"
++    return stressed
++
++
++def max_drawdown_pct(equity: pd.Series) -> float:
++    running_max = equity.cummax()
++    drawdown = equity / running_max - 1.0
++    return round(float(drawdown.min()) * 100.0, 4)
++
++
++def build_leverage_stress_report(
++    equity: pd.Series,
++    *,
++    leverage: float = 1.0,
++    scenarios: tuple[dict[str, Any], ...] = STRESS_SCENARIOS,
++) -> dict[str, Any]:
++    if leverage <= 0:
++        raise ValueError("leverage must be positive")
++
++    baseline_final = float(equity.iloc[-1])
++    baseline_dd = max_drawdown_pct(equity)
++    scenario_rows: list[dict[str, Any]] = []
++
++    for scenario in scenarios:
++        stressed = stress_equity_series(
++            equity,
++            gap_down_pct=float(scenario["gap_down_pct"]),
++            leverage=leverage,
++            correlation_multiplier=float(scenario["correlation_multiplier"]),
++        )
++        final_equity = float(stressed.iloc[-1])
++        scenario_rows.append(
++            {
++                "name": scenario["name"],
++                "gap_down_pct": scenario["gap_down_pct"],
++                "correlation_multiplier": scenario["correlation_multiplier"],
++                "final_equity": round(final_equity, 2),
++                "final_equity_delta_pct": round((final_equity / baseline_final - 1.0) * 100.0, 4),
++                "max_drawdown_pct": max_drawdown_pct(stressed),
++                "max_drawdown_delta_pct": round(max_drawdown_pct(stressed) - baseline_dd, 4),
++            }
++        )
++
++    report = {
++        "generated_at": _utc_now_iso(),
++        "input": {
++            "rows": int(len(equity)),
++            "leverage": leverage,
++            "baseline_final_equity": round(baseline_final, 2),
++            "baseline_max_drawdown_pct": baseline_dd,
++        },
++        "scenarios": scenario_rows,
++    }
++    validate_leverage_stress_report(report)
++    return report
++
++
++def validate_leverage_stress_report(report: dict[str, Any]) -> dict[str, Any]:
++    for key in LEVERAGE_STRESS_REPORT_KEYS:
++        if key not in report:
++            raise ValueError(f"Missing leverage stress report key: {key}")
++    if not report["scenarios"]:
++        raise ValueError("scenarios must not be empty")
++    return report
++
++
++def write_leverage_stress_artifacts(
++    report: dict[str, Any],
++    output_dir: Path = DEFAULT_OUTPUT_DIR,
++) -> Path:
++    output_dir.mkdir(parents=True, exist_ok=True)
++    path = output_dir / "latest_summary.json"
++    path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
++    return path
++
++
++def run_leverage_stress_report(
++    equity_path: str | Path = DEFAULT_EQUITY_PATH,
++    *,
++    leverage: float = 1.0,
++    output_dir: Path = DEFAULT_OUTPUT_DIR,
++) -> dict[str, Any]:
++    equity = load_equity_series(equity_path)
++    report = build_leverage_stress_report(equity, leverage=leverage)
++    write_leverage_stress_artifacts(report, output_dir)
++    return report
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(description="Leverage stress scenarios on portfolio equity")
++    parser.add_argument("--equity-path", default=str(DEFAULT_EQUITY_PATH))
++    parser.add_argument("--leverage", type=float, default=1.0)
++    parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
++    args = parser.parse_args()
++    report = run_leverage_stress_report(
++        args.equity_path,
++        leverage=args.leverage,
++        output_dir=Path(args.output_dir),
++    )
++    print(json.dumps(report, indent=2))
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/src/portfolio_backtester.py b/src/portfolio_backtester.py
+index db63ceb..e155522 100644
+--- a/src/portfolio_backtester.py
++++ b/src/portfolio_backtester.py
+@@ -9,6 +9,7 @@ from src.strategy import add_indicators, build_market_regime_frame
+ from src.features import FEATURE_COLUMNS, build_features
+ from src.ml_model import load_ai_score_model
+ from src.portfolio_optimizer import compute_candidate_weights
++from src.risk_manager import apply_factor_crowding_limits
+ 
+ 
+ @dataclass
+@@ -260,6 +261,7 @@ def run_portfolio_backtest(
+     macro_df: pd.DataFrame | None = None,
+     evaluation_start_date: str | pd.Timestamp | None = None,
+     evaluation_end_date: str | pd.Timestamp | None = None,
++    crowding_guard_enabled: bool = False,
+ ) -> tuple[PortfolioBacktestResult, pd.DataFrame, pd.DataFrame]:
+     if relative_strength_lookback_days <= 0:
+         raise ValueError("relative_strength_lookback_days must be positive")
+@@ -532,6 +534,15 @@ def run_portfolio_backtest(
+                 if close <= 0:
+                     continue
+ 
++                if crowding_guard_enabled:
++                    crowding = apply_factor_crowding_limits(
++                        ticker=ticker,
++                        open_symbols=set(positions.keys()),
++                        ticker_data=ticker_data,
++                    )
++                    if not crowding.allowed:
++                        continue
++
+                 if total_to_deploy is not None:
+                     target_value = total_to_deploy * alloc_weights.get(
+                         ticker, 1.0 / len(candidate_tickers)
+
+exec
+/bin/bash -lc "git diff HEAD~5..HEAD -- src/model_governance.py src/ml_quality_report.py src/retrain_holdout.py scripts/check_portfolio_backtest_gate.py src/portfolio_backtest_validation.py | sed -n '1,360p'" in /home/kimyo/trading-bot
+ succeeded in 152ms:
+diff --git a/src/ml_quality_report.py b/src/ml_quality_report.py
+new file mode 100644
+index 0000000..3520c0d
+--- /dev/null
++++ b/src/ml_quality_report.py
+@@ -0,0 +1,497 @@
++"""Fold-level ROC-AUC stability and calibration report generation."""
++
++from __future__ import annotations
++
++import argparse
++import json
++from dataclasses import dataclass
++from datetime import datetime, timezone
++from pathlib import Path
++from typing import Any
++
++import pandas as pd
++from sklearn.metrics import brier_score_loss, roc_auc_score
++
++from src.features import FEATURE_COLUMNS, build_features
++from src.market_regime import compute_daily_regime
++
++FOLD_METRICS_COLUMNS: tuple[str, ...] = (
++    "regime",
++    "fold",
++    "roc_auc",
++    "brier_score",
++    "test_size",
++    "walk_forward_fold",
++    "walk_forward_period",
++)
++
++DEFAULT_ML_OUTPUT_DIR = Path("logs/ml")
++DEFAULT_VALIDATION_OUTPUT_DIR = Path("logs/validation")
++
++FOLD_METRICS_FILENAME = "fold_metrics.csv"
++FOLD_STABILITY_REPORT_FILENAME = "fold_stability_report.json"
++CALIBRATION_REPORT_FILENAME = "model_calibration_report.json"
++CALIBRATION_BINS_FILENAME = "model_calibration_bins.csv"
++
++# Flag when cross-fold / cross-regime ROC-AUC spread is large (see logs/ml/ai_model_metrics.csv history).
++ROC_AUC_STD_WARN_THRESHOLD = 0.05
++
++PROMOTION_MIN_AVG_ROC_AUC = 0.51
++PROMOTION_MAX_OVERALL_BRIER = 0.25
++
++CALIBRATION_REPORT_KEYS: tuple[str, ...] = (
++    "generated_at",
++    "overall_avg_brier_score",
++    "regimes",
++    "bin_count",
++)
++
++CALIBRATION_BINS_COLUMNS: tuple[str, ...] = (
++    "regime",
++    "prob_bin",
++    "count",
++    "avg_pred",
++    "actual_rate",
++)
++
++FOLD_STABILITY_REPORT_KEYS: tuple[str, ...] = (
++    "generated_at",
++    "fold_count",
++    "roc_auc",
++    "by_regime",
++    "high_variance_warning",
++    "roc_auc_std_warn_threshold",
++)
++
++
++@dataclass
++class MlQualityPromotionCriteria:
++    min_avg_roc_auc: float = PROMOTION_MIN_AVG_ROC_AUC
++    max_overall_brier: float = PROMOTION_MAX_OVERALL_BRIER
++    reject_high_fold_variance: bool = True
++
++
++def evaluate_ml_quality_promotion_gates(
++    challenger_metadata: dict[str, Any],
++    fold_stability_report: dict[str, Any] | None,
++    calibration_report: dict[str, Any] | None,
++    criteria: MlQualityPromotionCriteria | None = None,
++) -> dict[str, Any]:
++    """Training-time CV metrics + calibration must pass before champion promotion."""
++    criteria = criteria or MlQualityPromotionCriteria()
++    failures: list[str] = []
++
++    avg_auc = float(challenger_metadata.get("oos_metrics", {}).get("avg_roc_auc", 0.0))
++    if avg_auc < criteria.min_avg_roc_auc:
++        failures.append(
++            f"avg_roc_auc={avg_auc:.4f} < min {criteria.min_avg_roc_auc:.4f}"
++        )
++
++    if calibration_report is None:
++        failures.append("missing calibration report")
++    else:
++        brier = float(calibration_report.get("overall_avg_brier_score", 0.0))
++        if brier > criteria.max_overall_brier:
++            failures.append(
++                f"overall_avg_brier_score={brier:.4f} > max {criteria.max_overall_brier:.4f}"
++            )
++
++    if fold_stability_report is None:
++        failures.append("missing fold stability report")
++    elif criteria.reject_high_fold_variance and fold_stability_report.get(
++        "high_variance_warning"
++    ):
++        roc = fold_stability_report.get("roc_auc", {})
++        failures.append(
++            f"high fold ROC-AUC variance (std={roc.get('std')}, "
++            f"threshold={fold_stability_report.get('roc_auc_std_warn_threshold')})"
++        )
++
++    return {
++        "passed": not failures,
++        "failures": failures,
++        "avg_roc_auc": avg_auc,
++        "criteria": {
++            "min_avg_roc_auc": criteria.min_avg_roc_auc,
++            "max_overall_brier": criteria.max_overall_brier,
++            "reject_high_fold_variance": criteria.reject_high_fold_variance,
++        },
++    }
++
++
++def validate_fold_metrics_csv(path: str | Path) -> pd.DataFrame:
++    """Load fold_metrics.csv and enforce column schema ([AGY] regression helper)."""
++    frame = normalize_fold_metrics_df(pd.read_csv(path))
++    missing = [c for c in FOLD_METRICS_COLUMNS if c not in frame.columns]
++    if missing:
++        raise ValueError(f"fold_metrics missing columns: {missing}")
++    return frame
++
++
++def validate_calibration_artifacts(
++    report_path: str | Path,
++    bins_path: str | Path,
++) -> tuple[dict[str, Any], pd.DataFrame]:
++    """Validate calibration JSON keys and bins CSV schema."""
++    report_path = Path(report_path)
++    bins_path = Path(bins_path)
++    report = json.loads(report_path.read_text(encoding="utf-8"))
++    missing_keys = [k for k in CALIBRATION_REPORT_KEYS if k not in report]
++    if missing_keys:
++        raise ValueError(f"calibration report missing keys: {missing_keys}")
++
++    if not bins_path.is_file():
++        return report, pd.DataFrame(columns=list(CALIBRATION_BINS_COLUMNS))
++
++    bins_df = pd.read_csv(bins_path)
++    missing_cols = [c for c in CALIBRATION_BINS_COLUMNS if c not in bins_df.columns]
++    if missing_cols:
++        raise ValueError(f"calibration bins missing columns: {missing_cols}")
++    return report, bins_df
++
++
++def _utc_now_iso() -> str:
++    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
++
++
++def _filter_ticker_df_by_date(
++    df: pd.DataFrame,
++    start: pd.Timestamp,
++    end: pd.Timestamp | None = None,
++) -> pd.DataFrame:
++    if df is None or df.empty:
++        return df
++    frame = df.copy()
++    frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
++    frame = frame[frame["date"] >= pd.Timestamp(start)]
++    if end is not None:
++        frame = frame[frame["date"] < pd.Timestamp(end)]
++    return frame.reset_index(drop=True)
++
++
++def evaluate_walk_forward_oos_metrics(
++    model,
++    ticker_data: dict[str, pd.DataFrame],
++    *,
++    test_start: pd.Timestamp,
++    test_end: pd.Timestamp,
++    vix_df: pd.DataFrame | None = None,
++    spy_df: pd.DataFrame | None = None,
++    macro_df: pd.DataFrame | None = None,
++    lookback_days: int = 400,
++) -> pd.DataFrame:
++    """ROC-AUC / Brier on the outer walk-forward test window (not inner training CV)."""
++    lookback_start = test_start - pd.DateOffset(days=lookback_days)
++    frames: list[pd.DataFrame] = []
++
++    for ticker, df in ticker_data.items():
++        window = _filter_ticker_df_by_date(df, lookback_start, test_end)
++        if len(window) < 50:
++            continue
++        try:
++            feature_df = build_features(
++                window,
++                prediction_horizon=model.prediction_horizon,
++                target_return_threshold=model.target_return_threshold,
++                vix_df=vix_df,
++                spy_df=spy_df,
++                macro_df=macro_df,
++            )
++        except ValueError:
++            continue
++        feature_df["ticker"] = ticker
++        frames.append(feature_df)
++
++    if not frames:
++        return pd.DataFrame(columns=list(FOLD_METRICS_COLUMNS))
++
++    dataset = pd.concat(frames, ignore_index=True).sort_values("date").reset_index(drop=True)
++    if spy_df is not None and vix_df is not None:
++        regime_series = compute_daily_regime(spy_df, vix_df)
++        dataset = dataset.merge(
++            regime_series.rename("regime"), left_on="date", right_index=True, how="left"
++        )
++        dataset["regime"] = dataset["regime"].fillna("NEUTRAL")
++    else:
++        dataset["regime"] = "NEUTRAL"
++
++    dataset["date"] = pd.to_datetime(dataset["date"], errors="coerce")
++    oos = dataset[
++        (dataset["date"] >= pd.Timestamp(test_start))
++        & (dataset["date"] < pd.Timestamp(test_end))
++    ]
++    if oos.empty:
++        return pd.DataFrame(columns=list(FOLD_METRICS_COLUMNS))
++
++    metrics: list[dict[str, Any]] = []
++    calibration_rows: list[dict[str, Any]] = []
++    for regime in ("BULL", "BEAR", "NEUTRAL"):
++        regime_model = model.models.get(regime)
++        if regime_model is None:
++            continue
++        regime_oos = oos[oos["regime"] == regime]
++        if len(regime_oos) < 30:
++            continue
++        available_cols = [c for c in model.feature_columns if c in regime_oos.columns]
++        x_test = regime_oos[available_cols]
++        y_test = regime_oos["target"]
++        proba = regime_model.predict_proba(x_test)[:, 1]
++        try:
++            auc = float(roc_auc_score(y_test, proba))
++        except ValueError:
++            auc = 0.5
++        brier = float(brier_score_loss(y_test, proba))
++        metrics.append(
++            {
++                "regime": regime,
++                "fold": 1,
++                "roc_auc": auc,
++                "brier_score": brier,
++                "test_size": int(len(regime_oos)),
++            }
++        )
++        calibration_rows.extend(
++            {
++                "regime": regime,
++                "fold": 1,
++                "y_true": int(y_true),
++                "y_prob": float(y_prob),
++            }
++            for y_true, y_prob in zip(y_test.tolist(), proba.tolist())
++        )
++
++    metrics_df = pd.DataFrame(metrics)
++    metrics_df.attrs["calibration_rows"] = calibration_rows
++    return metrics_df
++
++
++def normalize_fold_metrics_df(metrics_df: pd.DataFrame) -> pd.DataFrame:
++    """Ensure fold metrics CSV schema (missing optional columns filled with NA)."""
++    if metrics_df is None or metrics_df.empty:
++        return pd.DataFrame(columns=list(FOLD_METRICS_COLUMNS))
++
++    frame = metrics_df.copy()
++    for column in FOLD_METRICS_COLUMNS:
++        if column not in frame.columns:
++            frame[column] = pd.NA
++
++    ordered = [c for c in FOLD_METRICS_COLUMNS if c in frame.columns]
++    extra = [c for c in frame.columns if c not in FOLD_METRICS_COLUMNS]
++    return frame[ordered + extra]
++
++
++def _roc_auc_summary(series: pd.Series) -> dict[str, Any]:
++    values = pd.to_numeric(series, errors="coerce").dropna()
++    if values.empty:
++        return {
++            "count": 0,
++            "mean": None,
++            "std": None,
++            "min": None,
++            "max": None,
++            "range": None,
++        }
++    mean = float(values.mean())
++    std = float(values.std(ddof=0)) if len(values) > 1 else 0.0
++    min_v = float(values.min())
++    max_v = float(values.max())
++    return {
++        "count": int(len(values)),
++        "mean": mean,
++        "std": std,
++        "min": min_v,
++        "max": max_v,
++        "range": max_v - min_v,
++        "coefficient_of_variation": (std / mean) if mean else None,
++    }
++
++
++def build_fold_stability_report(metrics_df: pd.DataFrame) -> dict[str, Any]:
++    """Summarize ROC-AUC dispersion across CV / walk-forward folds."""
++    frame = normalize_fold_metrics_df(metrics_df)
++    if frame.empty or "roc_auc" not in frame.columns:
++        return {
++            "generated_at": _utc_now_iso(),
++            "fold_count": 0,
++            "roc_auc": _roc_auc_summary(pd.Series(dtype=float)),
++            "by_regime": {},
++            "high_variance_warning": False,
++            "message": "no fold metrics available",
++        }
++
++    overall = _roc_auc_summary(frame["roc_auc"])
++    by_regime: dict[str, Any] = {}
++    if "regime" in frame.columns:
++        for regime, regime_df in frame.groupby("regime", dropna=False):
++            by_regime[str(regime)] = _roc_auc_summary(regime_df["roc_auc"])
++
++    std = overall.get("std")
++    high_var = std is not None and std >= ROC_AUC_STD_WARN_THRESHOLD
++
++    walk_forward_summary = None
++    if "walk_forward_fold" in frame.columns and frame["walk_forward_fold"].notna().any():
++        wf = frame.dropna(subset=["walk_forward_fold"])
++        walk_forward_summary = _roc_auc_summary(wf["roc_auc"])
++
++    return {
++        "generated_at": _utc_now_iso(),
++        "fold_count": int(len(frame)),
++        "roc_auc": overall,
++        "by_regime": by_regime,
++        "walk_forward_roc_auc": walk_forward_summary,
++        "high_variance_warning": high_var,
++        "roc_auc_std_warn_threshold": ROC_AUC_STD_WARN_THRESHOLD,
++    }
++
++
++def build_calibration_report(metrics_df: pd.DataFrame) -> tuple[dict[str, Any], pd.DataFrame]:
++    calibration_rows = metrics_df.attrs.get("calibration_rows", []) if metrics_df is not None else []
++    calibration_df = pd.DataFrame(calibration_rows)
++    if calibration_df.empty:
++        return {
++            "generated_at": _utc_now_iso(),
++            "overall_avg_brier_score": 0.0,
++            "regimes": {},
+
+exec
+/bin/bash -lc "git diff HEAD~5..HEAD -- src/ml_quality_report.py src/model_governance.py src/train_ai_model.py | sed -n '360,840p'" in /home/kimyo/trading-bot
+ succeeded in 176ms:
++            "regimes": {},
++            "bin_count": 0,
++        }, pd.DataFrame()
++
++    regime_brier: dict[str, Any] = {}
++    if "brier_score" in metrics_df.columns and "regime" in metrics_df.columns:
++        for regime, regime_df in metrics_df.groupby("regime"):
++            regime_brier[str(regime)] = {
++                "avg_brier_score": float(regime_df["brier_score"].mean()),
++                "folds": int(len(regime_df)),
++            }
++
++    calibration_df["prob_bin"] = pd.cut(
++        calibration_df["y_prob"],
++        bins=[i / 10 for i in range(11)],
++        include_lowest=True,
++        duplicates="drop",
++    )
++    bin_rows = (
++        calibration_df.groupby(["regime", "prob_bin"], observed=False)
++        .agg(
++            count=("y_true", "size"),
++            avg_pred=("y_prob", "mean"),
++            actual_rate=("y_true", "mean"),
++        )
++        .reset_index()
++    )
++    bin_rows["prob_bin"] = bin_rows["prob_bin"].astype(str)
++
++    report = {
++        "generated_at": _utc_now_iso(),
++        "overall_avg_brier_score": (
++            float(metrics_df["brier_score"].mean()) if "brier_score" in metrics_df.columns else 0.0
++        ),
++        "regimes": regime_brier,
++        "bin_count": int(len(bin_rows)),
++    }
++    return report, bin_rows
++
++
++def write_ml_quality_reports(
++    output_dir: str | Path,
++    metrics_df: pd.DataFrame,
++    *,
++    file_prefix: str = "",
++) -> dict[str, Path]:
++    """Write fold metrics, stability JSON, and calibration artifacts."""
++    output_dir = Path(output_dir)
++    output_dir.mkdir(parents=True, exist_ok=True)
++
++    prefix = f"{file_prefix}_" if file_prefix else ""
++    fold_metrics_path = output_dir / f"{prefix}{FOLD_METRICS_FILENAME}"
++    stability_path = output_dir / f"{prefix}{FOLD_STABILITY_REPORT_FILENAME}"
++    calibration_path = output_dir / f"{prefix}{CALIBRATION_REPORT_FILENAME}"
++    bins_path = output_dir / f"{prefix}{CALIBRATION_BINS_FILENAME}"
++
++    fold_df = normalize_fold_metrics_df(metrics_df)
++    fold_df.to_csv(fold_metrics_path, index=False)
++
++    stability = build_fold_stability_report(metrics_df)
++    stability_path.write_text(
++        json.dumps(stability, indent=2, sort_keys=True),
++        encoding="utf-8",
++    )
++
++    calibration_report, bins_df = build_calibration_report(metrics_df)
++    calibration_path.write_text(
++        json.dumps(calibration_report, indent=2, sort_keys=True),
++        encoding="utf-8",
++    )
++    if not bins_df.empty:
++        bins_df.to_csv(bins_path, index=False)
++    elif bins_path.exists():
++        bins_path.unlink()
++
++    return {
++        "fold_metrics": fold_metrics_path,
++        "fold_stability": stability_path,
++        "calibration_report": calibration_path,
++        "calibration_bins": bins_path,
++    }
++
++
++def load_fold_metrics_csv(path: str | Path) -> pd.DataFrame:
++    return normalize_fold_metrics_df(pd.read_csv(path))
++
++
++def regenerate_reports_from_fold_metrics_csv(
++    metrics_path: str | Path,
++    output_dir: str | Path | None = None,
++    *,
++    file_prefix: str = "",
++) -> dict[str, Path]:
++    """Rebuild stability (and empty calibration) from saved fold_metrics.csv only."""
++    metrics_path = Path(metrics_path)
++    output_dir = Path(output_dir or metrics_path.parent)
++    metrics_df = load_fold_metrics_csv(metrics_path)
++    return write_ml_quality_reports(output_dir, metrics_df, file_prefix=file_prefix)
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(
++        description="Generate fold stability and calibration reports from fold metrics"
++    )
++    parser.add_argument(
++        "--metrics",
++        type=Path,
++        default=DEFAULT_ML_OUTPUT_DIR / "ai_model_metrics.csv",
++        help="Source metrics CSV (retrain legacy path) or fold_metrics.csv",
++    )
++    parser.add_argument(
++        "--output-dir",
++        type=Path,
++        default=None,
++        help="Output directory (default: parent of --metrics)",
++    )
++    parser.add_argument(
++        "--file-prefix",
++        default="",
++        help="Optional filename prefix (e.g. walk_forward)",
++    )
++    args = parser.parse_args()
++
++    output_dir = args.output_dir or args.metrics.parent
++    paths = regenerate_reports_from_fold_metrics_csv(
++        args.metrics,
++        output_dir,
++        file_prefix=args.file_prefix,
++    )
++    stability = json.loads(paths["fold_stability"].read_text(encoding="utf-8"))
++    print(f"Wrote fold metrics: {paths['fold_metrics']}")
++    print(f"Wrote fold stability: {paths['fold_stability']}")
++    print(f"Wrote calibration report: {paths['calibration_report']}")
++    if paths["calibration_bins"].is_file():
++        print(f"Wrote calibration bins: {paths['calibration_bins']}")
++    if stability.get("high_variance_warning"):
++        print(
++            f"WARNING: ROC-AUC std {stability['roc_auc']['std']:.4f} "
++            f">= threshold {ROC_AUC_STD_WARN_THRESHOLD}"
++        )
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/src/model_governance.py b/src/model_governance.py
+new file mode 100644
+index 0000000..68d4f8b
+--- /dev/null
++++ b/src/model_governance.py
+@@ -0,0 +1,121 @@
++"""Model promotion rollback helpers (no ML training deps)."""
++
++from __future__ import annotations
++
++from datetime import datetime, timezone
++from pathlib import Path
++
++import pandas as pd
++
++OOS_VALIDATION_PATH = Path("logs/validation/oos_validation.csv")
++BASELINE_SUMMARY_PATH = Path("logs/baselines/current_strategy/portfolio_summary.csv")
++
++ROLLBACK_MIN_TOTAL_RETURN = -0.05
++ROLLBACK_MIN_WIN_RATE = 0.35
++ROLLBACK_MAX_DRAWDOWN = -0.20
++
++
++def _restore_archived_champion(
++    archived_model_path: Path,
++    archived_metadata_path: Path,
++) -> tuple[Path, Path]:
++    from src.ml_model import restore_archived_champion
++
++    return restore_archived_champion(archived_model_path, archived_metadata_path)
++
++
++def load_recent_performance_snapshot() -> dict | None:
++    if OOS_VALIDATION_PATH.exists():
++        df = pd.read_csv(OOS_VALIDATION_PATH)
++        if not df.empty:
++            row = df.iloc[-1]
++            return {
++                "source": str(OOS_VALIDATION_PATH),
++                "total_return": float(row.get("total_return", 0.0)),
++                "max_drawdown": float(row.get("max_drawdown", 0.0)),
++                "win_rate": float(row.get("win_rate", 0.0)),
++            }
++
++    if BASELINE_SUMMARY_PATH.exists():
++        df = pd.read_csv(BASELINE_SUMMARY_PATH)
++        if not df.empty:
++            row = df.iloc[-1]
++            return {
++                "source": str(BASELINE_SUMMARY_PATH),
++                "total_return": float(row.get("total_return", 0.0)),
++                "max_drawdown": float(row.get("max_drawdown", 0.0)),
++                "win_rate": float(row.get("win_rate", 0.0)),
++            }
++
++    return None
++
++
++def evaluate_rollback_need(performance: dict | None) -> dict:
++    if performance is None:
++        return {
++            "should_rollback": False,
++            "reason": "no recent performance snapshot available",
++        }
++
++    breaches = []
++    if performance["total_return"] <= ROLLBACK_MIN_TOTAL_RETURN:
++        breaches.append(
++            f"total_return={performance['total_return']:.4f} <= {ROLLBACK_MIN_TOTAL_RETURN:.4f}"
++        )
++    if performance["win_rate"] <= ROLLBACK_MIN_WIN_RATE:
++        breaches.append(
++            f"win_rate={performance['win_rate']:.4f} <= {ROLLBACK_MIN_WIN_RATE:.4f}"
++        )
++    if performance["max_drawdown"] <= ROLLBACK_MAX_DRAWDOWN:
++        breaches.append(
++            f"max_drawdown={performance['max_drawdown']:.4f} <= {ROLLBACK_MAX_DRAWDOWN:.4f}"
++        )
++
++    return {
++        "should_rollback": bool(breaches),
++        "reason": "; ".join(breaches) if breaches else "performance within thresholds",
++        "performance": performance,
++        "thresholds": {
++            "min_total_return": ROLLBACK_MIN_TOTAL_RETURN,
++            "min_win_rate": ROLLBACK_MIN_WIN_RATE,
++            "max_drawdown": ROLLBACK_MAX_DRAWDOWN,
++        },
++    }
++
++
++def resolve_rollback_decision(
++    promotion_decision: str,
++    performance: dict | None,
++    archived_champion: tuple[Path, Path] | None,
++    *,
++    restore: bool = True,
++) -> dict:
++    """Build rollback report payload from promotion outcome and live performance snapshot."""
++    rollback_report: dict = {
++        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
++        "promotion_decision": promotion_decision,
++    }
++    if promotion_decision == "PROMOTE":
++        rollback_report["decision"] = "SKIP_ROLLBACK_AFTER_PROMOTION"
++        rollback_report["reason"] = (
++            "new challenger promoted; wait for fresh performance before rollback evaluation"
++        )
++        return rollback_report
++
++    rollback_eval = evaluate_rollback_need(performance)
++    rollback_report.update(rollback_eval)
++    if not rollback_eval["should_rollback"]:
++        rollback_report["decision"] = "NO_ROLLBACK_NEEDED"
++        return rollback_report
++
++    if archived_champion is None:
++        rollback_report["decision"] = "NO_ROLLBACK_AVAILABLE"
++        rollback_report["reason"] = f"{rollback_eval['reason']}; no archived champion available"
++        return rollback_report
++
++    if restore:
++        _restore_archived_champion(*archived_champion)
++    rollback_report["decision"] = "ROLLBACK_TO_ARCHIVED_CHAMPION"
++    rollback_report["restored_model_path"] = str(archived_champion[0])
++    rollback_report["restored_metadata_path"] = str(archived_champion[1])
++    return rollback_report
+diff --git a/src/train_ai_model.py b/src/train_ai_model.py
+index bfd2153..0471583 100644
+--- a/src/train_ai_model.py
++++ b/src/train_ai_model.py
+@@ -26,12 +26,19 @@ from src.ml_model import (
+     train_ai_score_model,
+ )
+ from src.macro_loader import load_macro_data
++from src.ml_quality_report import (
++    CALIBRATION_BINS_FILENAME,
++    CALIBRATION_REPORT_FILENAME,
++    DEFAULT_ML_OUTPUT_DIR,
++    write_ml_quality_reports,
++)
+ from src.retrain_holdout import (
+     exclude_holdout_from_ticker_data,
+     portfolio_holdout_window,
+     slice_ticker_data_to_holdout,
+ )
+ from src.notifier import notify_info
++from src.retrain_notifications import notify_champion_retained_if_needed, run_retrain_cli
+ from src.portfolio_backtester import (
+     PortfolioBacktestResult,
+     build_ai_score_frames,
+@@ -41,17 +48,18 @@ from src.portfolio_backtester import (
+ VIX_TICKER = "^VIX"
+ RETRAIN_LOG_PATH = Path("logs/retrain_history.csv")
+ ROLLBACK_REPORT_PATH = Path("logs/ml/model_rollback_report.json")
+-OOS_VALIDATION_PATH = Path("logs/validation/oos_validation.csv")
+-BASELINE_SUMMARY_PATH = Path("logs/baselines/current_strategy/portfolio_summary.csv")
++from src.model_governance import (
++    evaluate_rollback_need as _evaluate_rollback_need,
++    load_recent_performance_snapshot as _load_recent_performance_snapshot,
++    resolve_rollback_decision,
++)
++
+ FEATURE_STATS_PATH = Path("models/ai_feature_stats.json")
+ DRIFT_REPORT_PATH = Path("logs/ml/feature_drift_report.json")
+-CALIBRATION_REPORT_PATH = Path("logs/ml/model_calibration_report.json")
+-CALIBRATION_BINS_PATH = Path("logs/ml/model_calibration_bins.csv")
++CALIBRATION_REPORT_PATH = DEFAULT_ML_OUTPUT_DIR / CALIBRATION_REPORT_FILENAME
++CALIBRATION_BINS_PATH = DEFAULT_ML_OUTPUT_DIR / CALIBRATION_BINS_FILENAME
+ THRESHOLD_RETUNE_REPORT_PATH = Path("logs/ml/threshold_retune_report.json")
+ THRESHOLD_RETUNE_RESULTS_PATH = Path("logs/ml/threshold_retune_results.csv")
+-ROLLBACK_MIN_TOTAL_RETURN = -0.05
+-ROLLBACK_MIN_WIN_RATE = 0.35
+-ROLLBACK_MAX_DRAWDOWN = -0.20
+ DRIFT_ZSCORE_ALERT_THRESHOLD = 1.5
+ BUY_THRESHOLD_GRID = [0.40, 0.45, 0.50, 0.55, 0.60]
+ EXIT_THRESHOLD_GRID = [0.20, 0.25, 0.30, 0.35, 0.40, 0.45]
+@@ -93,65 +101,6 @@ def _append_retrain_log(status: str, metrics_df, elapsed_sec: float) -> None:
+         writer.writerow(row)
+ 
+ 
+-def _load_recent_performance_snapshot() -> dict | None:
+-    if OOS_VALIDATION_PATH.exists():
+-        df = pd.read_csv(OOS_VALIDATION_PATH)
+-        if not df.empty:
+-            row = df.iloc[-1]
+-            return {
+-                "source": str(OOS_VALIDATION_PATH),
+-                "total_return": float(row.get("total_return", 0.0)),
+-                "max_drawdown": float(row.get("max_drawdown", 0.0)),
+-                "win_rate": float(row.get("win_rate", 0.0)),
+-            }
+-
+-    if BASELINE_SUMMARY_PATH.exists():
+-        df = pd.read_csv(BASELINE_SUMMARY_PATH)
+-        if not df.empty:
+-            row = df.iloc[-1]
+-            return {
+-                "source": str(BASELINE_SUMMARY_PATH),
+-                "total_return": float(row.get("total_return", 0.0)),
+-                "max_drawdown": float(row.get("max_drawdown", 0.0)),
+-                "win_rate": float(row.get("win_rate", 0.0)),
+-            }
+-
+-    return None
+-
+-
+-def _evaluate_rollback_need(performance: dict | None) -> dict:
+-    if performance is None:
+-        return {
+-            "should_rollback": False,
+-            "reason": "no recent performance snapshot available",
+-        }
+-
+-    breaches = []
+-    if performance["total_return"] <= ROLLBACK_MIN_TOTAL_RETURN:
+-        breaches.append(
+-            f"total_return={performance['total_return']:.4f} <= {ROLLBACK_MIN_TOTAL_RETURN:.4f}"
+-        )
+-    if performance["win_rate"] <= ROLLBACK_MIN_WIN_RATE:
+-        breaches.append(
+-            f"win_rate={performance['win_rate']:.4f} <= {ROLLBACK_MIN_WIN_RATE:.4f}"
+-        )
+-    if performance["max_drawdown"] <= ROLLBACK_MAX_DRAWDOWN:
+-        breaches.append(
+-            f"max_drawdown={performance['max_drawdown']:.4f} <= {ROLLBACK_MAX_DRAWDOWN:.4f}"
+-        )
+-
+-    return {
+-        "should_rollback": bool(breaches),
+-        "reason": "; ".join(breaches) if breaches else "performance within thresholds",
+-        "performance": performance,
+-        "thresholds": {
+-            "min_total_return": ROLLBACK_MIN_TOTAL_RETURN,
+-            "min_win_rate": ROLLBACK_MIN_WIN_RATE,
+-            "max_drawdown": ROLLBACK_MAX_DRAWDOWN,
+-        },
+-    }
+-
+-
+ def _write_rollback_report(payload: dict) -> None:
+     ROLLBACK_REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+     ROLLBACK_REPORT_PATH.write_text(
+@@ -267,60 +216,6 @@ def _write_drift_report(report: dict, path: Path = DRIFT_REPORT_PATH) -> None:
+     path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+ 
+ 
+-def _build_calibration_report(metrics_df: pd.DataFrame) -> tuple[dict, pd.DataFrame]:
+-    calibration_rows = metrics_df.attrs.get("calibration_rows", [])
+-    calibration_df = pd.DataFrame(calibration_rows)
+-    if calibration_df.empty:
+-        return {
+-            "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+-            "overall_avg_brier_score": 0.0,
+-            "regimes": {},
+-            "bin_count": 0,
+-        }, pd.DataFrame()
+-
+-    regime_brier = {}
+-    if "brier_score" in metrics_df.columns and "regime" in metrics_df.columns:
+-        for regime, regime_df in metrics_df.groupby("regime"):
+-            regime_brier[str(regime)] = {
+-                "avg_brier_score": float(regime_df["brier_score"].mean()),
+-                "folds": int(len(regime_df)),
+-            }
+-
+-    calibration_df["prob_bin"] = pd.cut(
+-        calibration_df["y_prob"],
+-        bins=[i / 10 for i in range(11)],
+-        include_lowest=True,
+-        duplicates="drop",
+-    )
+-    bin_rows = (
+-        calibration_df.groupby(["regime", "prob_bin"], observed=False)
+-        .agg(
+-            count=("y_true", "size"),
+-            avg_pred=("y_prob", "mean"),
+-            actual_rate=("y_true", "mean"),
+-        )
+-        .reset_index()
+-    )
+-    bin_rows["prob_bin"] = bin_rows["prob_bin"].astype(str)
+-
+-    report = {
+-        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+-        "overall_avg_brier_score": float(metrics_df["brier_score"].mean()) if "brier_score" in metrics_df.columns else 0.0,
+-        "regimes": regime_brier,
+-        "bin_count": int(len(bin_rows)),
+-    }
+-    return report, bin_rows
+-
+-
+-def _write_calibration_report(report: dict, bins_df: pd.DataFrame) -> None:
+-    CALIBRATION_REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+-    CALIBRATION_REPORT_PATH.write_text(
+-        json.dumps(report, indent=2, sort_keys=True),
+-        encoding="utf-8",
+-    )
+-    bins_df.to_csv(CALIBRATION_BINS_PATH, index=False)
+-
+-
+ def _pick_latest_date(ticker_data: dict[str, pd.DataFrame]) -> pd.Timestamp:
+     latest_dates = []
+     for df in ticker_data.values():
+@@ -620,11 +515,19 @@ def main() -> None:
+         spy_df=spy_df,
+         macro_df=macro_df,
+     )
++    output_dir = DEFAULT_ML_OUTPUT_DIR
++    output_dir.mkdir(parents=True, exist_ok=True)
++
+     drift_report = _compare_feature_stats(baseline_feature_stats, current_feature_stats)
+     _write_drift_report(drift_report)
+     _write_feature_stats(current_feature_stats)
+-    calibration_report, calibration_bins_df = _build_calibration_report(metrics_df)
+-    _write_calibration_report(calibration_report, calibration_bins_df)
++    quality_paths = write_ml_quality_reports(output_dir, metrics_df)
++    calibration_report = json.loads(
++        quality_paths["calibration_report"].read_text(encoding="utf-8")
++    )
++    stability_report = json.loads(
++        quality_paths["fold_stability"].read_text(encoding="utf-8")
++    )
+ 
+     if drift_report["drifted_feature_count"] > 0:
+         top_features = ", ".join(
+@@ -643,6 +546,13 @@ def main() -> None:
+             f"Average Brier score: {calibration_report['overall_avg_brier_score']:.4f}\n"
+             f"Report: {CALIBRATION_REPORT_PATH}"
+         )
++    if stability_report.get("high_variance_warning"):
++        roc = stability_report.get("roc_auc", {})
++        notify_info(
++            "⚠️ Fold ROC-AUC Variance Warning",
++            f"ROC-AUC std={roc.get('std')} (threshold={stability_report.get('roc_auc_std_warn_threshold')})\n"
++            f"Report: {quality_paths['fold_stability']}",
++        )
+
+exec
+/bin/bash -lc "git diff HEAD~5..HEAD -- src/ml_model.py src/train_ai_model.py | sed -n '840,1320p'" in /home/kimyo/trading-bot
+ succeeded in 149ms:
+exec
+/bin/bash -lc "sed -n '520,710p' src/train_ai_model.py && sed -n '1,220p' src/ml_model.py" in /home/kimyo/trading-bot
+ succeeded in 158ms:
+
+    drift_report = _compare_feature_stats(baseline_feature_stats, current_feature_stats)
+    _write_drift_report(drift_report)
+    _write_feature_stats(current_feature_stats)
+    quality_paths = write_ml_quality_reports(output_dir, metrics_df)
+    calibration_report = json.loads(
+        quality_paths["calibration_report"].read_text(encoding="utf-8")
+    )
+    stability_report = json.loads(
+        quality_paths["fold_stability"].read_text(encoding="utf-8")
+    )
+
+    if drift_report["drifted_feature_count"] > 0:
+        top_features = ", ".join(
+            f"{item['feature']}({item['zscore_shift']:.2f})"
+            for item in drift_report["drifted_features"][:5]
+        )
+        notify_info(
+            "⚠️ Feature Drift Detected",
+            f"Drifted features: {drift_report['drifted_feature_count']}\n"
+            f"Top shifts: {top_features}\n"
+            f"Report: {DRIFT_REPORT_PATH}"
+        )
+    if calibration_report["overall_avg_brier_score"] > 0.25:
+        notify_info(
+            "⚠️ Calibration Quality Warning",
+            f"Average Brier score: {calibration_report['overall_avg_brier_score']:.4f}\n"
+            f"Report: {CALIBRATION_REPORT_PATH}"
+        )
+    if stability_report.get("high_variance_warning"):
+        roc = stability_report.get("roc_auc", {})
+        notify_info(
+            "⚠️ Fold ROC-AUC Variance Warning",
+            f"ROC-AUC std={roc.get('std')} (threshold={stability_report.get('roc_auc_std_warn_threshold')})\n"
+            f"Report: {quality_paths['fold_stability']}",
+        )
+
+    threshold_retune_report, threshold_retune_results_df = _run_threshold_retune(
+        settings=settings,
+        ticker_data=training_data_fit,
+        vix_df=vix_df,
+        macro_df=macro_df,
+    )
+    _write_threshold_retune_report(threshold_retune_report, threshold_retune_results_df)
+    settings.ai_score_buy_threshold = float(threshold_retune_report["best_buy_threshold"])
+    if getattr(settings, "ai_exit_dynamic_enabled", False):
+        settings.ai_exit_threshold_bear = float(threshold_retune_report["best_exit_threshold"])
+    else:
+        settings.ai_exit_threshold = float(threshold_retune_report["best_exit_threshold"])
+    save_settings(settings)
+
+    metrics_path = output_dir / "ai_model_metrics.csv"
+    metrics_df.to_csv(metrics_path, index=False)
+
+    bundle = build_model_bundle(
+        trained_models=model.models,
+        metrics_df=metrics_df,
+        training_data=training_data_fit,
+        feature_columns=FEATURE_COLUMNS,
+        prediction_horizon=model.prediction_horizon,
+        target_return_threshold=model.target_return_threshold,
+    )
+
+    challenger_portfolio = None
+    champion_portfolio = None
+    if settings.use_ai_score:
+        if holdout_start > holdout_end:
+            raise ValueError(
+                "Invalid portfolio holdout window; cannot score promotion gates"
+            )
+        print(
+            "Running holdout-window portfolio evaluation for promotion gates "
+            "(full history for indicator warmup)..."
+        )
+        challenger_portfolio = _run_retrain_oos_portfolio(
+            settings=settings,
+            ticker_data=training_data,
+            vix_df=vix_df,
+            macro_df=macro_df,
+            model_wrapper=bundle_to_model_wrapper(bundle),
+            eval_start=holdout_start,
+            eval_end=holdout_end,
+        )
+        challenger_portfolio["holdout_excluded_from_training"] = True
+        bundle["metadata"]["portfolio_oos"] = challenger_portfolio
+        champion_wrapper = _load_champion_model_wrapper()
+        if champion_wrapper is not None:
+            champion_portfolio = _run_retrain_oos_portfolio(
+                settings=settings,
+                ticker_data=training_data,
+                vix_df=vix_df,
+                macro_df=macro_df,
+                model_wrapper=champion_wrapper,
+                eval_start=holdout_start,
+                eval_end=holdout_end,
+            )
+            champion_portfolio["holdout_excluded_from_training"] = True
+
+    challenger_model_path, challenger_metadata_path = save_challenger_bundle(bundle)
+    champion_metadata = load_model_metadata()
+    promotion_report = build_promotion_report(
+        challenger_metadata=bundle["metadata"],
+        champion_metadata=champion_metadata,
+        challenger_portfolio=challenger_portfolio,
+        champion_portfolio=champion_portfolio,
+        require_portfolio_oos=settings.use_ai_score,
+        fold_stability_report=stability_report,
+        calibration_report=calibration_report,
+        require_ml_quality=True,
+    )
+    promotion_report.update(
+        {
+            "challenger_model_path": str(challenger_model_path),
+            "challenger_metadata_path": str(challenger_metadata_path),
+            "champion_model_path": str(MODEL_PATH),
+            "champion_metadata_path": str(MODEL_METADATA_PATH),
+        }
+    )
+    promotion_report_path = output_dir / "model_promotion_report.json"
+    promotion_report_path.write_text(
+        json.dumps(promotion_report, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    if promotion_report["decision"] == "PROMOTE":
+        archived = archive_current_champion()
+        save_model_bundle(bundle)
+        if archived is not None:
+            promotion_report["archived_previous_champion_model_path"] = str(archived[0])
+            promotion_report["archived_previous_champion_metadata_path"] = str(archived[1])
+    else:
+        notify_champion_retained_if_needed(promotion_report, promotion_report_path)
+
+    archived = find_latest_archived_champion(CHAMPION_ARCHIVE_DIR)
+    rollback_report = resolve_rollback_decision(
+        promotion_report["decision"],
+        _load_recent_performance_snapshot(),
+        archived,
+    )
+    _write_rollback_report(rollback_report)
+
+    elapsed = time.time() - started_at
+    _append_retrain_log("success", metrics_df, elapsed)
+
+    print("AI score model trained.")
+    print(f"Model: LightGBM (n_estimators=500, max_depth=6)")
+    print(f"Features: {len(model.feature_columns)} ({', '.join(model.feature_columns)})")
+    print(f"Saved challenger model to {challenger_model_path}")
+    print(f"Saved challenger metadata to {challenger_metadata_path}")
+    print(f"Promotion decision: {promotion_report['decision']}")
+    if promotion_report["decision"] == "PROMOTE":
+        print(f"Promoted challenger to champion at {MODEL_PATH}")
+    else:
+        print(f"Retained existing champion at {MODEL_PATH}")
+    print(f"Saved metrics to {metrics_path}")
+    print(f"Saved promotion report to {promotion_report_path}")
+    print(f"Saved rollback report to {ROLLBACK_REPORT_PATH}")
+    print(f"Saved feature drift report to {DRIFT_REPORT_PATH}")
+    print(f"Saved fold metrics to {quality_paths['fold_metrics']}")
+    print(f"Saved fold stability report to {quality_paths['fold_stability']}")
+    print(f"Saved calibration report to {CALIBRATION_REPORT_PATH}")
+    print(f"Saved calibration bins to {CALIBRATION_BINS_PATH}")
+    print(f"Saved threshold retune report to {THRESHOLD_RETUNE_REPORT_PATH}")
+    print(f"Saved threshold retune results to {THRESHOLD_RETUNE_RESULTS_PATH}")
+    print(
+        f"Updated thresholds: buy={settings.ai_score_buy_threshold:.2f}, "
+        f"exit={settings.ai_exit_threshold_bear if getattr(settings, 'ai_exit_dynamic_enabled', False) else settings.ai_exit_threshold:.2f}"
+    )
+    print(f"Elapsed: {elapsed:.1f}s")
+    print(metrics_df.to_string(index=False))
+
+
+if __name__ == "__main__":
+    run_retrain_cli(main, _append_retrain_log)
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from datetime import datetime, timezone
+import json
+from pathlib import Path
+from typing import Any, List, Dict, Tuple, Optional
+
+import joblib
+import pandas as pd
+import numpy as np
+from lightgbm import LGBMClassifier
+from xgboost import XGBClassifier
+from sklearn.metrics import accuracy_score, brier_score_loss, precision_score, recall_score, roc_auc_score
+from sklearn.model_selection import TimeSeriesSplit
+
+from src.features import FEATURE_COLUMNS, build_features
+from src.market_regime import compute_daily_regime, get_current_regime
+
+MODEL_PATH = Path("models/ai_score_model.joblib")
+MODEL_METADATA_PATH = Path("models/ai_score_model_metadata.json")
+CHALLENGER_DIR = Path("models/challengers")
+CHAMPION_ARCHIVE_DIR = Path("models/champion_archive")
+
+
+class BaseModel(ABC):
+    @abstractmethod
+    def predict_proba(
+        self,
+        df: pd.DataFrame,
+        vix_df: pd.DataFrame | None = None,
+        spy_df: pd.DataFrame | None = None,
+        macro_df: pd.DataFrame | None = None,
+    ) -> pd.Series:
+        pass
+
+    @abstractmethod
+    def predict(
+        self,
+        df: pd.DataFrame,
+        vix_df: pd.DataFrame | None = None,
+        spy_df: pd.DataFrame | None = None,
+        macro_df: pd.DataFrame | None = None,
+    ) -> pd.Series:
+        pass
+
+
+class SoftVotingEnsemble:
+    """LightGBM과 XGBoost 모델의 예측 확률을 평균하여 최종 결과를 도출한다."""
+    def __init__(self, lgbm_model, xgb_model):
+        self.lgbm_model = lgbm_model
+        self.xgb_model = xgb_model
+
+    def predict_proba(self, X):
+        lgbm_proba = self.lgbm_model.predict_proba(X)[:, 1]
+        xgb_proba = self.xgb_model.predict_proba(X)[:, 1]
+        # Soft Voting: 두 모델의 확률 평균
+        avg_proba = (lgbm_proba + xgb_proba) / 2.0
+        # predict_proba 인터페이스 준수 ([prob_0, prob_1])
+        return np.vstack([1.0 - avg_proba, avg_proba]).T
+
+    def predict(self, X):
+        proba = self.predict_proba(X)[:, 1]
+        return (proba >= 0.5).astype(int)
+
+
+class RegimeAwareModelWrapper(BaseModel):
+    def __init__(
+        self,
+        models: Dict[str, any],
+        feature_columns: List[str],
+        prediction_horizon: int,
+        target_return_threshold: float,
+    ):
+        self.models = models  # e.g., {"BULL": model_a, "BEAR": model_b, "NEUTRAL": model_c}
+        self.feature_columns = feature_columns
+        self.prediction_horizon = prediction_horizon
+        self.target_return_threshold = target_return_threshold
+
+    def _prepare_features(
+        self,
+        df: pd.DataFrame,
+        vix_df: pd.DataFrame | None = None,
+        spy_df: pd.DataFrame | None = None,
+        macro_df: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
+        return build_features(
+            df,
+            prediction_horizon=self.prediction_horizon,
+            target_return_threshold=self.target_return_threshold,
+            vix_df=vix_df,
+            spy_df=spy_df,
+            macro_df=macro_df,
+        )
+
+    def _get_model_for_regime(self, spy_df, vix_df):
+        regime = get_current_regime(spy_df, vix_df)
+        # Fallback to NEUTRAL if specific regime model missing
+        return self.models.get(regime, self.models.get("NEUTRAL"))
+
+    def predict_proba(
+        self,
+        df: pd.DataFrame,
+        vix_df: pd.DataFrame | None = None,
+        spy_df: pd.DataFrame | None = None,
+        macro_df: pd.DataFrame | None = None,
+    ) -> pd.Series:
+        feature_df = self._prepare_features(df, vix_df=vix_df, spy_df=spy_df, macro_df=macro_df)
+        model = self._get_model_for_regime(spy_df, vix_df)
+        
+        available_cols = [c for c in self.feature_columns if c in feature_df.columns]
+        X = feature_df[available_cols]
+        
+        # SoftVotingEnsemble 또는 일반 모델 호환성 유지
+        if hasattr(model, "predict_proba"):
+            proba = model.predict_proba(X)
+            return pd.Series(proba[:, 1], index=feature_df.index)
+        
+        return pd.Series([0.5] * len(X), index=feature_df.index)
+
+    def predict(
+        self,
+        df: pd.DataFrame,
+        vix_df: pd.DataFrame | None = None,
+        spy_df: pd.DataFrame | None = None,
+        macro_df: pd.DataFrame | None = None,
+    ) -> pd.Series:
+        feature_df = self._prepare_features(df, vix_df=vix_df, spy_df=spy_df, macro_df=macro_df)
+        model = self._get_model_for_regime(spy_df, vix_df)
+        
+        available_cols = [c for c in self.feature_columns if c in feature_df.columns]
+        X = feature_df[available_cols]
+        pred = model.predict(X)
+        return pd.Series(pred, index=feature_df.index)
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _summarize_metrics(metrics_df: pd.DataFrame) -> dict[str, Any]:
+    if metrics_df is None or metrics_df.empty:
+        return {"avg_roc_auc": 0.0, "regimes": {}}
+
+    summary = {"avg_roc_auc": float(metrics_df["roc_auc"].mean()) if "roc_auc" in metrics_df.columns else 0.0, "regimes": {}}
+    if "regime" in metrics_df.columns:
+        for regime, regime_df in metrics_df.groupby("regime"):
+            summary["regimes"][str(regime)] = {
+                "avg_roc_auc": float(regime_df["roc_auc"].mean()) if "roc_auc" in regime_df.columns else 0.0,
+                "folds": int(len(regime_df)),
+            }
+    return summary
+
+
+def build_model_metadata(
+    *,
+    training_data: Dict[str, pd.DataFrame],
+    trained_models: Dict[str, Any],
+    metrics_df: pd.DataFrame,
+    feature_columns: List[str],
+    prediction_horizon: int,
+    target_return_threshold: float,
+) -> dict[str, Any]:
+    date_bounds = []
+    for df in training_data.values():
+        if df is None or df.empty or "date" not in df.columns:
+            continue
+        series = pd.to_datetime(df["date"], errors="coerce").dropna()
+        if not series.empty:
+            date_bounds.append((series.min(), series.max()))
+
+    training_start = min((start for start, _ in date_bounds), default=None)
+    training_end = max((end for _, end in date_bounds), default=None)
+
+    return {
+        "saved_at": _utc_now_iso(),
+        "training_window_start": training_start.strftime("%Y-%m-%d") if training_start is not None else None,
+        "training_window_end": training_end.strftime("%Y-%m-%d") if training_end is not None else None,
+        "ticker_count": int(len(training_data)),
+        "feature_set_version": f"features_v{len(feature_columns)}",
+        "feature_columns": list(feature_columns),
+        "prediction_horizon": int(prediction_horizon),
+        "target_return_threshold": float(target_return_threshold),
+        "trained_regimes": sorted(trained_models.keys()),
+        "oos_metrics": _summarize_metrics(metrics_df),
+    }
+
+
+def build_model_bundle(
+    *,
+    trained_models: Dict[str, Any],
+    metrics_df: pd.DataFrame,
+    training_data: Dict[str, pd.DataFrame],
+    feature_columns: List[str],
+    prediction_horizon: int,
+    target_return_threshold: float,
+) -> dict[str, Any]:
+    return {
+        "models": trained_models,
+        "feature_columns": feature_columns,
+        "prediction_horizon": prediction_horizon,
+        "target_return_threshold": target_return_threshold,
+        "metadata": build_model_metadata(
+            training_data=training_data,
+            trained_models=trained_models,
+            metrics_df=metrics_df,
+            feature_columns=feature_columns,
+            prediction_horizon=prediction_horizon,
+            target_return_threshold=target_return_threshold,
+        ),
+    }
+
+
+def save_model_bundle(
+    bundle: dict[str, Any],
+    *,
+    model_path: Path = MODEL_PATH,
+    metadata_path: Path = MODEL_METADATA_PATH,
+) -> tuple[Path, Path]:
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+
+exec
+/bin/bash -lc "sed -n '220,520p' src/ml_model.py" in /home/kimyo/trading-bot
+ succeeded in 150ms:
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    metadata_path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(bundle, model_path)
+    metadata = bundle.get("metadata", {})
+    metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
+    return model_path, metadata_path
+
+
+def load_model_metadata(metadata_path: Path = MODEL_METADATA_PATH) -> dict[str, Any] | None:
+    if not metadata_path.exists():
+        return None
+    return json.loads(metadata_path.read_text(encoding="utf-8"))
+
+
+def save_challenger_bundle(
+    bundle: dict[str, Any],
+    *,
+    challenger_dir: Path = CHALLENGER_DIR,
+) -> tuple[Path, Path]:
+    challenger_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    model_path = challenger_dir / f"ai_score_model_{timestamp}.joblib"
+    metadata_path = challenger_dir / f"ai_score_model_{timestamp}_metadata.json"
+    return save_model_bundle(bundle, model_path=model_path, metadata_path=metadata_path)
+
+
+def archive_current_champion(
+    *,
+    model_path: Path = MODEL_PATH,
+    metadata_path: Path = MODEL_METADATA_PATH,
+    archive_dir: Path = CHAMPION_ARCHIVE_DIR,
+) -> tuple[Path, Path] | None:
+    if not model_path.exists() or not metadata_path.exists():
+        return None
+
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    archived_model_path = archive_dir / f"ai_score_model_{timestamp}.joblib"
+    archived_metadata_path = archive_dir / f"ai_score_model_{timestamp}_metadata.json"
+    archived_model_path.write_bytes(model_path.read_bytes())
+    archived_metadata_path.write_bytes(metadata_path.read_bytes())
+    return archived_model_path, archived_metadata_path
+
+
+def find_latest_archived_champion(
+    archive_dir: Path = CHAMPION_ARCHIVE_DIR,
+) -> tuple[Path, Path] | None:
+    metadata_paths = sorted(archive_dir.glob("ai_score_model_*_metadata.json"))
+    if not metadata_paths:
+        return None
+
+    latest_metadata_path = metadata_paths[-1]
+    model_stem = latest_metadata_path.name.replace("_metadata.json", ".joblib")
+    model_path = archive_dir / model_stem
+    if not model_path.exists():
+        return None
+    return model_path, latest_metadata_path
+
+
+def restore_archived_champion(
+    archived_model_path: Path,
+    archived_metadata_path: Path,
+    *,
+    model_path: Path = MODEL_PATH,
+    metadata_path: Path = MODEL_METADATA_PATH,
+) -> tuple[Path, Path]:
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    metadata_path.parent.mkdir(parents=True, exist_ok=True)
+    model_path.write_bytes(archived_model_path.read_bytes())
+    metadata_path.write_bytes(archived_metadata_path.read_bytes())
+    return model_path, metadata_path
+
+
+def bundle_to_model_wrapper(bundle: dict[str, Any]) -> RegimeAwareModelWrapper:
+    return RegimeAwareModelWrapper(
+        bundle["models"],
+        bundle["feature_columns"],
+        bundle["prediction_horizon"],
+        bundle["target_return_threshold"],
+    )
+
+
+def _portfolio_oos_rank_key(snapshot: dict[str, Any]) -> tuple[float, float, float]:
+    return (
+        float(snapshot["sharpe_ratio"]),
+        float(snapshot["total_return"]),
+        -abs(float(snapshot["max_drawdown"])),
+    )
+
+
+def portfolio_oos_beats_champion(
+    challenger: dict[str, Any],
+    champion: dict[str, Any],
+) -> bool:
+    """True when challenger ranks higher on Sharpe, then return, then drawdown."""
+    return _portfolio_oos_rank_key(challenger) > _portfolio_oos_rank_key(champion)
+
+
+def build_promotion_report(
+    challenger_metadata: dict[str, Any],
+    champion_metadata: dict[str, Any] | None,
+    *,
+    challenger_portfolio: dict[str, Any] | None = None,
+    champion_portfolio: dict[str, Any] | None = None,
+    portfolio_thresholds: Any | None = None,
+    require_portfolio_oos: bool = True,
+    fold_stability_report: dict[str, Any] | None = None,
+    calibration_report: dict[str, Any] | None = None,
+    require_ml_quality: bool = True,
+    ml_quality_criteria: Any | None = None,
+) -> dict[str, Any]:
+    from src.ml_quality_report import evaluate_ml_quality_promotion_gates
+    from src.portfolio_backtest_validation import (
+        PortfolioBacktestThresholds,
+        check_portfolio_summary_thresholds,
+    )
+
+    thresholds = portfolio_thresholds or PortfolioBacktestThresholds()
+    challenger_auc = float(challenger_metadata.get("oos_metrics", {}).get("avg_roc_auc", 0.0))
+    champion_auc = (
+        float(champion_metadata.get("oos_metrics", {}).get("avg_roc_auc", 0.0))
+        if champion_metadata
+        else None
+    )
+    auc_ok = champion_metadata is None or challenger_auc > champion_auc
+
+    ml_quality_eval = evaluate_ml_quality_promotion_gates(
+        challenger_metadata,
+        fold_stability_report,
+        calibration_report,
+        criteria=ml_quality_criteria,
+    )
+    ml_quality_ok = ml_quality_eval["passed"] if require_ml_quality else True
+
+    portfolio_gate = None
+    portfolio_gate_ok = True
+    portfolio_vs_ok = True
+
+    if require_portfolio_oos:
+        if challenger_portfolio is None:
+            portfolio_gate_ok = False
+            portfolio_vs_ok = False
+        else:
+            portfolio_gate = check_portfolio_summary_thresholds(
+                challenger_portfolio, thresholds
+            )
+            portfolio_gate_ok = portfolio_gate.passed
+
+            if champion_portfolio is None and champion_metadata is not None:
+                stored = champion_metadata.get("portfolio_oos")
+                if isinstance(stored, dict):
+                    champion_portfolio = stored
+
+            if champion_portfolio is not None:
+                portfolio_vs_ok = portfolio_oos_beats_champion(
+                    challenger_portfolio, champion_portfolio
+                )
+
+    promote = auc_ok and ml_quality_ok and portfolio_gate_ok and portfolio_vs_ok
+
+    reasons: list[str] = []
+    if champion_metadata is None:
+        reasons.append("no existing champion metadata")
+    elif not auc_ok:
+        reasons.append(
+            f"challenger_avg_roc_auc={challenger_auc:.4f} vs champion_avg_roc_auc={champion_auc:.4f}"
+        )
+    if require_ml_quality and not ml_quality_ok:
+        reasons.append("training metrics gates failed: " + "; ".join(ml_quality_eval["failures"]))
+    if require_portfolio_oos and challenger_portfolio is None:
+        reasons.append("missing challenger portfolio OOS evaluation")
+    elif require_portfolio_oos and portfolio_gate is not None and not portfolio_gate_ok:
+        reasons.append("portfolio gates failed: " + "; ".join(portfolio_gate.failures))
+    elif (
+        require_portfolio_oos
+        and champion_portfolio is not None
+        and challenger_portfolio is not None
+        and not portfolio_vs_ok
+    ):
+        c, h = challenger_portfolio, champion_portfolio
+        reasons.append(
+            "portfolio OOS did not beat champion "
+            f"(sharpe {float(c['sharpe_ratio']):.4f} vs {float(h['sharpe_ratio']):.4f}, "
+            f"return {float(c['total_return']):.4f} vs {float(h['total_return']):.4f})"
+        )
+
+    if promote:
+        reason = (
+            "no existing champion; challenger passes training metrics and portfolio OOS gates"
+            if champion_metadata is None
+            else "challenger passes AUC, training metrics, and portfolio OOS criteria"
+        )
+    else:
+        reason = "; ".join(reasons) if reasons else "challenger retained"
+
+    report: dict[str, Any] = {
+        "generated_at": _utc_now_iso(),
+        "champion_exists": champion_metadata is not None,
+        "champion_avg_roc_auc": champion_auc,
+        "challenger_avg_roc_auc": challenger_auc,
+        "auc_gate_passed": auc_ok,
+        "ml_quality_gate_passed": ml_quality_ok,
+        "ml_quality_gate_failures": ml_quality_eval.get("failures", []),
+        "portfolio_gate_passed": portfolio_gate_ok,
+        "portfolio_vs_champion_passed": portfolio_vs_ok,
+        "decision": "PROMOTE" if promote else "RETAIN_CHAMPION",
+        "reason": reason,
+    }
+    if challenger_portfolio is not None:
+        report["challenger_portfolio_oos"] = challenger_portfolio
+    if champion_portfolio is not None:
+        report["champion_portfolio_oos"] = champion_portfolio
+    if portfolio_gate is not None:
+        report["portfolio_gate_failures"] = portfolio_gate.failures
+        report["portfolio_gate_warnings"] = portfolio_gate.warnings
+    return report
+
+
+def train_ai_score_model(
+    training_data: Dict[str, pd.DataFrame],
+    prediction_horizon: int = 5,
+    target_return_threshold: float = 0.0,
+    vix_df: pd.DataFrame | None = None,
+    spy_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
+) -> Tuple[BaseModel, pd.DataFrame]:
+    frames = []
+
+    for ticker, df in training_data.items():
+        try:
+            feature_df = build_features(
+                df,
+                prediction_horizon=prediction_horizon,
+                target_return_threshold=target_return_threshold,
+                vix_df=vix_df,
+                spy_df=spy_df,
+                macro_df=macro_df,
+            )
+        except ValueError:
+            continue
+        feature_df["ticker"] = ticker
+        frames.append(feature_df)
+
+    dataset = pd.concat(frames, ignore_index=True)
+    dataset = dataset.sort_values("date").reset_index(drop=True)
+
+    # 시장 레짐 계산 및 병합
+    if spy_df is not None and vix_df is not None:
+        regime_series = compute_daily_regime(spy_df, vix_df)
+        dataset = dataset.merge(
+            regime_series.rename("regime"), left_on="date", right_index=True, how="left"
+        )
+        dataset["regime"] = dataset["regime"].fillna("NEUTRAL")
+    else:
+        dataset["regime"] = "NEUTRAL"
+
+    regimes = ["BULL", "BEAR", "NEUTRAL"]
+    trained_models = {}
+    all_metrics = []
+    calibration_rows = []
+
+    for regime in regimes:
+        regime_data = dataset[dataset["regime"] == regime]
+        if len(regime_data) < 100:  # 최소 데이터 요구량
+            print(f"  WARNING: insufficient data for {regime} regime (rows={len(regime_data)}), skipping...")
+            continue
+            
+        print(f"  Training {regime} ensemble model (LightGBM + XGBoost, rows={len(regime_data)})...")
+        X_regime = regime_data[FEATURE_COLUMNS]
+        y_regime = regime_data["target"]
+
+        lgbm = LGBMClassifier(
+            n_estimators=500,
+            learning_rate=0.05,
+            max_depth=6,
+            num_leaves=31,
+            min_child_samples=20,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=42,
+            class_weight="balanced" if regime != "BEAR" else None,
+            n_jobs=-1,
+            verbose=-1,
+        )
+        
+        xgb = XGBClassifier(
+            n_estimators=500,
+            learning_rate=0.05,
+            max_depth=6,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=42,
+            n_jobs=-1,
+            verbosity=0,
+        )
+
+        # 교차 검증 (단순화: 앙상블 효과 확인)
+        tscv = TimeSeriesSplit(n_splits=3)
+        for fold, (train_idx, test_idx) in enumerate(tscv.split(X_regime), start=1):
+            X_train, X_test = X_regime.iloc[train_idx], X_regime.iloc[test_idx]
+            y_train, y_test = y_regime.iloc[train_idx], y_regime.iloc[test_idx]
+
+exec
+/bin/bash -lc "sed -n '520,860p' src/ml_model.py" in /home/kimyo/trading-bot
+ succeeded in 134ms:
+            y_train, y_test = y_regime.iloc[train_idx], y_regime.iloc[test_idx]
+            
+            # 검증을 위한 앙상블 확률
+            f_lgbm = LGBMClassifier(n_estimators=100, random_state=42, verbose=-1)
+            f_xgb = XGBClassifier(n_estimators=100, random_state=42, n_jobs=-1, verbosity=0)
+            
+            f_lgbm.fit(X_train, y_train)
+            f_xgb.fit(X_train, y_train)
+            
+            proba = (f_lgbm.predict_proba(X_test)[:, 1] + f_xgb.predict_proba(X_test)[:, 1]) / 2.0
+            
+            try:
+                auc = roc_auc_score(y_test, proba)
+            except ValueError:
+                auc = 0.5
+            brier = brier_score_loss(y_test, proba)
+            
+            all_metrics.append({
+                "regime": regime,
+                "fold": fold,
+                "roc_auc": auc,
+                "brier_score": brier,
+                "test_size": len(test_idx)
+            })
+            calibration_rows.extend(
+                {
+                    "regime": regime,
+                    "fold": fold,
+                    "y_true": int(y_true),
+                    "y_prob": float(y_prob),
+                }
+                for y_true, y_prob in zip(y_test.tolist(), proba.tolist())
+            )
+
+        lgbm.fit(X_regime, y_regime)
+        xgb.fit(X_regime, y_regime)
+        trained_models[regime] = SoftVotingEnsemble(lgbm, xgb)
+
+    # 만약 특정 레짐 모델이 하나도 없으면 (에러 방지)
+    if not trained_models:
+        raise ValueError("No models could be trained for any regime.")
+
+    metrics_df = pd.DataFrame(all_metrics)
+    metrics_df.attrs["calibration_rows"] = calibration_rows
+    wrapper = RegimeAwareModelWrapper(trained_models, FEATURE_COLUMNS, prediction_horizon, target_return_threshold)
+    return wrapper, metrics_df
+
+
+def load_ai_score_model() -> BaseModel:
+    if not MODEL_PATH.exists():
+        raise FileNotFoundError(
+            f"Model not found: {MODEL_PATH}. Run python -m src.train_ai_model first."
+        )
+
+    bundle = joblib.load(MODEL_PATH)
+    
+    # 레거시 단일 모델 지원 (하위 호환성)
+    if "model" in bundle:
+        return RegimeAwareModelWrapper(
+            {"NEUTRAL": bundle["model"]},
+            bundle["feature_columns"],
+            bundle["prediction_horizon"],
+            bundle["target_return_threshold"],
+        )
+        
+    return RegimeAwareModelWrapper(
+        bundle["models"],
+        bundle["feature_columns"],
+        bundle["prediction_horizon"],
+        bundle["target_return_threshold"],
+    )
+
+
+def predict_ai_score_from_bundle(
+    df: pd.DataFrame,
+    model: BaseModel,
+    vix_df: pd.DataFrame | None = None,
+    spy_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
+) -> float:
+    proba_series = model.predict_proba(df, vix_df=vix_df, spy_df=spy_df, macro_df=macro_df)
+    return float(proba_series.iloc[-1])
+
+
+def predict_ai_score(df: pd.DataFrame) -> float:
+    model = load_ai_score_model()
+    return predict_ai_score_from_bundle(df, model)
+
+exec
+/bin/bash -lc "ls -l models/ai_score_model.joblib && nl -ba .gitignore | tail -20 && git diff HEAD~1..HEAD -- .gitignore README.md docs/runbook.md | sed -n '1,140p'" in /home/kimyo/trading-bot
+ succeeded in 135ms:
+-rw-r--r-- 1 kimyo kimyo 1757990 May 30 20:14 models/ai_score_model.joblib
+    27	!logs/allocation_compare/
+    28	!logs/allocation_compare/*/
+    29	!logs/allocation_compare/*/*summary*.csv
+    30	!logs/portfolio_backtest/
+    31	!logs/portfolio_backtest/*summary*.csv
+    32	
+    33	# Champion model binaries are local-only (retrain + promotion); never commit ad-hoc retrains.
+    34	models/*
+    35	!models/.gitkeep
+    36	
+    37	# Never commit bulky/generated trading artifacts.
+    38	logs/**/portfolio_equity.csv
+    39	logs/**/portfolio_trades.csv
+    40	logs/**/qlib_ready/
+    41	logs/**/qlib_ready/**
+    42	logs/bot_runs/
+    43	logs/candidate_cache/
+    44	logs/trades.csv
+    45	logs/orders.csv
+    46	logs/dashboard.log
+diff --git a/.gitignore b/.gitignore
+index 843aa73..c4cf60c 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -30,6 +30,10 @@ logs/*
+ !logs/portfolio_backtest/
+ !logs/portfolio_backtest/*summary*.csv
+ 
++# Champion model binaries are local-only (retrain + promotion); never commit ad-hoc retrains.
++models/*
++!models/.gitkeep
++
+ # Never commit bulky/generated trading artifacts.
+ logs/**/portfolio_equity.csv
+ logs/**/portfolio_trades.csv
+diff --git a/README.md b/README.md
+index fe9a7b3..922c922 100644
+--- a/README.md
++++ b/README.md
+@@ -31,7 +31,7 @@ trading-bot/
+ ├── config/             # 전략 프로필 및 시스템 설정 (JSON)
+ ├── data/               # 피크 정보, LLM 캐시, 트레일링 스탑 데이터
+ ├── logs/               # 실행 감사(Audit), 주문, 신호 로그 (CSV)
+-├── models/             # 학습된 레짐별 AI 모델 파일
++├── models/             # 챔피언 모델 (로컬, git 미추적 — retrain·승격 후 생성)
+ ├── scripts/            # 실행, 서비스 등록 및 에이전트 오케스트레이터
+ │   ├── agent_orchestrator.py # Codex 리뷰 / optional Gemini CLI 루프
+ │   ├── run_cursor_post_workflow.sh # Cursor 구현 후 리뷰 패킷 수집
+diff --git a/docs/runbook.md b/docs/runbook.md
+index 166992f..fe8fc43 100644
+--- a/docs/runbook.md
++++ b/docs/runbook.md
+@@ -40,7 +40,7 @@
+ - **대응**:
+     1. `logs/retrain_runs/retrain_*.log` 및 `logs/retrain_history.csv` 확인.
+     2. 데이터 소스(yfinance) 차단 여부 확인.
+-    3. `models/ai_score_model.joblib`이 있으면 봇은 기존 챔피언으로 동작. 수동: `bash scripts/run_retrain.sh`.
++    3. `models/ai_score_model.joblib`은 **로컬 전용**(git 미추적). `model_promotion_report.json`에서 `decision=PROMOTE`일 때만 챔피언 파일을 교체하고, ROC-AUC < 0.51이면 커밋·배포하지 않음. 수동: `bash scripts/run_retrain.sh`.
+ 
+ ### 2.3 Drawdown Circuit Breaker 발동
+ - **현상**: 포트폴리오 자산이 최고점 대비 15% 이상 하락하여 "New buys blocked" 알림 발생.
+
+exec
+/bin/bash -lc 'git ls-files -s models && git cat-file -s HEAD:models/ai_score_model.joblib || true && git show --name-status --oneline HEAD' in /home/kimyo/trading-bot
+ succeeded in 0ms:
+100644 e69de29bb2d1d6434b8b29ae775ad8c2e48c5391 0	models/.gitkeep
+fatal: path 'models/ai_score_model.joblib' exists on disk, but not in 'HEAD'
+d56873c chore: untrack champion model artifact; document local-only policy [cursor]
+M	.gitignore
+M	README.md
+M	TODO.md
+M	docs/runbook.md
+A	models/.gitkeep
+D	models/ai_score_model.joblib
+
+exec
+/bin/bash -lc 'for f in scripts/run_daily_audit_summary.sh scripts/run_guard_impact_report.sh scripts/run_leverage_stress_report.sh scripts/run_llm_cache_report.sh scripts/run_retrain.sh scripts/run_weekly_slippage_report.sh scripts/install_slippage_report_timer.sh; do echo ---$f; sed -n '"'1,120p' "'$f; done' in /home/kimyo/trading-bot
+ succeeded in 133ms:
+---scripts/run_daily_audit_summary.sh
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+PYTHON="${ROOT}/.venv/bin/python"
+if [[ ! -x "$PYTHON" ]]; then
+  PYTHON=python3
+fi
+exec "$PYTHON" -m src.daily_audit_summary "$@"
+---scripts/run_guard_impact_report.sh
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+PYTHON="${ROOT}/.venv/bin/python"
+if [[ ! -x "$PYTHON" ]]; then
+  PYTHON=python3
+fi
+exec "$PYTHON" -m src.guard_impact_report "$@"
+---scripts/run_leverage_stress_report.sh
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+PYTHON="${ROOT}/.venv/bin/python"
+if [[ ! -x "$PYTHON" ]]; then
+  PYTHON=python3
+fi
+exec "$PYTHON" -m src.leverage_stress_report "$@"
+---scripts/run_llm_cache_report.sh
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+PYTHON="${ROOT}/.venv/bin/python"
+if [[ ! -x "$PYTHON" ]]; then
+  PYTHON=python3
+fi
+exec "$PYTHON" -m src.llm_cache_report "$@"
+---scripts/run_retrain.sh
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$PROJECT_DIR"
+
+TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
+LOG_DIR="$PROJECT_DIR/logs/retrain_runs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/retrain_${TIMESTAMP}.log"
+
+set +e
+{
+  echo "timestamp=$TIMESTAMP"
+  echo "project_dir=$PROJECT_DIR"
+  echo "--------------------------------------------------------------------------------"
+  "$PROJECT_DIR/.venv/bin/python" -m src.train_ai_model
+} > "$LOG_FILE" 2>&1
+EXIT_CODE=$?
+set -e
+
+if [[ "$EXIT_CODE" -ne 0 ]]; then
+  echo "Retrain FAILED (exit=$EXIT_CODE): $LOG_FILE"
+  echo "Check logs/retrain_history.csv (status=failure) and Telegram for 'AI Retrain Failed'."
+  exit "$EXIT_CODE"
+fi
+
+echo "Retrain completed: $LOG_FILE"
+echo "On champion retained (not promoted), Telegram sends 'Retrain finished; champion retained'."
+---scripts/run_weekly_slippage_report.sh
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$PROJECT_DIR"
+
+TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
+LOG_DIR="$PROJECT_DIR/logs/slippage_report_runs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/slippage_${TIMESTAMP}.log"
+
+LOOKBACK_DAYS="$("$PROJECT_DIR/.venv/bin/python" - <<'PY'
+import json
+from pathlib import Path
+path = Path("config/slippage_report_config.json")
+if path.is_file():
+    print(int(json.loads(path.read_text()).get("lookback_days", 7)))
+else:
+    print(7)
+PY
+)"
+
+TELEGRAM_FLAG=""
+if "$PROJECT_DIR/.venv/bin/python" - <<'PY'
+import json
+from pathlib import Path
+path = Path("config/slippage_report_config.json")
+if path.is_file() and json.loads(path.read_text()).get("notify_telegram"):
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+then
+  TELEGRAM_FLAG="--telegram"
+fi
+
+{
+  echo "timestamp=$TIMESTAMP"
+  echo "lookback_days=$LOOKBACK_DAYS"
+  echo "--------------------------------------------------------------------------------"
+  PYTHONPATH=. "$PROJECT_DIR/.venv/bin/python" -m src.report_performance \
+    --weekly \
+    --days "$LOOKBACK_DAYS" \
+    $TELEGRAM_FLAG
+} >"$LOG_FILE" 2>&1
+
+echo "Weekly slippage report completed: $LOG_FILE"
+---scripts/install_slippage_report_timer.sh
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONFIG_FILE="$PROJECT_DIR/config/slippage_report_config.json"
+SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
+mkdir -p "$SYSTEMD_USER_DIR"
+
+SERVICE_FILE="$SYSTEMD_USER_DIR/trading-bot-slippage-report.service"
+TIMER_FILE="$SYSTEMD_USER_DIR/trading-bot-slippage-report.timer"
+
+ON_CALENDAR_LINES="$("$PROJECT_DIR/.venv/bin/python" - <<PY
+import json
+from pathlib import Path
+config = json.loads(Path("$CONFIG_FILE").read_text())
+timezone = str(config.get("timezone", "")).strip()
+times = config.get("on_calendar_times", ["Sun 18:00:00"])
+for item in times:
+    value = str(item).strip()
+    if timezone and "/" not in value:
+        value = f"{value} {timezone}"
+    print(f"OnCalendar={value}")
+PY
+)"
+
+chmod +x "$PROJECT_DIR/scripts/run_weekly_slippage_report.sh"
+
+cat > "$SERVICE_FILE" <<SERVICE
+[Unit]
+Description=Trading Bot weekly paper vs signal slippage report
+
+[Service]
+Type=oneshot
+WorkingDirectory=$PROJECT_DIR
+ExecStart=$PROJECT_DIR/scripts/run_weekly_slippage_report.sh
+SERVICE
+
+cat > "$TIMER_FILE" <<TIMER
+[Unit]
+Description=Weekly slippage report (paper fills vs signal price)
+
+[Timer]
+$ON_CALENDAR_LINES
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target
+TIMER
+
+systemctl --user daemon-reload
+
+echo "Created:"
+echo "  $SERVICE_FILE"
+echo "  $TIMER_FILE"
+echo
+echo "Schedule:"
+echo "$ON_CALENDAR_LINES"
+echo
+echo "To enable:"
+echo "  systemctl --user enable --now trading-bot-slippage-report.timer"
+echo
+echo "Manual run:"
+echo "  bash scripts/run_weekly_slippage_report.sh"
+
+exec
+/bin/bash -lc 'rg "EXECUTION_AUDIT|execution_audit|event_type|reason" -n src | head -80' in /home/kimyo/trading-bot
+ succeeded in 175ms:
+src/qlib_backtest_runner.py:476:                    "exit_reason": "SIGNAL_REMOVED",
+src/qlib_backtest_runner.py:568:                "exit_reason": "END_OF_BACKTEST",
+src/qlib_backtest_runner.py:602:                "exit_reason",
+src/notifier.py:75:    reason: str = "",
+src/notifier.py:91:        f"<b>Reason:</b> {escape(reason)}\n"
+src/portfolio_backtest_validation.py:45:    "exit_reason",
+src/ml_model.py:380:    reasons: list[str] = []
+src/ml_model.py:382:        reasons.append("no existing champion metadata")
+src/ml_model.py:384:        reasons.append(
+src/ml_model.py:388:        reasons.append("training metrics gates failed: " + "; ".join(ml_quality_eval["failures"]))
+src/ml_model.py:390:        reasons.append("missing challenger portfolio OOS evaluation")
+src/ml_model.py:392:        reasons.append("portfolio gates failed: " + "; ".join(portfolio_gate.failures))
+src/ml_model.py:400:        reasons.append(
+src/ml_model.py:407:        reason = (
+src/ml_model.py:413:        reason = "; ".join(reasons) if reasons else "challenger retained"
+src/ml_model.py:426:        "reason": reason,
+src/portfolio_backtester.py:401:            exit_reason = None
+src/portfolio_backtester.py:424:                exit_reason = "STOP_LOSS"
+src/portfolio_backtester.py:426:                exit_reason = "TRAILING_STOP"
+src/portfolio_backtester.py:428:                exit_reason = "AI_EXIT"
+src/portfolio_backtester.py:430:                exit_reason = "SELL_SIGNAL"
+src/portfolio_backtester.py:432:                exit_reason = "TAKE_PROFIT"
+src/portfolio_backtester.py:434:            if exit_reason is not None:
+src/portfolio_backtester.py:458:                        "exit_reason": exit_reason,
+src/model_governance.py:57:            "reason": "no recent performance snapshot available",
+src/model_governance.py:76:        "reason": "; ".join(breaches) if breaches else "performance within thresholds",
+src/model_governance.py:100:        rollback_report["reason"] = (
+src/model_governance.py:113:        rollback_report["reason"] = f"{rollback_eval['reason']}; no archived champion available"
+src/optimize_ai_exit.py:54:    if not trades_df.empty and "exit_reason" in trades_df.columns:
+src/optimize_ai_exit.py:55:        ai_exits = int((trades_df["exit_reason"] == "AI_EXIT").sum())
+src/risk_manager.py:16:    reason: str
+src/risk_manager.py:23:    reason: str
+src/macro_events.py:36:        (is_high_risk, reason)
+src/report_performance.py:84:                            "reason",
+src/daily_audit_summary.py:14:from src.config import EXECUTION_AUDIT_LOG_PATH
+src/daily_audit_summary.py:25:    "event_type_counts",
+src/daily_audit_summary.py:27:    "skip_reason_counts",
+src/daily_audit_summary.py:37:SKIP_REASONS_CSV_COLUMNS = ("reason", "count")
+src/daily_audit_summary.py:50:def load_execution_audit(
+src/daily_audit_summary.py:51:    audit_path: str | Path = EXECUTION_AUDIT_LOG_PATH,
+src/daily_audit_summary.py:79:def _normalize_skip_reason(reason: str) -> str:
+src/daily_audit_summary.py:80:    text = str(reason or "").strip()
+src/daily_audit_summary.py:99:def _classify_context_skip(reason: str) -> str:
+src/daily_audit_summary.py:100:    lower = str(reason or "").lower()
+src/daily_audit_summary.py:111:    if df is None or df.empty or "event_type" not in df.columns:
+src/daily_audit_summary.py:115:    event_types = df["event_type"].astype(str)
+src/daily_audit_summary.py:116:    reasons = df["reason"].astype(str) if "reason" in df.columns else pd.Series(dtype=str)
+src/daily_audit_summary.py:117:    skip_mask = event_types.isin(SKIP_EVENT_TYPES)
+src/daily_audit_summary.py:118:    skip_reasons = reasons[skip_mask].tolist()
+src/daily_audit_summary.py:119:    counts = Counter(_classify_context_skip(r) for r in skip_reasons)
+src/daily_audit_summary.py:120:    total_skips = max(len(skip_reasons), 1)
+src/daily_audit_summary.py:142:def validate_skip_reasons_csv(path: str | Path) -> pd.DataFrame:
+src/daily_audit_summary.py:146:        raise ValueError(f"skip_reasons CSV missing columns: {missing}")
+src/daily_audit_summary.py:148:        raise ValueError("skip_reasons count must be non-negative")
+src/daily_audit_summary.py:152:def aggregate_execution_audit(df: pd.DataFrame) -> dict[str, Any]:
+src/daily_audit_summary.py:157:            "event_type_counts": {},
+src/daily_audit_summary.py:159:            "skip_reason_counts": {},
+src/daily_audit_summary.py:169:    event_types = df["event_type"].astype(str) if "event_type" in df.columns else pd.Series(dtype=str)
+src/daily_audit_summary.py:170:    reasons = df["reason"].astype(str) if "reason" in df.columns else pd.Series(dtype=str)
+src/daily_audit_summary.py:172:    skip_mask = event_types.isin(SKIP_EVENT_TYPES)
+src/daily_audit_summary.py:173:    skip_reasons = Counter(
+src/daily_audit_summary.py:174:        _normalize_skip_reason(r) for r in reasons[skip_mask].tolist()
+src/daily_audit_summary.py:176:    skip_by_event = Counter(event_types[skip_mask].tolist())
+src/daily_audit_summary.py:178:    api_mask = event_types.isin(API_ERROR_EVENT_TYPES)
+src/daily_audit_summary.py:181:    stale_mask = reasons.str.contains("stale", case=False, na=False)
+src/daily_audit_summary.py:184:    orders_submitted = int(event_types.isin(ORDER_SUBMITTED_EVENT_TYPES).sum())
+src/daily_audit_summary.py:188:        df.loc[api_mask, ["timestamp", "event_type", "ticker", "reason"]]
+src/daily_audit_summary.py:199:        "event_type_counts": dict(Counter(event_types.tolist())),
+src/daily_audit_summary.py:201:        "skip_reason_counts": dict(skip_reasons.most_common()),
+src/daily_audit_summary.py:222:    skip_reasons = report.get("skip_reason_counts") or {}
+src/daily_audit_summary.py:223:    if skip_reasons:
+src/daily_audit_summary.py:224:        top = ", ".join(f"{k}={v}" for k, v in list(skip_reasons.items())[:8])
+src/daily_audit_summary.py:225:        lines.append(f"Top skip reasons: {top}")
+src/daily_audit_summary.py:248:    if report.get("skip_reason_counts"):
+src/daily_audit_summary.py:250:            [{"reason": k, "count": v} for k, v in report["skip_reason_counts"].items()]
+src/daily_audit_summary.py:251:        ).to_csv(output_dir / f"skip_reasons_{stamp}.csv", index=False)
+src/daily_audit_summary.py:257:    audit_path: str | Path = EXECUTION_AUDIT_LOG_PATH,
+src/daily_audit_summary.py:262:    df = load_execution_audit(audit_path, day=day, lookback_days=lookback_days)
+src/daily_audit_summary.py:263:    report = aggregate_execution_audit(df)
+src/daily_audit_summary.py:271:    parser.add_argument("--audit-path", default=EXECUTION_AUDIT_LOG_PATH)
+
+exec
+/bin/bash -lc "sed -n '60,110p' src/report_performance.py && rg \"audit\" -n src | head -60" in /home/kimyo/trading-bot
+ succeeded in 188ms:
+                    return pd.Series(
+                        [
+                            vals[0],
+                            vals[1],
+                            vals[2],
+                            vals[3],
+                            vals[4],
+                            vals[5],
+                            vals[6],
+                            vals[7],
+                            vals[8],
+                            vals[9],
+                            vals[10],
+                        ],
+                        index=[
+                            "timestamp",
+                            "ticker",
+                            "notional",
+                            "order_id",
+                            "status",
+                            "side",
+                            "order_type",
+                            "filled_qty",
+                            "filled_avg_price",
+                            "reason",
+                            "event",
+                        ],
+                    )
+            return row
+
+        if not filled_orders.empty:
+            filled_orders = filled_orders.apply(remap_row, axis=1)
+
+    if filled_orders.empty:
+        return filled_orders
+
+    filled_orders["filled_avg_price"] = pd.to_numeric(
+        filled_orders["filled_avg_price"], errors="coerce"
+    )
+    return filled_orders.dropna(subset=["filled_avg_price"])
+
+
+def compute_slippage_report(
+    signals_path: str | Path | None = None,
+    orders_path: str | Path | None = None,
+    *,
+    lookback_days: int | None = None,
+    since: datetime | None = None,
+) -> SlippageReport | None:
+    """Match paper fills to signal close prices and compute slippage metrics."""
+    signals_path = Path(signals_path or SIGNAL_LOG_PATH)
+src/daily_audit_summary.py:1:"""Aggregate daily execution audit logs (skips, API errors, stale data)."""
+src/daily_audit_summary.py:16:DEFAULT_OUTPUT_DIR = Path("logs/audit_daily")
+src/daily_audit_summary.py:46:def _parse_audit_timestamps(series: pd.Series) -> pd.Series:
+src/daily_audit_summary.py:50:def load_execution_audit(
+src/daily_audit_summary.py:51:    audit_path: str | Path = EXECUTION_AUDIT_LOG_PATH,
+src/daily_audit_summary.py:56:    path = Path(audit_path)
+src/daily_audit_summary.py:65:    df["_ts"] = _parse_audit_timestamps(df["timestamp"])
+src/daily_audit_summary.py:128:def validate_daily_audit_summary(report: dict[str, Any]) -> dict[str, Any]:
+src/daily_audit_summary.py:131:            raise ValueError(f"Missing daily audit summary key: {key}")
+src/daily_audit_summary.py:152:def aggregate_execution_audit(df: pd.DataFrame) -> dict[str, Any]:
+src/daily_audit_summary.py:212:def format_daily_audit_report(report: dict[str, Any]) -> str:
+src/daily_audit_summary.py:235:def write_daily_audit_artifacts(
+src/daily_audit_summary.py:244:    day_path = output_dir / f"audit_{stamp}.json"
+src/daily_audit_summary.py:255:def run_daily_audit_summary(
+src/daily_audit_summary.py:257:    audit_path: str | Path = EXECUTION_AUDIT_LOG_PATH,
+src/daily_audit_summary.py:262:    df = load_execution_audit(audit_path, day=day, lookback_days=lookback_days)
+src/daily_audit_summary.py:263:    report = aggregate_execution_audit(df)
+src/daily_audit_summary.py:264:    validate_daily_audit_summary(report)
+src/daily_audit_summary.py:265:    write_daily_audit_artifacts(report, output_dir, day=day or date.today())
+src/daily_audit_summary.py:270:    parser = argparse.ArgumentParser(description="Daily execution audit aggregation")
+src/daily_audit_summary.py:271:    parser.add_argument("--audit-path", default=EXECUTION_AUDIT_LOG_PATH)
+src/daily_audit_summary.py:282:    report = run_daily_audit_summary(
+src/daily_audit_summary.py:283:        audit_path=args.audit_path,
+src/daily_audit_summary.py:288:    print(format_daily_audit_report(report))
+src/config.py:17:EXECUTION_AUDIT_LOG_PATH = "logs/execution_audit.csv"
+src/main.py:16:from src.logger import log_execution_audit, log_signal, log_order, log_order_status
+src/main.py:536:                    log_execution_audit(
+src/main.py:663:                                log_execution_audit(
+src/main.py:685:                                log_execution_audit(
+src/main.py:718:                                log_execution_audit(
+src/main.py:739:                                log_execution_audit(
+src/main.py:762:                    log_execution_audit(
+src/main.py:792:                log_execution_audit(
+src/main.py:823:                log_execution_audit(
+src/main.py:861:                log_execution_audit(
+src/main.py:898:                log_execution_audit(
+src/main.py:1100:                log_execution_audit(
+src/main.py:1128:            log_execution_audit(
+src/main.py:1183:            log_execution_audit(
+src/main.py:1209:            log_execution_audit(
+src/main.py:1251:            log_execution_audit(
+src/main.py:1284:            log_execution_audit(
+src/main.py:1331:            log_execution_audit(
+src/logger.py:100:def log_execution_audit(
+
+exec
+/bin/bash -lc "sed -n '90,145p' src/logger.py" in /home/kimyo/trading-bot
+ succeeded in 136ms:
+        "filled_qty": filled_qty,
+        "filled_avg_price": filled_avg_price,
+        "event": "STATUS_CHECK",
+    }
+
+    df = pd.DataFrame([row])
+    write_header = not log_file.exists()
+    df.to_csv(log_file, mode="a", header=write_header, index=False)
+
+
+def log_execution_audit(
+    event_type: str,
+    ticker: str,
+    action: str,
+    status: str,
+    reason: str = "",
+    *,
+    profile_name: str = "",
+    regime: str = "",
+    signal: str = "",
+    ai_score: float = None,
+    llm_verdict: str = "",
+    order_id: str = "",
+    order_type: str = "",
+    side: str = "",
+    notional: float = None,
+    quantity: float = None,
+    filled_qty: float = None,
+    filled_avg_price: float = None,
+) -> None:
+    log_file = Path(EXECUTION_AUDIT_LOG_PATH)
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+
+    def _round_or_none(value, digits: int):
+        if value is None or value == "":
+            return None
+        return round(float(value), digits)
+
+    row = {
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "event_type": event_type,
+        "ticker": ticker,
+        "action": action,
+        "status": status,
+        "reason": reason,
+        "profile_name": profile_name,
+        "regime": regime,
+        "signal": signal,
+        "ai_score": _round_or_none(ai_score, 4),
+        "llm_verdict": llm_verdict,
+        "order_id": order_id,
+        "order_type": order_type,
+        "side": side,
+        "notional": _round_or_none(notional, 2),
+        "quantity": _round_or_none(quantity, 4),
+        "filled_qty": _round_or_none(filled_qty, 4),
+
+exec
+/bin/bash -lc "sed -n '145,180p' src/logger.py" in /home/kimyo/trading-bot
+ succeeded in 121ms:
+        "filled_qty": _round_or_none(filled_qty, 4),
+        "filled_avg_price": _round_or_none(filled_avg_price, 4),
+    }
+
+    df = pd.DataFrame([row])
+    write_header = not log_file.exists()
+    df.to_csv(log_file, mode="a", header=write_header, index=False)
+
+exec
+/bin/bash -lc "git diff HEAD~5..HEAD -- src/report_performance.py | sed -n '1,320p'" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+exec
+/bin/bash -lc 'git diff fbfe66b''^..fbfe66b -- src/report_performance.py | sed -n '"'1,360p'" in /home/kimyo/trading-bot
+ succeeded in 150ms:
+exec
+/bin/bash -lc 'git log --oneline --decorate --all --max-count=15' in /home/kimyo/trading-bot
+ succeeded in 115ms:
+d56873c (HEAD -> main) chore: untrack champion model artifact; document local-only policy [cursor]
+fbfe66b feat(phase23): risk reports, crowding backtest, research-only docs
+6ee2976 feat(phase22): daily audit summary, context skips, and retrain alerts
+244fd1f test(phase21): promotion reject and rollback decision path [agy]
+64dc095 feat(phase21): ML quality reports and dual promotion gates [cursor]
+c43df10 feat(phase20): portfolio promotion gates and weekly slippage reporting [cursor]
+17df29a feat(orchestrator): balanced pass runs AGY pytest then Codex review [cursor]
+9314213 feat(ci): portfolio backtest summary gate in post-workflow [cursor]
+24d4ab7 docs(agents): multi-account token balance and pass-complete skill [cursor]
+f68333e chore(workflow): require Codex review after each pass via run_pass_complete [cursor]
+e7191d0 chore(agents): add workload report and AGY test ownership [cursor]
+5794891 test(backtest): add portfolio CSV golden regression [agy]
+74867fd docs(todo): slim active roadmap and archive phases 0-19
+9e3841c (origin/main, origin/HEAD) feat: expand execution resilience and regime reappraisal
+a6c3525 docs(agent): adopt Cursor-first review harness workflow
+
+exec
+/bin/bash -lc "git diff origin/main..HEAD -- src/report_performance.py scripts/check_portfolio_backtest_gate.py src/portfolio_backtest_validation.py | sed -n '1,520p'" in /home/kimyo/trading-bot
+ succeeded in 131ms:
+diff --git a/scripts/check_portfolio_backtest_gate.py b/scripts/check_portfolio_backtest_gate.py
+new file mode 100755
+index 0000000..7c333eb
+--- /dev/null
++++ b/scripts/check_portfolio_backtest_gate.py
+@@ -0,0 +1,81 @@
++#!/usr/bin/env python3
++"""CI/post-workflow gate for logs/portfolio_backtest/portfolio_summary.csv."""
++
++from __future__ import annotations
++
++import argparse
++import os
++import sys
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++if str(ROOT) not in sys.path:
++    sys.path.insert(0, str(ROOT))
++
++from src.portfolio_backtest_validation import (  # noqa: E402
++    PortfolioBacktestThresholds,
++    check_portfolio_backtest_thresholds,
++)
++
++
++def _env_float(name: str, default: float) -> float:
++    raw = os.environ.get(name)
++    return float(raw) if raw is not None else default
++
++
++def main() -> int:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument(
++        "--dir",
++        type=Path,
++        default=Path("logs/portfolio_backtest"),
++        help="Directory with portfolio_* CSV outputs",
++    )
++    parser.add_argument(
++        "--max-drawdown-floor",
++        type=float,
++        default=None,
++        help="Fail if max_drawdown is below this (default: env or -0.20)",
++    )
++    parser.add_argument(
++        "--min-return-vs-benchmark",
++        type=float,
++        default=None,
++        help="Fail if (total_return - benchmark_return) below this (default: -0.15)",
++    )
++    parser.add_argument(
++        "--min-sharpe",
++        type=float,
++        default=None,
++        help="Optional minimum sharpe_ratio",
++    )
++    args = parser.parse_args()
++
++    thresholds = PortfolioBacktestThresholds(
++        max_drawdown_floor=args.max_drawdown_floor
++        if args.max_drawdown_floor is not None
++        else _env_float("PORTFOLIO_MAX_DRAWDOWN_FLOOR", -0.20),
++        min_return_vs_benchmark=args.min_return_vs_benchmark
++        if args.min_return_vs_benchmark is not None
++        else _env_float("PORTFOLIO_MIN_RETURN_VS_BENCHMARK", -0.15),
++        min_sharpe=args.min_sharpe,
++    )
++
++    result = check_portfolio_backtest_thresholds(args.dir, thresholds)
++    summary = result.summary
++    print(
++        f"portfolio gate: total_return={summary['total_return']:.4f} "
++        f"benchmark={summary['benchmark_return']:.4f} "
++        f"max_drawdown={summary['max_drawdown']:.4f} "
++        f"sharpe={summary['sharpe_ratio']:.4f}"
++    )
++    for w in result.warnings:
++        print(f"WARNING: {w}")
++    for f in result.failures:
++        print(f"FAIL: {f}", file=sys.stderr)
++
++    return 0 if result.passed else 1
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/src/portfolio_backtest_validation.py b/src/portfolio_backtest_validation.py
+new file mode 100644
+index 0000000..7d6d539
+--- /dev/null
++++ b/src/portfolio_backtest_validation.py
+@@ -0,0 +1,236 @@
++"""Validate portfolio backtest CSV outputs (schema + optional golden metrics)."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from pathlib import Path
++from typing import Any
++
++import pandas as pd
++
++SUMMARY_COLUMNS = (
++    "initial_cash",
++    "final_equity",
++    "total_return",
++    "benchmark_return",
++    "max_drawdown",
++    "sharpe_ratio",
++    "trades",
++    "win_rate",
++)
++
++EQUITY_COLUMNS = (
++    "date",
++    "cash",
++    "positions_value",
++    "equity",
++    "positions_count",
++    "open_symbols",
++    "daily_return",
++    "running_max",
++    "drawdown",
++    "benchmark_equity",
++)
++
++TRADES_COLUMNS = (
++    "ticker",
++    "entry_date",
++    "exit_date",
++    "entry_price",
++    "exit_price",
++    "qty",
++    "cost_basis",
++    "exit_value",
++    "return_pct",
++    "exit_reason",
++)
++
++SUMMARY_METRIC_KEYS = (
++    "initial_cash",
++    "final_equity",
++    "total_return",
++    "benchmark_return",
++    "max_drawdown",
++    "sharpe_ratio",
++    "trades",
++    "win_rate",
++)
++
++
++def _require_columns(df: pd.DataFrame, required: tuple[str, ...], label: str) -> None:
++    missing = [c for c in required if c not in df.columns]
++    if missing:
++        raise ValueError(f"{label}: missing columns {missing}")
++
++
++def load_summary_row(path: Path) -> dict[str, Any]:
++    df = pd.read_csv(path)
++    if df.empty:
++        raise ValueError(f"{path}: summary is empty")
++    _require_columns(df, SUMMARY_COLUMNS, "portfolio_summary")
++    row = df.iloc[0]
++    out: dict[str, Any] = {}
++    for key in SUMMARY_METRIC_KEYS:
++        val = row[key]
++        if key == "trades":
++            out[key] = int(val)
++        elif key in ("initial_cash", "final_equity"):
++            out[key] = float(val)
++        else:
++            out[key] = float(val)
++    return out
++
++
++def validate_portfolio_backtest_dir(
++    output_dir: str | Path,
++    *,
++    golden_summary: dict[str, Any] | None = None,
++    summary_rtol: float = 1e-4,
++    summary_atol: float = 1e-6,
++    min_equity_rows: int = 2,
++    min_trades_rows: int = 0,
++) -> dict[str, Any]:
++    """Validate the three portfolio backtest CSVs under ``output_dir``."""
++    output_dir = Path(output_dir)
++    summary_path = output_dir / "portfolio_summary.csv"
++    equity_path = output_dir / "portfolio_equity.csv"
++    trades_path = output_dir / "portfolio_trades.csv"
++
++    for path in (summary_path, equity_path, trades_path):
++        if not path.is_file():
++            raise FileNotFoundError(f"Missing portfolio backtest artifact: {path}")
++
++    summary = load_summary_row(summary_path)
++
++    equity_df = pd.read_csv(equity_path)
++    _require_columns(equity_df, EQUITY_COLUMNS, "portfolio_equity")
++    if len(equity_df) < min_equity_rows:
++        raise ValueError(
++            f"portfolio_equity: expected at least {min_equity_rows} rows, got {len(equity_df)}"
++        )
++    if equity_df["equity"].isna().any():
++        raise ValueError("portfolio_equity: NaN in equity column")
++
++    trades_df = pd.read_csv(trades_path)
++    _require_columns(trades_df, TRADES_COLUMNS, "portfolio_trades")
++    if len(trades_df) < min_trades_rows:
++        raise ValueError(
++            f"portfolio_trades: expected at least {min_trades_rows} rows, got {len(trades_df)}"
++        )
++
++    if int(summary["trades"]) != len(trades_df):
++        raise ValueError(
++            f"summary trades={summary['trades']} != trades rows={len(trades_df)}"
++        )
++
++    if golden_summary is not None:
++        import numpy as np
++
++        for key in SUMMARY_METRIC_KEYS:
++            if key not in golden_summary:
++                raise KeyError(f"golden_summary missing key: {key}")
++            expected = golden_summary[key]
++            actual = summary[key]
++            if key == "trades":
++                if int(actual) != int(expected):
++                    raise AssertionError(
++                        f"{key}: expected {expected}, got {actual}"
++                    )
++            elif not np.isclose(actual, float(expected), rtol=summary_rtol, atol=summary_atol):
++                raise AssertionError(
++                    f"{key}: expected {expected}, got {actual}"
++                )
++
++    return {
++        "summary": summary,
++        "equity_rows": len(equity_df),
++        "trades_rows": len(trades_df),
++    }
++
++
++@dataclass
++class PortfolioBacktestThresholds:
++    """OOS / CI gates on portfolio_summary.csv (not golden fixture regression)."""
++
++    max_drawdown_floor: float = -0.20
++    min_return_vs_benchmark: float = -0.15
++    min_sharpe: float | None = None
++
++
++@dataclass
++class PortfolioBacktestThresholdResult:
++    summary: dict[str, Any]
++    passed: bool
++    failures: list[str]
++    warnings: list[str]
++
++
++def _apply_portfolio_thresholds_to_summary(
++    summary: dict[str, Any],
++    thresholds: PortfolioBacktestThresholds,
++) -> tuple[list[str], list[str]]:
++    failures: list[str] = []
++    warnings: list[str] = []
++
++    max_dd = float(summary["max_drawdown"])
++    if max_dd < thresholds.max_drawdown_floor:
++        failures.append(
++            f"max_drawdown {max_dd:.4f} worse than floor {thresholds.max_drawdown_floor:.4f}"
++        )
++
++    excess_vs_bench = float(summary["total_return"]) - float(summary["benchmark_return"])
++    if excess_vs_bench < thresholds.min_return_vs_benchmark:
++        failures.append(
++            f"total_return - benchmark_return = {excess_vs_bench:.4f} "
++            f"< min {thresholds.min_return_vs_benchmark:.4f}"
++        )
++    elif excess_vs_bench < 0:
++        warnings.append(
++            f"underperforms benchmark by {-excess_vs_bench:.4f} (within allowed gap)"
++        )
++
++    if thresholds.min_sharpe is not None:
++        sharpe = float(summary["sharpe_ratio"])
++        if sharpe < thresholds.min_sharpe:
++            failures.append(f"sharpe_ratio {sharpe:.4f} < min {thresholds.min_sharpe:.4f}")
++
++    return failures, warnings
++
++
++def check_portfolio_summary_thresholds(
++    summary: dict[str, Any],
++    thresholds: PortfolioBacktestThresholds | None = None,
++) -> PortfolioBacktestThresholdResult:
++    """Apply portfolio-level gates to an in-memory summary row (retrain promotion)."""
++    thresholds = thresholds or PortfolioBacktestThresholds()
++    failures, warnings = _apply_portfolio_thresholds_to_summary(summary, thresholds)
++    return PortfolioBacktestThresholdResult(
++        summary=summary,
++        passed=not failures,
++        failures=failures,
++        warnings=warnings,
++    )
++
++
++def check_portfolio_backtest_thresholds(
++    output_dir: str | Path,
++    thresholds: PortfolioBacktestThresholds | None = None,
++    *,
++    validate_schema: bool = True,
++) -> PortfolioBacktestThresholdResult:
++    """Apply portfolio-level gates after schema validation."""
++    thresholds = thresholds or PortfolioBacktestThresholds()
++
++    if validate_schema:
++        result = validate_portfolio_backtest_dir(output_dir, min_equity_rows=2)
++        summary = result["summary"]
++    else:
++        summary = load_summary_row(Path(output_dir) / "portfolio_summary.csv")
++
++    failures, warnings = _apply_portfolio_thresholds_to_summary(summary, thresholds)
++    return PortfolioBacktestThresholdResult(
++        summary=summary,
++        passed=not failures,
++        failures=failures,
++        warnings=warnings,
++    )
+diff --git a/src/report_performance.py b/src/report_performance.py
+index 2ebc588..e67e555 100644
+--- a/src/report_performance.py
++++ b/src/report_performance.py
+@@ -1,113 +1,325 @@
+-"""실제 거래 내역과 백테스트 결과를 비교 분석하는 스크립트."""
++"""실제 거래 내역과 시그널 가격을 비교해 paper 슬리피지를 분석·리포트한다."""
++
++from __future__ import annotations
++
++import argparse
++import json
++from dataclasses import asdict, dataclass
++from datetime import datetime, timedelta, timezone
++from pathlib import Path
+ 
+-import pandas as pd
+ import numpy as np
+-from datetime import datetime, timedelta
++import pandas as pd
++
+ from src.alpaca_client import get_account_summary, get_positions_summary
+-from src.config import SIGNAL_LOG_PATH, ORDER_LOG_PATH
+-
+-
+-def analyze_slippage(signals_path=None, orders_path=None):
+-    """signals log와 orders log를 결합하여 슬리피지를 분석한다."""
+-    
+-    # 인자가 제공되지 않으면 기본 경로 사용
+-    if signals_path is None:
+-        signals_path = SIGNAL_LOG_PATH
+-    if orders_path is None:
+-        orders_path = ORDER_LOG_PATH
+-        
+-    try:
+-        signals_df = pd.read_csv(signals_path)
+-        orders_df = pd.read_csv(orders_path)
+-    except FileNotFoundError:
+-        print("Log files not found.")
+-        return
++from src.config import ORDER_LOG_PATH, SIGNAL_LOG_PATH
+ 
+-    # 주문 체결 내역만 필터링 (기존 로그의 컬럼 밀림 현상 대응)
+-    # 1. 'event' 컬럼에서 확인
++
++@dataclass
++class SlippageReport:
++    generated_at: str
++    lookback_days: int
++    signals_path: str
++    orders_path: str
++    matched_trades: int
++    overall_avg_slippage_pct: float
++    total_slippage_usd: float
++    by_ticker: list[dict]
++    status: str = "ok"
++    message: str | None = None
++
++    def to_dict(self) -> dict:
++        return asdict(self)
++
++
++def _utc_now_iso() -> str:
++    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
++
++
++def _filter_since(df: pd.DataFrame, since: datetime | None, column: str = "timestamp") -> pd.DataFrame:
++    if since is None or df.empty or column not in df.columns:
++        return df
++    frame = df.copy()
++    frame["_ts"] = pd.to_datetime(frame[column], utc=True, errors="coerce")
++    cutoff = pd.Timestamp(since).tz_convert("UTC") if pd.Timestamp(since).tzinfo else pd.Timestamp(since, tz="UTC")
++    return frame[frame["_ts"] >= cutoff].drop(columns=["_ts"])
++
++
++def _extract_filled_orders(orders_df: pd.DataFrame) -> pd.DataFrame:
+     filled_orders = orders_df[orders_df.get("event") == "STATUS_CHECK"].copy()
+-    
+-    # 2. 만약 비어있다면, 다른 컬럼에 밀려있는지 확인 (예: filled_avg_price 컬럼에 STATUS_CHECK이 있는 경우)
++
+     if filled_orders.empty:
+-        # 마지막 컬럼들 중 'STATUS_CHECK'이 포함된 행 찾기
+         mask = orders_df.apply(lambda row: "STATUS_CHECK" in row.values, axis=1)
+         filled_orders = orders_df[mask].copy()
+-        
+-        # 컬럼 재매핑 (데이터 위치에 맞게)
+-        # 필터링된 행들에 대해 'STATUS_CHECK'이 위치한 인덱스를 기준으로 재배치
+-        def remap_row(row):
++
++        def remap_row(row: pd.Series) -> pd.Series:
+             vals = list(row)
+             if "STATUS_CHECK" in vals:
+                 idx = vals.index("STATUS_CHECK")
+-                # STATUS_CHECK이 마지막(10번 인덱스)에 있다고 가정하고 밀린 경우 대응
+-                # timestamp, ticker, notional, order_id, status, side, order_type, filled_qty, filled_avg_price, reason, event
+                 if idx == 10:
+-                    return pd.Series([vals[0], vals[1], vals[2], vals[3], vals[4], vals[5], vals[6], vals[7], vals[8], vals[9], vals[10]],
+-                                   index=["timestamp", "ticker", "notional", "order_id", "status", "side", "order_type", "filled_qty", "filled_avg_price", "reason", "event"])
++                    return pd.Series(
++                        [
++                            vals[0],
++                            vals[1],
++                            vals[2],
++                            vals[3],
++                            vals[4],
++                            vals[5],
++                            vals[6],
++                            vals[7],
++                            vals[8],
++                            vals[9],
++                            vals[10],
++                        ],
++                        index=[
++                            "timestamp",
++                            "ticker",
++                            "notional",
++                            "order_id",
++                            "status",
++                            "side",
++                            "order_type",
++                            "filled_qty",
++                            "filled_avg_price",
++                            "reason",
++                            "event",
++                        ],
++                    )
+             return row
+ 
+         if not filled_orders.empty:
+             filled_orders = filled_orders.apply(remap_row, axis=1)
+ 
+     if filled_orders.empty:
+-        print("No filled orders found in log.")
+-        return
++        return filled_orders
++
++    filled_orders["filled_avg_price"] = pd.to_numeric(
++        filled_orders["filled_avg_price"], errors="coerce"
++    )
++    return filled_orders.dropna(subset=["filled_avg_price"])
++
++
++def compute_slippage_report(
++    signals_path: str | Path | None = None,
++    orders_path: str | Path | None = None,
++    *,
++    lookback_days: int | None = None,
++    since: datetime | None = None,
++) -> SlippageReport | None:
++    """Match paper fills to signal close prices and compute slippage metrics."""
++    signals_path = Path(signals_path or SIGNAL_LOG_PATH)
++    orders_path = Path(orders_path or ORDER_LOG_PATH)
++
++    if since is None and lookback_days is not None:
++        since = datetime.now(timezone.utc) - timedelta(days=lookback_days)
++
++    try:
++        signals_df = pd.read_csv(signals_path)
++        orders_df = pd.read_csv(orders_path)
++    except FileNotFoundError:
++        return None
+ 
+-    # 숫자형 변환
+-    filled_orders["filled_avg_price"] = pd.to_numeric(filled_orders["filled_avg_price"], errors="coerce")
+-    filled_orders = filled_orders.dropna(subset=["filled_avg_price"])
++    signals_df = _filter_since(signals_df, since)
++    orders_df = _filter_since(orders_df, since)
+ 
++    filled_orders = _extract_filled_orders(orders_df)
++    if filled_orders.empty:
++        return None
+ 
+-    # Timestamp 변환 (초 단위 절삭하여 매칭 확률 높임)
+-    signals_df["ts_short"] = pd.to_datetime(signals_df["timestamp"]).dt.floor("min")
+-    filled_orders["ts_short"] = pd.to_datetime(filled_orders["timestamp"]).dt.floor("min")
++    signals_df["ts_short"] = pd.to_datetime(signals_df["timestamp"], utc=True).dt.floor("min")
++    filled_orders["ts_short"] = pd.to_datetime(filled_orders["timestamp"], utc=True).dt.floor("min")
+ 
+-    # Ticker와 유사 시간대로 Join
+     merged = pd.merge(
+         filled_orders,
+         signals_df,
+         on=["ticker", "ts_short"],
+         how="inner",
+-        suffixes=("_order", "_signal")
++        suffixes=("_order", "_signal"),
+     )
+-
+     if merged.empty:
+-        print("Could not match orders with signals for slippage analysis.")
+-        # 시간을 좀 더 넓게 잡아보자 (5분 내외)
+
+exec
+/bin/bash -lc "git diff origin/main..HEAD -- src/report_performance.py | sed -n '320,760p'" in /home/kimyo/trading-bot
+ succeeded in 174ms:
++            f"Matched trades: {report.matched_trades}\n"
++            f"Avg slippage: {report.overall_avg_slippage_pct:.4f}%\n"
++            f"Total cost: ${report.total_slippage_usd:.2f}"
++        ),
++    )
++
++
++def _empty_slippage_report(
++    *,
++    lookback_days: int,
++    signals_path: Path,
++    orders_path: Path,
++    message: str,
++) -> SlippageReport:
++    return SlippageReport(
++        generated_at=_utc_now_iso(),
++        lookback_days=lookback_days,
++        signals_path=str(signals_path),
++        orders_path=str(orders_path),
++        matched_trades=0,
++        overall_avg_slippage_pct=0.0,
++        total_slippage_usd=0.0,
++        by_ticker=[],
++        status="no_data",
++        message=message,
++    )
++
++
++def run_weekly_slippage_report(
++    *,
++    lookback_days: int = 7,
++    output_dir: str | Path = "logs/slippage_reports",
++    signals_path: str | Path | None = None,
++    orders_path: str | Path | None = None,
++    notify_telegram: bool = False,
++    include_account: bool = False,
++) -> SlippageReport:
++    signals_path = Path(signals_path or SIGNAL_LOG_PATH)
++    orders_path = Path(orders_path or ORDER_LOG_PATH)
++
++    report = compute_slippage_report(
++        signals_path=signals_path,
++        orders_path=orders_path,
++        lookback_days=lookback_days,
++    )
++    if report is None:
++        report = _empty_slippage_report(
++            lookback_days=lookback_days,
++            signals_path=signals_path,
++            orders_path=orders_path,
++            message="no matched paper fills in lookback window",
++        )
++        print(f"Weekly slippage report: {report.message}.")
++
++    run_dir = write_slippage_artifacts(report, output_dir)
++    print(format_slippage_report(report))
++    print(f"\nSaved weekly slippage report to {run_dir}")
++    if notify_telegram:
++        _maybe_notify_slippage(report)
++    if include_account:
++        report_account_performance()
++    return report
++
++
++def report_account_performance() -> None:
++    """Alpaca paper 계좌의 현재 실적 요약."""
+     account = get_account_summary()
+     positions = get_positions_summary()
+-    
++
+     print("\n=== Account Performance Summary ===")
+     print(f"Portfolio Value: ${account['portfolio_value']:.2f}")
+     print(f"Cash: ${account['cash']:.2f}")
+-    
++
+     if positions:
+         print("\n--- Open Positions ---")
+         pos_df = pd.DataFrame(positions)
+@@ -116,10 +328,67 @@ def report_account_performance():
+         print("\nNo open positions.")
+ 
+ 
+-def main():
++def _load_slippage_config() -> dict:
++    path = Path("config/slippage_report_config.json")
++    if not path.is_file():
++        return {}
++    return json.loads(path.read_text(encoding="utf-8"))
++
++
++def main() -> None:
++    config = _load_slippage_config()
++    parser = argparse.ArgumentParser(description="Paper vs signal slippage reporting")
++    parser.add_argument(
++        "--weekly",
++        action="store_true",
++        help="Run weekly lookback, write artifacts under output_dir",
++    )
++    parser.add_argument(
++        "--days",
++        type=int,
++        default=int(config.get("lookback_days", 7)),
++        help="Lookback window in days (default from config or 7)",
++    )
++    parser.add_argument(
++        "--output-dir",
++        default=str(config.get("output_dir", "logs/slippage_reports")),
++        help="Directory for JSON/CSV weekly artifacts",
++    )
++    parser.add_argument(
++        "--telegram",
++        action="store_true",
++        default=bool(config.get("notify_telegram", False)),
++        help="Send Telegram summary when configured",
++    )
++    parser.add_argument(
++        "--account",
++        action="store_true",
++        help="Include Alpaca account summary",
++    )
++    parser.add_argument("--signals", default=None, help="Override signals CSV path")
++    parser.add_argument("--orders", default=None, help="Override orders CSV path")
++    args = parser.parse_args()
++
+     print(f"Performance Report - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+-    report_account_performance()
+-    analyze_slippage()
++
++    if args.weekly:
++        run_weekly_slippage_report(
++            lookback_days=args.days,
++            output_dir=args.output_dir,
++            signals_path=args.signals,
++            orders_path=args.orders,
++            notify_telegram=args.telegram,
++            include_account=args.account,
++        )
++        return
++
++    if args.account:
++        report_account_performance()
++    analyze_slippage(
++        signals_path=args.signals,
++        orders_path=args.orders,
++        lookback_days=args.days if args.days > 0 else None,
++    )
+ 
+ 
+ if __name__ == "__main__":
+
+exec
+/bin/bash -lc "sed -n '100,260p' src/report_performance.py" in /home/kimyo/trading-bot
+ succeeded in 126ms:
+
+
+def compute_slippage_report(
+    signals_path: str | Path | None = None,
+    orders_path: str | Path | None = None,
+    *,
+    lookback_days: int | None = None,
+    since: datetime | None = None,
+) -> SlippageReport | None:
+    """Match paper fills to signal close prices and compute slippage metrics."""
+    signals_path = Path(signals_path or SIGNAL_LOG_PATH)
+    orders_path = Path(orders_path or ORDER_LOG_PATH)
+
+    if since is None and lookback_days is not None:
+        since = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+
+    try:
+        signals_df = pd.read_csv(signals_path)
+        orders_df = pd.read_csv(orders_path)
+    except FileNotFoundError:
+        return None
+
+    signals_df = _filter_since(signals_df, since)
+    orders_df = _filter_since(orders_df, since)
+
+    filled_orders = _extract_filled_orders(orders_df)
+    if filled_orders.empty:
+        return None
+
+    signals_df["ts_short"] = pd.to_datetime(signals_df["timestamp"], utc=True).dt.floor("min")
+    filled_orders["ts_short"] = pd.to_datetime(filled_orders["timestamp"], utc=True).dt.floor("min")
+
+    merged = pd.merge(
+        filled_orders,
+        signals_df,
+        on=["ticker", "ts_short"],
+        how="inner",
+        suffixes=("_order", "_signal"),
+    )
+    if merged.empty:
+        return None
+
+    merged["side_lower"] = merged["side"].astype(str).str.lower()
+    sign = np.where(merged["side_lower"].str.contains("sell", na=False), -1, 1)
+    merged["slippage_pct"] = (
+        sign * (merged["filled_avg_price"] - merged["close"]) / merged["close"] * 100
+    )
+    merged["filled_qty"] = pd.to_numeric(merged["filled_qty"], errors="coerce")
+    merged["slippage_usd"] = (
+        sign * (merged["filled_avg_price"] - merged["close"]) * merged["filled_qty"]
+    )
+
+    by_ticker_df = merged.groupby("ticker").agg(
+        avg_slippage_pct=("slippage_pct", "mean"),
+        total_slippage_usd=("slippage_usd", "sum"),
+        trades=("ticker", "count"),
+    )
+    by_ticker = [
+        {
+            "ticker": str(ticker),
+            "avg_slippage_pct": float(row["avg_slippage_pct"]),
+            "total_slippage_usd": float(row["total_slippage_usd"]),
+            "trades": int(row["trades"]),
+        }
+        for ticker, row in by_ticker_df.iterrows()
+    ]
+
+    return SlippageReport(
+        generated_at=_utc_now_iso(),
+        lookback_days=int(lookback_days or 0),
+        signals_path=str(signals_path),
+        orders_path=str(orders_path),
+        matched_trades=int(len(merged)),
+        overall_avg_slippage_pct=float(merged["slippage_pct"].mean()),
+        total_slippage_usd=float(merged["slippage_usd"].sum()),
+        by_ticker=by_ticker,
+    )
+
+
+def format_slippage_report(report: SlippageReport) -> str:
+    lines = [
+        "",
+        "=== Slippage Analysis (Paper Fill vs Signal Price) ===",
+        f"Window: last {report.lookback_days} day(s)" if report.lookback_days else "Window: all logs",
+        f"Status: {report.status}",
+        f"Matched trades: {report.matched_trades}",
+    ]
+    if report.message:
+        lines.append(f"Note: {report.message}")
+    if report.by_ticker:
+        summary = pd.DataFrame(report.by_ticker).set_index("ticker")
+        lines.append(summary.to_string())
+    lines.append(f"\nOverall Average Slippage: {report.overall_avg_slippage_pct:.4f}%")
+    lines.append(f"Total Slippage Cost: ${report.total_slippage_usd:.2f}")
+    return "\n".join(lines)
+
+
+def write_slippage_artifacts(
+    report: SlippageReport,
+    output_dir: str | Path,
+    *,
+    run_id: str | None = None,
+) -> Path:
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    stamp = run_id or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    run_dir = output_dir / f"slippage_{stamp}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    (run_dir / "summary.json").write_text(
+        json.dumps(report.to_dict(), indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    if report.by_ticker:
+        pd.DataFrame(report.by_ticker).to_csv(run_dir / "by_ticker.csv", index=False)
+
+    latest = output_dir / "latest_summary.json"
+    latest.write_text(
+        json.dumps(report.to_dict(), indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    return run_dir
+
+
+def analyze_slippage(
+    signals_path: str | Path | None = None,
+    orders_path: str | Path | None = None,
+    *,
+    lookback_days: int | None = None,
+) -> SlippageReport | None:
+    report = compute_slippage_report(
+        signals_path=signals_path,
+        orders_path=orders_path,
+        lookback_days=lookback_days,
+    )
+    if report is None:
+        print("No slippage data available (missing logs, fills, or signal matches).")
+        return None
+    print(format_slippage_report(report))
+    return report
+
+
+def _maybe_notify_slippage(report: SlippageReport) -> None:
+    try:
+        from src.notifier import notify_info
+    except ImportError:
+        return
+    notify_info(
+        "Weekly paper vs signal slippage",
+        (
+            f"Matched trades: {report.matched_trades}\n"
+            f"Avg slippage: {report.overall_avg_slippage_pct:.4f}%\n"
+            f"Total cost: ${report.total_slippage_usd:.2f}"
+        ),
+    )
+
+
+def _empty_slippage_report(
+    *,
+    lookback_days: int,
+    signals_path: Path,
+
+exec
+/bin/bash -lc "git show origin/main:src/report_performance.py | sed -n '35,115p'" in /home/kimyo/trading-bot
+ succeeded in 174ms:
+        
+        # 컬럼 재매핑 (데이터 위치에 맞게)
+        # 필터링된 행들에 대해 'STATUS_CHECK'이 위치한 인덱스를 기준으로 재배치
+        def remap_row(row):
+            vals = list(row)
+            if "STATUS_CHECK" in vals:
+                idx = vals.index("STATUS_CHECK")
+                # STATUS_CHECK이 마지막(10번 인덱스)에 있다고 가정하고 밀린 경우 대응
+                # timestamp, ticker, notional, order_id, status, side, order_type, filled_qty, filled_avg_price, reason, event
+                if idx == 10:
+                    return pd.Series([vals[0], vals[1], vals[2], vals[3], vals[4], vals[5], vals[6], vals[7], vals[8], vals[9], vals[10]],
+                                   index=["timestamp", "ticker", "notional", "order_id", "status", "side", "order_type", "filled_qty", "filled_avg_price", "reason", "event"])
+            return row
+
+        if not filled_orders.empty:
+            filled_orders = filled_orders.apply(remap_row, axis=1)
+
+    if filled_orders.empty:
+        print("No filled orders found in log.")
+        return
+
+    # 숫자형 변환
+    filled_orders["filled_avg_price"] = pd.to_numeric(filled_orders["filled_avg_price"], errors="coerce")
+    filled_orders = filled_orders.dropna(subset=["filled_avg_price"])
+
+
+    # Timestamp 변환 (초 단위 절삭하여 매칭 확률 높임)
+    signals_df["ts_short"] = pd.to_datetime(signals_df["timestamp"]).dt.floor("min")
+    filled_orders["ts_short"] = pd.to_datetime(filled_orders["timestamp"]).dt.floor("min")
+
+    # Ticker와 유사 시간대로 Join
+    merged = pd.merge(
+        filled_orders,
+        signals_df,
+        on=["ticker", "ts_short"],
+        how="inner",
+        suffixes=("_order", "_signal")
+    )
+
+    if merged.empty:
+        print("Could not match orders with signals for slippage analysis.")
+        # 시간을 좀 더 넓게 잡아보자 (5분 내외)
+        return
+
+    merged["side_lower"] = merged["side"].astype(str).str.lower()
+    # Handle both plain "sell" and Enum string representation "orderside.sell"
+    sign = np.where(merged["side_lower"].str.contains("sell", na=False), -1, 1)
+
+    merged["slippage_pct"] = sign * (merged["filled_avg_price"] - merged["close"]) / merged["close"] * 100
+
+    # 슬리피지 USD 비용 계산
+    merged["filled_qty"] = pd.to_numeric(merged["filled_qty"], errors="coerce")
+    merged["slippage_usd"] = sign * (merged["filled_avg_price"] - merged["close"]) * merged["filled_qty"]
+    
+    # BUY는 높은 가격에 체결되면 슬리피지 발생 (+), SELL은 낮은 가격에 체결되면 발생 (+)
+    # 편의상 절대값이나 방향성을 고려해 출력
+    print("\n=== Slippage Analysis (Actual vs Signal Price) ===")
+    summary = merged.groupby("ticker").agg(
+        avg_slippage_pct=("slippage_pct", "mean"),
+        total_slippage_usd=("slippage_usd", "sum"),
+        trades=("ticker", "count")
+    )
+    print(summary.to_string())
+    print(f"\nOverall Average Slippage: {merged['slippage_pct'].mean():.4f}%")
+    print(f"Total Slippage Cost: ${merged['slippage_usd'].sum():.2f}")
+
+
+def report_account_performance():
+    """Alpaca 계좌의 현재 실적 요약."""
+    account = get_account_summary()
+    positions = get_positions_summary()
+    
+    print("\n=== Account Performance Summary ===")
+    print(f"Portfolio Value: ${account['portfolio_value']:.2f}")
+    print(f"Cash: ${account['cash']:.2f}")
+    
+    if positions:
+        print("\n--- Open Positions ---")
+        pos_df = pd.DataFrame(positions)
+        print(pos_df[["symbol", "qty", "market_value", "unrealized_plpc"]].to_string(index=False))
+    else:
+
+exec
+/bin/bash -lc "sed -n '1,180p' scripts/run_pass_complete.sh && sed -n '1,180p' scripts/run_balanced_pass.sh && git diff origin/main..HEAD -- scripts/agent_orchestrator.py | sed -n '1,260p'" in /home/kimyo/trading-bot
+ succeeded in 170ms:
+#!/usr/bin/env bash
+# Close one dev pass: pytest → review packet → Codex scoped review → NEXT_TODO.
+#
+# Usage:
+#   RUN_ID=phase20_golden bash scripts/run_pass_complete.sh
+#   RUN_ID=phase20_golden bash scripts/run_pass_complete.sh "Cursor feature + AGY golden tests"
+#   RUN_ID=phase20_golden TASK_FILE=prompts/my_pass.md bash scripts/run_pass_complete.sh
+#
+# Requires: .venv, Codex CLI with credits for step 3.
+# FULL_PYTEST=1 for entire suite; SKIP_PYTEST=1 if already green.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+RUN_ID="${RUN_ID:?Set RUN_ID, e.g. RUN_ID=phase20_golden}"
+IMPLEMENTATION_AGENT="${IMPLEMENTATION_AGENT:-cursor}"
+OUT_DIR="reports/agent_pipeline/${RUN_ID}"
+mkdir -p "$OUT_DIR"
+
+if [[ -n "${1:-}" ]]; then
+  printf '%s\n' "$1" >"$OUT_DIR/TASK.md"
+elif [[ -n "${TASK_FILE:-}" && -f "$TASK_FILE" ]]; then
+  cp "$TASK_FILE" "$OUT_DIR/TASK.md"
+elif [[ ! -f "$OUT_DIR/TASK.md" ]]; then
+  printf 'Pass %s: Cursor implementation + AGY tests complete. Request Codex review.\n' "$RUN_ID" >"$OUT_DIR/TASK.md"
+fi
+
+echo "=== [1/3] pytest ==="
+if [[ "${SKIP_PYTEST:-}" == "1" ]]; then
+  echo "SKIP_PYTEST=1 — skipped"
+elif [[ "${FULL_PYTEST:-}" == "1" ]]; then
+  PYTHONPATH=. .venv/bin/python -m pytest -q
+else
+  # Default: harness-aligned subset (fast, no optional qlib/xgboost stack required).
+  PYTHONPATH=. .venv/bin/python -m pytest -q \
+    tests/test_report_performance.py \
+    tests/test_reappraise_regime.py \
+    tests/test_portfolio_backtest_golden.py \
+    tests/test_portfolio_backtest_gate.py
+fi
+
+echo "=== [2/3] Codex review via orchestrator (post-workflow + scoped review) ==="
+export IMPLEMENTATION_AGENT
+CODEX_EXIT=0
+.venv/bin/python scripts/agent_orchestrator.py \
+  --run-id "$RUN_ID" \
+  --task-file "$OUT_DIR/TASK.md" \
+  --run-codex-review \
+  --scoped-review \
+  --ignore-artifacts \
+  || CODEX_EXIT=$?
+
+echo ""
+echo "=== [3/3] Pass outputs ==="
+echo "  Review packet:  $OUT_DIR/review_packet.md"
+echo "  Draft TODO:     $OUT_DIR/NEXT_TODO.md"
+if [[ -f "$OUT_DIR/NEXT_TODO.codex.md" ]]; then
+  echo "  Codex TODO:     $OUT_DIR/NEXT_TODO.codex.md  ← read this next"
+  echo ""
+  echo "--- NEXT_TODO.codex.md (preview) ---"
+  head -40 "$OUT_DIR/NEXT_TODO.codex.md" || true
+else
+  echo "  Codex TODO:     (missing — Codex did not finish)"
+  if [[ -f "$OUT_DIR/codex_review_command.log" ]]; then
+    echo ""
+    echo "--- codex_review_command.log (tail) ---"
+    tail -15 "$OUT_DIR/codex_review_command.log" || true
+  fi
+fi
+
+echo ""
+if [[ "$CODEX_EXIT" -ne 0 ]] || [[ ! -f "$OUT_DIR/NEXT_TODO.codex.md" ]]; then
+  echo "Codex review incomplete (exit ${CODEX_EXIT:-?}). Fix credits/CLI, then re-run:"
+  echo "  RUN_ID=$RUN_ID SKIP_PYTEST=1 bash scripts/run_pass_complete.sh"
+  exit "${CODEX_EXIT:-1}"
+fi
+
+echo "Pass complete. Implement items from NEXT_TODO.codex.md in Cursor, then repeat."
+PYTHONPATH=. .venv/bin/python scripts/agent_workload_report.py --record 2>/dev/null || true
+exit 0
+#!/usr/bin/env bash
+# Balanced multi-account pass: AGY tests → orchestrator (post-workflow + Codex).
+#
+# Usage:
+#   RUN_ID=phase20_portfolio_gate bash scripts/run_balanced_pass.sh
+#   RUN_ID=phase20_portfolio_gate AGY_PROMPT=prompts/agy/phase20_portfolio_gate.md bash scripts/run_balanced_pass.sh
+#
+# Optional: AGY_USE_GEMINI=1 with `gemini` on PATH to implement tests from prompt (legacy).
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+RUN_ID="${RUN_ID:?Set RUN_ID}"
+AGY_PROMPT="${AGY_PROMPT:-prompts/agy/phase20_portfolio_gate.md}"
+OUT_DIR="reports/agent_pipeline/${RUN_ID}"
+mkdir -p "$OUT_DIR"
+
+if [[ -f "$AGY_PROMPT" ]]; then
+  cp "$AGY_PROMPT" "$OUT_DIR/AGY_TASK.md"
+fi
+
+echo "=== Balanced pass: $RUN_ID ==="
+
+if [[ "${AGY_USE_GEMINI:-}" == "1" ]] && command -v gemini >/dev/null 2>&1; then
+  echo "=== [AGY] Gemini CLI slice (AGY_USE_GEMINI=1) ==="
+  gemini --skip-trust --approval-mode auto_edit --prompt "$(cat "$AGY_PROMPT")"
+elif [[ "${SKIP_AGY:-}" == "1" ]]; then
+  echo "SKIP_AGY=1 — skipping AGY pytest slice"
+else
+  AGY_PROMPT="$AGY_PROMPT" bash scripts/run_agy_slice.sh
+fi
+
+exec .venv/bin/python scripts/agent_orchestrator.py \
+  --run-id "$RUN_ID" \
+  --balanced-pass \
+  --agy-prompt "$AGY_PROMPT" \
+  --task-file "$OUT_DIR/AGY_TASK.md" \
+  ${AGY_TEST_PATHS:+--agy-test-paths "$AGY_TEST_PATHS"}
+diff --git a/scripts/agent_orchestrator.py b/scripts/agent_orchestrator.py
+index 221eb0c..05b51d8 100755
+--- a/scripts/agent_orchestrator.py
++++ b/scripts/agent_orchestrator.py
+@@ -85,6 +85,27 @@ def parse_args() -> argparse.Namespace:
+         default=240,
+         help="Timeout for the Codex review step.",
+     )
++    parser.add_argument(
++        "--ignore-artifacts",
++        action="store_true",
++        help="Allow Codex review when models/logs are in the diff (pass closure).",
++    )
++    parser.add_argument(
++        "--balanced-pass",
++        action="store_true",
++        help="Run AGY pytest slice, then post-workflow + Codex scoped review.",
++    )
++    parser.add_argument(
++        "--agy-prompt",
++        type=Path,
++        default=Path("prompts/agy/phase20_portfolio_gate.md"),
++        help="AGY task file copied into the run directory (with --balanced-pass).",
++    )
++    parser.add_argument(
++        "--agy-test-paths",
++        default="tests/test_portfolio_backtest_gate.py",
++        help="Comma-separated pytest paths for the AGY slice.",
++    )
+     parser.add_argument(
+         "--dry-run",
+         action="store_true",
+@@ -188,7 +209,11 @@ def write_json(path: Path, data: dict) -> None:
+ 
+ 
+ def check_stop_conditions(
+-    out_dir: Path, max_changed_files: int, history: list[dict]
++    out_dir: Path,
++    max_changed_files: int,
++    history: list[dict],
++    *,
++    ignore_artifacts: bool = False,
+ ) -> str | None:
+     changed_files_path = out_dir / "changed_files.txt"
+     if changed_files_path.exists():
+@@ -201,7 +226,7 @@ def check_stop_conditions(
+             for f in changed_files
+             if any(p in f for p in ["models/", "logs/", "reports/", ".pytest_cache/"])
+         ]
+-        if artifacts:
++        if artifacts and not ignore_artifacts:
+             return f"Generated artifacts detected in diff (excluded from review loop): {artifacts}"
+ 
+         sensitive = [
+@@ -259,6 +284,30 @@ def main() -> int:
+         print("Refusing Gemini yolo mode in this orchestrator.", file=sys.stderr)
+         return 2
+ 
++    if args.balanced_pass:
++        args.run_codex_review = True
++        args.ignore_artifacts = True
++        pre_dir = REPORT_ROOT / (args.run_id or dt.datetime.now().strftime("%Y%m%dT%H%M%S"))
++        pre_dir.mkdir(parents=True, exist_ok=True)
++        if args.agy_prompt.is_file():
++            (pre_dir / "AGY_TASK.md").write_text(
++                args.agy_prompt.read_text(encoding="utf-8"), encoding="utf-8"
++            )
++        agy_env = os.environ.copy()
++        agy_env["AGY_PROMPT"] = str(args.agy_prompt)
++        agy_env["AGY_TEST_PATHS"] = args.agy_test_paths.replace(",", " ")
++        print("--- Balanced pass: AGY pytest slice ---")
++        agy_code = run_command(
++            ["bash", "scripts/run_agy_slice.sh"],
++            log_path=pre_dir / "agy_slice.log",
++            env=agy_env,
++            dry_run=args.dry_run,
++        )
++        if agy_code != 0:
++            print(f"AGY slice failed with exit code {agy_code}", file=sys.stderr)
++            return agy_code
++        os.environ.setdefault("IMPLEMENTATION_AGENT", "cursor+agy")
++
+     history: list[dict] = []
+     
+     for i in range(args.max_iterations):
+@@ -303,7 +352,12 @@ def main() -> int:
+         )
+ 
+         # Check stop conditions after Gemini + Post-workflow
+-        stop_reason = check_stop_conditions(out_dir, args.max_changed_files, history)
++        stop_reason = check_stop_conditions(
++            out_dir,
++            args.max_changed_files,
++            history,
++            ignore_artifacts=args.ignore_artifacts,
++        )
+         if stop_reason:
+             print(f"STOP CONDITION: {stop_reason}")
+             break
+
+exec
+/bin/bash -lc "nl -ba scripts/run_balanced_pass.sh | sed -n '20,45p'; nl -ba scripts/agent_orchestrator.py | sed -n '284,310p'; nl -ba src/daily_audit_summary.py | sed -n '168,190p'" in /home/kimyo/trading-bot
+ succeeded in 161ms:
+    20	  cp "$AGY_PROMPT" "$OUT_DIR/AGY_TASK.md"
+    21	fi
+    22	
+    23	echo "=== Balanced pass: $RUN_ID ==="
+    24	
+    25	if [[ "${AGY_USE_GEMINI:-}" == "1" ]] && command -v gemini >/dev/null 2>&1; then
+    26	  echo "=== [AGY] Gemini CLI slice (AGY_USE_GEMINI=1) ==="
+    27	  gemini --skip-trust --approval-mode auto_edit --prompt "$(cat "$AGY_PROMPT")"
+    28	elif [[ "${SKIP_AGY:-}" == "1" ]]; then
+    29	  echo "SKIP_AGY=1 — skipping AGY pytest slice"
+    30	else
+    31	  AGY_PROMPT="$AGY_PROMPT" bash scripts/run_agy_slice.sh
+    32	fi
+    33	
+    34	exec .venv/bin/python scripts/agent_orchestrator.py \
+    35	  --run-id "$RUN_ID" \
+    36	  --balanced-pass \
+    37	  --agy-prompt "$AGY_PROMPT" \
+    38	  --task-file "$OUT_DIR/AGY_TASK.md" \
+    39	  ${AGY_TEST_PATHS:+--agy-test-paths "$AGY_TEST_PATHS"}
+   284	        print("Refusing Gemini yolo mode in this orchestrator.", file=sys.stderr)
+   285	        return 2
+   286	
+   287	    if args.balanced_pass:
+   288	        args.run_codex_review = True
+   289	        args.ignore_artifacts = True
+   290	        pre_dir = REPORT_ROOT / (args.run_id or dt.datetime.now().strftime("%Y%m%dT%H%M%S"))
+   291	        pre_dir.mkdir(parents=True, exist_ok=True)
+   292	        if args.agy_prompt.is_file():
+   293	            (pre_dir / "AGY_TASK.md").write_text(
+   294	                args.agy_prompt.read_text(encoding="utf-8"), encoding="utf-8"
+   295	            )
+   296	        agy_env = os.environ.copy()
+   297	        agy_env["AGY_PROMPT"] = str(args.agy_prompt)
+   298	        agy_env["AGY_TEST_PATHS"] = args.agy_test_paths.replace(",", " ")
+   299	        print("--- Balanced pass: AGY pytest slice ---")
+   300	        agy_code = run_command(
+   301	            ["bash", "scripts/run_agy_slice.sh"],
+   302	            log_path=pre_dir / "agy_slice.log",
+   303	            env=agy_env,
+   304	            dry_run=args.dry_run,
+   305	        )
+   306	        if agy_code != 0:
+   307	            print(f"AGY slice failed with exit code {agy_code}", file=sys.stderr)
+   308	            return agy_code
+   309	        os.environ.setdefault("IMPLEMENTATION_AGENT", "cursor+agy")
+   310	
+   168	
+   169	    event_types = df["event_type"].astype(str) if "event_type" in df.columns else pd.Series(dtype=str)
+   170	    reasons = df["reason"].astype(str) if "reason" in df.columns else pd.Series(dtype=str)
+   171	
+   172	    skip_mask = event_types.isin(SKIP_EVENT_TYPES)
+   173	    skip_reasons = Counter(
+   174	        _normalize_skip_reason(r) for r in reasons[skip_mask].tolist()
+   175	    )
+   176	    skip_by_event = Counter(event_types[skip_mask].tolist())
+   177	
+   178	    api_mask = event_types.isin(API_ERROR_EVENT_TYPES)
+   179	    api_error_count = int(api_mask.sum())
+   180	
+   181	    stale_mask = reasons.str.contains("stale", case=False, na=False)
+   182	    stale_bar_count = int(stale_mask.sum())
+   183	
+   184	    orders_submitted = int(event_types.isin(ORDER_SUBMITTED_EVENT_TYPES).sum())
+   185	    tickers = df["ticker"].astype(str).nunique() if "ticker" in df.columns else 0
+   186	
+   187	    api_samples = (
+   188	        df.loc[api_mask, ["timestamp", "event_type", "ticker", "reason"]]
+   189	        .head(10)
+   190	        .to_dict(orient="records")
+
+codex
+The balanced pass wrapper now invokes the AGY pytest slice before calling the orchestrator, while the orchestrator's --balanced-pass mode invokes it again. This breaks the wrapper's skip behavior and duplicates a pass step.
+
+Review comment:
+
+- [P2] Avoid running the AGY slice twice — /home/kimyo/trading-bot/scripts/run_balanced_pass.sh:36-36
+  When `scripts/run_balanced_pass.sh` is used normally, it already runs `scripts/run_agy_slice.sh` above, then passes `--balanced-pass` to `agent_orchestrator.py`, whose new `args.balanced_pass` branch runs the same AGY slice again. This also makes `SKIP_AGY=1` ineffective for the wrapper because the orchestrator still runs the slice, so pass completion can be unnecessarily slow or fail after an explicitly skipped AGY step.

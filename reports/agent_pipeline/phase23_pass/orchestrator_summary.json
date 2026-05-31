@@ -1,0 +1,10 @@
+{
+  "run_id": "phase23_pass",
+  "output_dir": "/home/kimyo/trading-bot/reports/agent_pipeline/phase23_pass",
+  "gemini_exit_code": null,
+  "post_workflow_exit_code": 0,
+  "codex_review_exit_code": 0,
+  "review_packet": "/home/kimyo/trading-bot/reports/agent_pipeline/phase23_pass/review_packet.md",
+  "draft_todo": "/home/kimyo/trading-bot/reports/agent_pipeline/phase23_pass/NEXT_TODO.md",
+  "codex_todo": "/home/kimyo/trading-bot/reports/agent_pipeline/phase23_pass/NEXT_TODO.codex.md"
+}

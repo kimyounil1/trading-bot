@@ -1,0 +1,12 @@
+TODO.md
+docs/runbook.md
+logs/ml/ai_model_metrics.csv
+logs/retrain_history.csv
+models/ai_score_model.joblib
+src/ml_model.py
+src/portfolio_backtest_validation.py
+src/report_performance.py
+src/train_ai_model.py
+tests/test_model_governance.py
+tests/test_portfolio_backtest_gate.py
+tests/test_report_performance.py

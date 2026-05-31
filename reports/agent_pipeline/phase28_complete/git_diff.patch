@@ -1,0 +1,190 @@
+diff --git a/TODO.md b/TODO.md
+index bec411a..26ddc68 100644
+--- a/TODO.md
++++ b/TODO.md
+@@ -44,6 +44,7 @@ RUN_ID=<phase>_final bash scripts/run_pass_complete.sh "Phase N complete"
+ |------|------|
+ | **유니버스** | `UNIVERSE_PROFILE` paper/smoke/research; master **259** (`config/universe_master.csv`) |
+ | **종목 메타** | `instrument_registry.json` — 레버리지 ETF 기본 매수 차단 (`allow_leveraged_etfs: false`) |
++| **마진 레버리지 paper** | stress gate + `margin_leverage_paper_proposal.json` (기본 비활성) |
+ | **챔피언 모델** | LGBM+XGB, 로컬 `models/ai_score_model.joblib` (git 미추적) |
+ | **최근 retrain** | `logs/retrain_history.csv` — fold ROC-AUC ~0.45–0.55, 평균 ~0.51 근처 |
+ | **포트폴리오 백테스트** | return **+50.7%** vs bench **+58.2%**, max DD **-10.2%**, 42 trades (`logs/portfolio_backtest/`) |
+@@ -51,7 +52,7 @@ RUN_ID=<phase>_final bash scripts/run_pass_complete.sh "Phase N complete"
+ | **관측** | 일별 audit, 주간 slippage, guard/leverage/LLM cache 리포트 스크립트 (`docs/runbook.md`) |
+ | **비활성** | `deep_model.py`, `rl_portfolio.py` — `docs/RESEARCH_MODELS.md` |
+ 
+-**완료 로드맵:** Phase 0–27 → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
++**완료 로드맵:** Phase 0–28 → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
+ 
+ **우선순위 가이드 (2026 Q2)**
+ 1. **백로그** — 마진 레버리지 paper, crowding 라이브, DL/RL
+@@ -62,8 +63,6 @@ RUN_ID=<phase>_final bash scripts/run_pass_complete.sh "Phase N complete"
+ ---
+ 
+ ## Backlog (우선순위 낮음 · live 미사용 시 보류 가능) ← **다음**
+-
+-- [ ] `[Cursor]` 레버리지 > 1.0 **마진** paper 소액 실험 + stress 게이트 (Phase 27 instrument 레이어 이후)
+ - [ ] `[AGY]` Factor/crowding guard **라이브** 영향도 (백테스트 리포트 vs audit 스킵 로그 대조)
+ - [ ] `[Cursor]` Transformer / RL — `docs/RESEARCH_MODELS.md` 실험 브랜치만 (프로덕션 연동 없음)
+ - [ ] `[Cursor]` Streamlit CMS에 ops 리포트 latest_summary 뷰어
+@@ -88,6 +87,7 @@ bash scripts/run_promotion_summary.sh
+ bash scripts/run_benchmark_gap_report.sh
+ bash scripts/run_guard_impact_report.sh    # 무거움 — 주간 권장
+ bash scripts/run_leverage_stress_report.sh --leverage 2.0
++bash scripts/run_margin_leverage_paper_gate.sh --leverage-factor 1.25
+ 
+ # retrain (로컬 챔피언만 갱신, PROMOTE 시에만 교체)
+ bash scripts/run_retrain.sh
+diff --git a/config/strategy_config.json b/config/strategy_config.json
+index e849d44..426c9b0 100644
+--- a/config/strategy_config.json
++++ b/config/strategy_config.json
+@@ -163,6 +163,8 @@
+   "max_leveraged_etf_positions": 1,
+   "max_effective_leverage_exposure_pct": 1.25,
+   "block_leveraged_etfs_vix_above": 28.0,
++  "margin_leverage_paper_enabled": false,
++  "margin_leverage_stress_gate_required": true,
+   "trailing_stop_pct": 0.05,
+   "rebalance_threshold_pct": 0.20,
+   "sector_rotation_enabled": true
+diff --git a/docs/TODO_ARCHIVE.md b/docs/TODO_ARCHIVE.md
+index 336d43a..0893900 100644
+--- a/docs/TODO_ARCHIVE.md
++++ b/docs/TODO_ARCHIVE.md
+@@ -26,6 +26,7 @@
+ | 25 | Alpha / promotion quality | Fold variance report, promotion summary CLI, benchmark gap, champion governance |
+ | 26 | Live alignment (paper) | Crowding go/no-go, execution vs slippage diff, leverage/LLM cache alerts |
+ | 27 | Universe + instrument meta | Master CSV, UNIVERSE_PROFILE, leveraged ETF registry and buy gates |
++| 28 | Margin leverage paper | Stress go/no-go gate, proposal caps, main buy block |
+ 
+ **Milestones**
+ - **2026-05-27:** Phase 0–19 closed (code + pytest + runbook).
+@@ -34,3 +35,4 @@
+ - **2026-05-30:** Phase 25 closed; promotion docs/CLI, fold variance, benchmark gap decomposition.
+ - **2026-05-30:** Phase 26 closed; paper crowding gate, execution alignment, stress/cache Telegram alerts.
+ - **2026-05-30:** Phase 27 closed; universe master/smoke/research profiles, instrument registry, leverage ETF gates.
++- **2026-05-30:** Phase 28 closed; margin leverage paper gate wired to leverage stress + main.
+diff --git a/docs/runbook.md b/docs/runbook.md
+index 8f7f432..56d9628 100644
+--- a/docs/runbook.md
++++ b/docs/runbook.md
+@@ -70,7 +70,14 @@ print(len(s.tickers), 'tickers cached')
+ 
+ **레버리지 ETF vs 마진 레버리지**
+ - **레버리지 ETF** (`TQQQ`, `SOXL` 등): `config/instrument_registry.json` + `allow_leveraged_etfs` (기본 `false`). 유효 노출 = `Σ(market_value × |multiple|)` ≤ `max_effective_leverage_exposure_pct × portfolio`. 고 VIX 시 차단: `block_leveraged_etfs_vix_above` (기본 28).
+-- **마진 `leverage_factor`**: 계좌 배수 — ETF 메타와 별도. paper 실험은 TODO 백로그.
++- **마진 `leverage_factor`**: 계좌 배수 — ETF 메타와 별도.
++  ```bash
++  bash scripts/run_leverage_stress_report.sh --leverage 2.0
++  bash scripts/run_margin_leverage_paper_gate.sh --leverage-factor 1.25 --refresh-stress
++  # GO → config/margin_leverage_paper_proposal.json 값으로 paper 소액 실험
++  # strategy_config: margin_leverage_paper_enabled=true (기본 stress gate 필수)
++  ```
++  산출물: `logs/margin_leverage_paper/go_no_go_checklist.json`
+ 
+ ### 2.5 데이터 최신성(Stale Data) 오류
+ - **현상**: `SKIP_BUY - stale price data` 로그 발생.
+diff --git a/scripts/run_ops_reports.sh b/scripts/run_ops_reports.sh
+index 420a961..f11623e 100755
+--- a/scripts/run_ops_reports.sh
++++ b/scripts/run_ops_reports.sh
+@@ -60,6 +60,8 @@ if [[ "$RUN_HEAVY" -eq 1 ]]; then
+   bash "${ROOT}/scripts/run_crowding_paper_gate.sh"
+   echo "--- leverage stress ---"
+   bash "${ROOT}/scripts/run_leverage_stress_report.sh"
++  echo "--- margin leverage paper go/no-go ---"
++  bash "${ROOT}/scripts/run_margin_leverage_paper_gate.sh" --refresh-stress
+ fi
+ 
+ echo "=== ops reports complete; log=${LOG_FILE} ==="
+diff --git a/scripts/run_pass_complete.sh b/scripts/run_pass_complete.sh
+index 7701fde..cf37039 100755
+--- a/scripts/run_pass_complete.sh
++++ b/scripts/run_pass_complete.sh
+@@ -50,6 +50,7 @@ else
+     tests/test_llm_cache_alerts.py \
+     tests/test_universe_loader.py \
+     tests/test_instrument_meta.py \
++    tests/test_margin_leverage_paper_gate.py \
+     tests/test_guard_impact_report.py \
+     tests/test_check_audit_daily_summary.py \
+     tests/test_fold_variance_report.py \
+diff --git a/src/main.py b/src/main.py
+index 99fb2ea..013f358 100644
+--- a/src/main.py
++++ b/src/main.py
+@@ -39,6 +39,10 @@ from src.market_clock import get_market_clock
+ from src.notifier import notify_order, notify_error, notify_run_summary, notify_info
+ from src.ml_model import load_ai_score_model, predict_ai_score_from_bundle
+ from src.instrument_meta import check_instrument_buy_allowed, format_audit_reason
++from src.margin_leverage_paper_gate import (
++    apply_margin_leverage_paper_overrides,
++    evaluate_margin_leverage_buy_block,
++)
+ from src.sector import is_sector_allowed
+ from src.correlation_guard import is_correlation_allowed
+ from src.market_regime import get_current_regime
+@@ -418,6 +422,26 @@ def main() -> None:
+ 
+     # 다이내믹 프로필 적용
+     settings, profile_name = apply_dynamic_profile(settings, current_regime)
++
++    if getattr(settings, "margin_leverage_paper_enabled", False):
++        try:
++            settings = apply_margin_leverage_paper_overrides(settings)
++            print("Margin leverage paper proposal overrides applied.")
++        except FileNotFoundError as exc:
++            print(f"Warning: margin leverage paper proposal not applied: {exc}")
++
++    margin_leverage_block_active, margin_leverage_block_reason = evaluate_margin_leverage_buy_block(
++        float(getattr(settings, "leverage_factor", 1.0)),
++        margin_leverage_paper_enabled=bool(
++            getattr(settings, "margin_leverage_paper_enabled", False)
++        ),
++        margin_leverage_stress_gate_required=bool(
++            getattr(settings, "margin_leverage_stress_gate_required", True)
++        ),
++    )
++    if margin_leverage_block_active:
++        print(f"MARGIN_LEVERAGE_GATE_BLOCK: {margin_leverage_block_reason}")
++
+     print(f"Applied Strategy Profile: {profile_name}")
+     print(f"  - Max Positions: {settings.max_total_positions}")
+     print(f"  - Position Pct: {settings.max_position_pct:.1%}")
+@@ -886,6 +910,9 @@ def main() -> None:
+         if macro_risk_active:
+             print(f"MACRO_EVENT_RISK_ACTIVE: {macro_risk_reason}. New buys will be restricted.")
+ 
++    if margin_leverage_block_active:
++        print("New buys blocked until margin leverage stress gate passes (see runbook).")
++
+     for ticker in settings.tickers:
+         try:
+             data_fresh, data_reason = price_data_freshness.get(
+@@ -1057,6 +1084,11 @@ def main() -> None:
+                 risk_reason = f"macro event risk: {macro_risk_reason}"
+                 target_amount = 0.0
+ 
++            if risk_allowed and position is None and margin_leverage_block_active:
++                risk_allowed = False
++                risk_reason = margin_leverage_block_reason
++                target_amount = 0.0
++
+             # LLM Consensus 필터: 정량적 신호를 뉴스로 정성 검증 (Phase 11-B)
+             if risk_allowed and position is None:
+                 llm_is_ok, llm_reason = evaluate_ticker_consensus(ticker, settings=settings)
+diff --git a/src/settings.py b/src/settings.py
+index 5c563a3..e0a5b70 100644
+--- a/src/settings.py
++++ b/src/settings.py
+@@ -113,6 +113,8 @@ class StrategySettings(StrategyProfile):
+     max_leveraged_etf_positions: int = 1
+     max_effective_leverage_exposure_pct: float = 1.25
+     block_leveraged_etfs_vix_above: float = 28.0
++    margin_leverage_paper_enabled: bool = False
++    margin_leverage_stress_gate_required: bool = True
+     trailing_stop_pct: float = 0.05
+     adaptive_trailing_stop_enabled: bool = False
+     atr_multiplier: float = 3.0

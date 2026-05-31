@@ -1,0 +1,1068 @@
+$ codex --ask-for-approval never --sandbox read-only review /home/kimyo/trading-bot/reports/agent_pipeline/phase20_portfolio_gate/review_packet.md -c 'model_reasoning_effort="low"'
+exit_code=0
+
+## stdout
+The patch wires a new pytest target into the default workflow without including that target in the tracked changes, so the workflow breaks on a clean checkout. The implementation also does not match the requested tests-only scope.
+
+Review comment:
+
+- [P1] Include the new gate test before invoking it — /home/kimyo/trading-bot/scripts/run_pass_complete.sh:40-40
+  As submitted in the tracked patch, `run_pass_complete.sh` now always asks pytest to collect `tests/test_portfolio_backtest_gate.py`, but that test file is not part of the tracked diff/review packet. In a clean checkout of this patch, the default pass-complete command will fail immediately with `file or directory not found` instead of running the harness.
+
+
+## stderr
+OpenAI Codex v0.133.0
+--------
+workdir: /home/kimyo/trading-bot
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: low
+reasoning summaries: none
+session id: 019e7864-35b1-7f60-8ee6-9e53591207f2
+--------
+user
+/home/kimyo/trading-bot/reports/agent_pipeline/phase20_portfolio_gate/review_packet.md
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+exec
+/bin/bash -lc "sed -n '1,240p' reports/agent_pipeline/phase20_portfolio_gate/review_packet.md && git diff --stat && git diff --" in /home/kimyo/trading-bot
+ succeeded in 157ms:
+# Agent Review Packet - Run: phase20_portfolio_gate
+
+## Implementation Agent
+cursor+agy
+
+## Task Description
+# [AGY] Phase 20 — portfolio backtest gate tests
+
+## Context
+
+Cursor added (do not modify unless tests require it):
+
+- `src/portfolio_backtest_validation.py` — `check_portfolio_backtest_thresholds`, `PortfolioBacktestThresholds`
+- `scripts/check_portfolio_backtest_gate.py` — CLI used in post-workflow
+- Post-workflow calls gate when `logs/portfolio_backtest/` exists
+
+## Your scope (tests only)
+
+1. Add `tests/test_portfolio_backtest_gate.py`:
+   - pass: summary fixture with acceptable DD and benchmark gap
+   - fail: max_drawdown worse than floor
+   - fail: return vs benchmark below min gap
+   - CLI: `check_portfolio_backtest_gate.py` exit 0/1 with tmp dir fixtures
+
+2. Do **not** change production logic in `src/main.py` or trading paths.
+
+## Verify
+
+```bash
+PYTHONPATH=. .venv/bin/python -m pytest tests/test_portfolio_backtest_gate.py -q
+```
+
+## After commit
+
+Tell user to run in Cursor terminal:
+
+```bash
+RUN_ID=phase20_portfolio_gate SKIP_PYTEST=1 bash scripts/run_pass_complete.sh
+```
+
+Commit message must include `[agy]`.
+
+## Changed Files
+- .cursor/skills/pass-complete/SKILL.md
+- logs/ml/ai_model_metrics.csv
+- logs/retrain_history.csv
+- models/ai_score_model.joblib
+- scripts/agent_orchestrator.py
+- scripts/run_pass_complete.sh
+
+## Git Diff Summary
+```
+ .cursor/skills/pass-complete/SKILL.md |  11 ++++++++--
+ logs/ml/ai_model_metrics.csv          |  10 ++++-----
+ logs/retrain_history.csv              |   1 +
+ models/ai_score_model.joblib          | Bin 1757990 -> 1758310 bytes
+ scripts/agent_orchestrator.py         |  40 ++++++++++++++++++++++++++++++++++
+ scripts/run_pass_complete.sh          |   3 ++-
+ 6 files changed, 57 insertions(+), 8 deletions(-)
+```
+
+## Test Execution Results (runtime_harness.log)
+```
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/kimyo/trading-bot
+plugins: anyio-4.13.0
+collected 7 items
+
+tests/test_report_performance.py .                                       [ 14%]
+tests/test_reappraise_regime.py ...                                      [ 57%]
+tests/test_portfolio_backtest_golden.py ...                              [100%]
+
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6
+  /home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+========================= 7 passed, 1 warning in 0.83s =========================
+```
+
+## Git Patch
+```diff
+diff --git a/.cursor/skills/pass-complete/SKILL.md b/.cursor/skills/pass-complete/SKILL.md
+index 2f1fddc..c0710d4 100644
+--- a/.cursor/skills/pass-complete/SKILL.md
++++ b/.cursor/skills/pass-complete/SKILL.md
+@@ -28,11 +28,18 @@ In this repo **Cursor** implements, **AGY** owns `[AGY]` tests, **Codex** review
+ 
+ 1. Choose `RUN_ID` (e.g. `phase20_ci`, `cursor_$(date +%Y%m%dT%H%M%S)`).
+ 
+-2. Run pass closure:
++2. Run **balanced pass** (AGY pytest + orchestrator + Codex) — preferred:
+ 
+ ```bash
+ cd <repo-root>
+-RUN_ID=<run_id> bash scripts/run_pass_complete.sh "<one-line summary of this pass>"
++RUN_ID=<run_id> bash scripts/run_balanced_pass.sh
++# or: .venv/bin/python scripts/agent_orchestrator.py --run-id <run_id> --balanced-pass --task-file prompts/agy/<task>.md
++```
++
++Legacy (Codex only, tests already green):
++
++```bash
++RUN_ID=<run_id> bash scripts/run_pass_complete.sh "<one-line summary>"
+ ```
+ 
+ Use `SKIP_PYTEST=1` only if pytest already passed in this session.  
+diff --git a/logs/ml/ai_model_metrics.csv b/logs/ml/ai_model_metrics.csv
+index 0638196..f5a77ad 100644
+--- a/logs/ml/ai_model_metrics.csv
++++ b/logs/ml/ai_model_metrics.csv
+@@ -1,6 +1,6 @@
+ fold,accuracy,precision,recall,roc_auc,test_positive_rate,prediction_positive_rate,train_size,test_size
+-1,0.5244384996934738,0.5484398737875423,0.5012817773979918,0.5286340670919325,0.5217633617566739,0.47689906927492615,17946,17943
+-2,0.4494789054227275,0.6544431509507179,0.2940714908456844,0.5158509944937936,0.639246502814468,0.2872429359638856,35889,17943
+-3,0.5586022404280221,0.5981134772045162,0.7847365460341271,0.5298942819902608,0.5944379423730702,0.779914172657861,53832,17943
+-4,0.46853926322242656,0.5456267409470752,0.4729116368903911,0.4732537359173688,0.5771052778242212,0.500195062141225,71775,17943
+-5,0.5130134314217244,0.5579873646209387,0.5064509522834323,0.51604461357988,0.5442791060580728,0.4940088056623753,89718,17943
++1,0.528979045920642,0.5457911357944027,0.5393306790057032,0.5316021297826623,0.5178889879625501,0.5117588051716451,17944,17944
++2,0.45692153366027644,0.6543549218347363,0.33001212961358517,0.5026369607790756,0.6432233615693268,0.32439812750780206,35888,17944
++3,0.5665960766830138,0.6093773110486614,0.7675826734979041,0.5460608256136901,0.5982501114578689,0.7535666518056174,53832,17944
++4,0.451627284886313,0.5284319356691557,0.44508950169327527,0.4455734853749122,0.5759585376727597,0.4851203744984396,71776,17944
++5,0.5106442264823896,0.5542609092986064,0.4986126811221868,0.5146206734442764,0.5422982612572448,0.4878510922871155,89720,17944
+diff --git a/logs/retrain_history.csv b/logs/retrain_history.csv
+index 9e73b35..8e1e7f7 100644
+--- a/logs/retrain_history.csv
++++ b/logs/retrain_history.csv
+@@ -2,3 +2,4 @@ timestamp,status,avg_roc_auc,avg_precision,elapsed_sec
+ 2026-05-26T13:35:17Z,success,0.4985,0.5439,13.9
+ 2026-05-26T13:51:32Z,success,0.5103,0.5616,19.3
+ 2026-05-26T14:22:04Z,success,0.5127,0.5809,19.1
++2026-05-30T09:28:07Z,success,0.5081,0.5784,93.5
+diff --git a/models/ai_score_model.joblib b/models/ai_score_model.joblib
+index 4cc580d..a7de37d 100644
+Binary files a/models/ai_score_model.joblib and b/models/ai_score_model.joblib differ
+diff --git a/scripts/agent_orchestrator.py b/scripts/agent_orchestrator.py
+index ebf6a4b..05b51d8 100755
+--- a/scripts/agent_orchestrator.py
++++ b/scripts/agent_orchestrator.py
+@@ -90,6 +90,22 @@ def parse_args() -> argparse.Namespace:
+         action="store_true",
+         help="Allow Codex review when models/logs are in the diff (pass closure).",
+     )
++    parser.add_argument(
++        "--balanced-pass",
++        action="store_true",
++        help="Run AGY pytest slice, then post-workflow + Codex scoped review.",
++    )
++    parser.add_argument(
++        "--agy-prompt",
++        type=Path,
++        default=Path("prompts/agy/phase20_portfolio_gate.md"),
++        help="AGY task file copied into the run directory (with --balanced-pass).",
++    )
++    parser.add_argument(
++        "--agy-test-paths",
++        default="tests/test_portfolio_backtest_gate.py",
++        help="Comma-separated pytest paths for the AGY slice.",
++    )
+     parser.add_argument(
+         "--dry-run",
+         action="store_true",
+@@ -268,6 +284,30 @@ def main() -> int:
+         print("Refusing Gemini yolo mode in this orchestrator.", file=sys.stderr)
+         return 2
+ 
++    if args.balanced_pass:
++        args.run_codex_review = True
++        args.ignore_artifacts = True
++        pre_dir = REPORT_ROOT / (args.run_id or dt.datetime.now().strftime("%Y%m%dT%H%M%S"))
++        pre_dir.mkdir(parents=True, exist_ok=True)
++        if args.agy_prompt.is_file():
++            (pre_dir / "AGY_TASK.md").write_text(
++                args.agy_prompt.read_text(encoding="utf-8"), encoding="utf-8"
++            )
++        agy_env = os.environ.copy()
++        agy_env["AGY_PROMPT"] = str(args.agy_prompt)
++        agy_env["AGY_TEST_PATHS"] = args.agy_test_paths.replace(",", " ")
++        print("--- Balanced pass: AGY pytest slice ---")
++        agy_code = run_command(
++            ["bash", "scripts/run_agy_slice.sh"],
++            log_path=pre_dir / "agy_slice.log",
++            env=agy_env,
++            dry_run=args.dry_run,
++        )
++        if agy_code != 0:
++            print(f"AGY slice failed with exit code {agy_code}", file=sys.stderr)
++            return agy_code
++        os.environ.setdefault("IMPLEMENTATION_AGENT", "cursor+agy")
++
+     history: list[dict] = []
+     
+     for i in range(args.max_iterations):
+diff --git a/scripts/run_pass_complete.sh b/scripts/run_pass_complete.sh
+index 5fb0846..7d238b5 100755
+--- a/scripts/run_pass_complete.sh
++++ b/scripts/run_pass_complete.sh
+@@ -36,7 +36,8 @@ else
+   PYTHONPATH=. .venv/bin/python -m pytest -q \
+     tests/test_report_performance.py \
+     tests/test_reappraise_regime.py \
+-    tests/test_portfolio_backtest_golden.py
++    tests/test_portfolio_backtest_golden.py \
++    tests/test_portfolio_backtest_gate.py
+ fi
+ 
+ echo "=== [2/3] Codex review via orchestrator (post-workflow + scoped review) ==="
+```
+ .cursor/skills/pass-complete/SKILL.md |  11 ++++++++--
+ logs/ml/ai_model_metrics.csv          |  10 ++++-----
+ logs/retrain_history.csv              |   1 +
+ models/ai_score_model.joblib          | Bin 1757990 -> 1758310 bytes
+ scripts/agent_orchestrator.py         |  40 ++++++++++++++++++++++++++++++++++
+ scripts/run_pass_complete.sh          |   3 ++-
+ 6 files changed, 57 insertions(+), 8 deletions(-)
+diff --git a/.cursor/skills/pass-complete/SKILL.md b/.cursor/skills/pass-complete/SKILL.md
+index 2f1fddc..c0710d4 100644
+--- a/.cursor/skills/pass-complete/SKILL.md
++++ b/.cursor/skills/pass-complete/SKILL.md
+@@ -28,11 +28,18 @@ In this repo **Cursor** implements, **AGY** owns `[AGY]` tests, **Codex** review
+ 
+ 1. Choose `RUN_ID` (e.g. `phase20_ci`, `cursor_$(date +%Y%m%dT%H%M%S)`).
+ 
+-2. Run pass closure:
++2. Run **balanced pass** (AGY pytest + orchestrator + Codex) — preferred:
+ 
+ ```bash
+ cd <repo-root>
+-RUN_ID=<run_id> bash scripts/run_pass_complete.sh "<one-line summary of this pass>"
++RUN_ID=<run_id> bash scripts/run_balanced_pass.sh
++# or: .venv/bin/python scripts/agent_orchestrator.py --run-id <run_id> --balanced-pass --task-file prompts/agy/<task>.md
++```
++
++Legacy (Codex only, tests already green):
++
++```bash
++RUN_ID=<run_id> bash scripts/run_pass_complete.sh "<one-line summary>"
+ ```
+ 
+ Use `SKIP_PYTEST=1` only if pytest already passed in this session.  
+diff --git a/logs/ml/ai_model_metrics.csv b/logs/ml/ai_model_metrics.csv
+index 0638196..f5a77ad 100644
+--- a/logs/ml/ai_model_metrics.csv
++++ b/logs/ml/ai_model_metrics.csv
+@@ -1,6 +1,6 @@
+ fold,accuracy,precision,recall,roc_auc,test_positive_rate,prediction_positive_rate,train_size,test_size
+-1,0.5244384996934738,0.5484398737875423,0.5012817773979918,0.5286340670919325,0.5217633617566739,0.47689906927492615,17946,17943
+-2,0.4494789054227275,0.6544431509507179,0.2940714908456844,0.5158509944937936,0.639246502814468,0.2872429359638856,35889,17943
+-3,0.5586022404280221,0.5981134772045162,0.7847365460341271,0.5298942819902608,0.5944379423730702,0.779914172657861,53832,17943
+-4,0.46853926322242656,0.5456267409470752,0.4729116368903911,0.4732537359173688,0.5771052778242212,0.500195062141225,71775,17943
+-5,0.5130134314217244,0.5579873646209387,0.5064509522834323,0.51604461357988,0.5442791060580728,0.4940088056623753,89718,17943
++1,0.528979045920642,0.5457911357944027,0.5393306790057032,0.5316021297826623,0.5178889879625501,0.5117588051716451,17944,17944
++2,0.45692153366027644,0.6543549218347363,0.33001212961358517,0.5026369607790756,0.6432233615693268,0.32439812750780206,35888,17944
++3,0.5665960766830138,0.6093773110486614,0.7675826734979041,0.5460608256136901,0.5982501114578689,0.7535666518056174,53832,17944
++4,0.451627284886313,0.5284319356691557,0.44508950169327527,0.4455734853749122,0.5759585376727597,0.4851203744984396,71776,17944
++5,0.5106442264823896,0.5542609092986064,0.4986126811221868,0.5146206734442764,0.5422982612572448,0.4878510922871155,89720,17944
+diff --git a/logs/retrain_history.csv b/logs/retrain_history.csv
+index 9e73b35..8e1e7f7 100644
+--- a/logs/retrain_history.csv
++++ b/logs/retrain_history.csv
+@@ -2,3 +2,4 @@ timestamp,status,avg_roc_auc,avg_precision,elapsed_sec
+ 2026-05-26T13:35:17Z,success,0.4985,0.5439,13.9
+ 2026-05-26T13:51:32Z,success,0.5103,0.5616,19.3
+ 2026-05-26T14:22:04Z,success,0.5127,0.5809,19.1
++2026-05-30T09:28:07Z,success,0.5081,0.5784,93.5
+diff --git a/models/ai_score_model.joblib b/models/ai_score_model.joblib
+index 4cc580d..a7de37d 100644
+Binary files a/models/ai_score_model.joblib and b/models/ai_score_model.joblib differ
+diff --git a/scripts/agent_orchestrator.py b/scripts/agent_orchestrator.py
+index ebf6a4b..05b51d8 100755
+--- a/scripts/agent_orchestrator.py
++++ b/scripts/agent_orchestrator.py
+@@ -90,6 +90,22 @@ def parse_args() -> argparse.Namespace:
+         action="store_true",
+         help="Allow Codex review when models/logs are in the diff (pass closure).",
+     )
++    parser.add_argument(
++        "--balanced-pass",
++        action="store_true",
++        help="Run AGY pytest slice, then post-workflow + Codex scoped review.",
++    )
++    parser.add_argument(
++        "--agy-prompt",
++        type=Path,
++        default=Path("prompts/agy/phase20_portfolio_gate.md"),
++        help="AGY task file copied into the run directory (with --balanced-pass).",
++    )
++    parser.add_argument(
++        "--agy-test-paths",
++        default="tests/test_portfolio_backtest_gate.py",
++        help="Comma-separated pytest paths for the AGY slice.",
++    )
+     parser.add_argument(
+         "--dry-run",
+         action="store_true",
+@@ -268,6 +284,30 @@ def main() -> int:
+         print("Refusing Gemini yolo mode in this orchestrator.", file=sys.stderr)
+         return 2
+ 
++    if args.balanced_pass:
++        args.run_codex_review = True
++        args.ignore_artifacts = True
++        pre_dir = REPORT_ROOT / (args.run_id or dt.datetime.now().strftime("%Y%m%dT%H%M%S"))
++        pre_dir.mkdir(parents=True, exist_ok=True)
++        if args.agy_prompt.is_file():
++            (pre_dir / "AGY_TASK.md").write_text(
++                args.agy_prompt.read_text(encoding="utf-8"), encoding="utf-8"
++            )
++        agy_env = os.environ.copy()
++        agy_env["AGY_PROMPT"] = str(args.agy_prompt)
++        agy_env["AGY_TEST_PATHS"] = args.agy_test_paths.replace(",", " ")
++        print("--- Balanced pass: AGY pytest slice ---")
++        agy_code = run_command(
++            ["bash", "scripts/run_agy_slice.sh"],
++            log_path=pre_dir / "agy_slice.log",
++            env=agy_env,
++            dry_run=args.dry_run,
++        )
++        if agy_code != 0:
++            print(f"AGY slice failed with exit code {agy_code}", file=sys.stderr)
++            return agy_code
++        os.environ.setdefault("IMPLEMENTATION_AGENT", "cursor+agy")
++
+     history: list[dict] = []
+     
+     for i in range(args.max_iterations):
+diff --git a/scripts/run_pass_complete.sh b/scripts/run_pass_complete.sh
+index 5fb0846..7d238b5 100755
+--- a/scripts/run_pass_complete.sh
++++ b/scripts/run_pass_complete.sh
+@@ -36,7 +36,8 @@ else
+   PYTHONPATH=. .venv/bin/python -m pytest -q \
+     tests/test_report_performance.py \
+     tests/test_reappraise_regime.py \
+-    tests/test_portfolio_backtest_golden.py
++    tests/test_portfolio_backtest_golden.py \
++    tests/test_portfolio_backtest_gate.py
+ fi
+ 
+ echo "=== [2/3] Codex review via orchestrator (post-workflow + scoped review) ==="
+
+exec
+/bin/bash -lc "sed -n '1,380p' scripts/agent_orchestrator.py; printf '\\n--- run_pass ---\\n'; sed -n '1,140p' scripts/run_pass_complete.sh; printf '\\n--- check tests file exists? ---\\n'; ls tests/test_portfolio_backtest_gate.py prompts/agy/phase20_portfolio_gate.md scripts/run_agy_slice.sh scripts/run_balanced_pass.sh 2>&1" in /home/kimyo/trading-bot
+ succeeded in 139ms:
+#!/usr/bin/env python3
+"""Agent review orchestration (Cursor-first, optional Gemini CLI implementer).
+
+Default usage: implement in Cursor, then --run-codex-review only.
+Optional: --run-gemini for legacy headless Gemini CLI implementation.
+
+This script does not invoke Cursor automatically. It collects review packets and
+can run Codex in read-only mode against them.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import os
+import shlex
+import subprocess
+import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+REPORT_ROOT = ROOT / "reports" / "agent_pipeline"
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Run the agent review pipeline (Cursor-first; optional --run-gemini)."
+    )
+    task = parser.add_mutually_exclusive_group()
+    task.add_argument("--task", help="Task prompt to give Gemini CLI.")
+    task.add_argument("--task-file", type=Path, help="Path to a task prompt file.")
+    parser.add_argument("--run-id", help="Stable run id. Defaults to timestamp.")
+    parser.add_argument(
+        "--run-gemini",
+        action="store_true",
+        help="Run Gemini CLI headlessly before generating the review packet.",
+    )
+    parser.add_argument(
+        "--run-codex-review",
+        action="store_true",
+        help="Run Codex in read-only mode against the generated review packet.",
+    )
+    parser.add_argument(
+        "--max-iterations",
+        type=int,
+        default=1,
+        help="Maximum number of Gemini -> Codex iterations. Default 1.",
+    )
+    parser.add_argument(
+        "--continue-from-codex-todo",
+        type=Path,
+        help="Path to a Codex-generated TODO file to use as the next Gemini task.",
+    )
+    parser.add_argument(
+        "--scoped-review",
+        action="store_true",
+        default=True,
+        help="Use scoped Codex review (default: True). Avoids full diff on large changes.",
+    )
+    parser.add_argument(
+        "--max-changed-files",
+        type=int,
+        default=10,
+        help="Stop loop if changed file count exceeds this threshold. Default 10.",
+    )
+    parser.add_argument(
+        "--gemini-approval-mode",
+        default="auto_edit",
+        choices=["default", "auto_edit", "plan", "yolo"],
+        help="Gemini CLI approval mode. Avoid yolo unless externally sandboxed.",
+    )
+    parser.add_argument("--gemini-model", help="Optional Gemini model name.")
+    parser.add_argument("--codex-model", help="Optional Codex model name.")
+    parser.add_argument(
+        "--codex-reasoning-effort",
+        default="low",
+        choices=["low", "medium", "high"],
+        help="Reasoning effort for Codex model. Default 'low' to save tokens.",
+    )
+    parser.add_argument(
+        "--codex-timeout-seconds",
+        type=int,
+        default=240,
+        help="Timeout for the Codex review step.",
+    )
+    parser.add_argument(
+        "--ignore-artifacts",
+        action="store_true",
+        help="Allow Codex review when models/logs are in the diff (pass closure).",
+    )
+    parser.add_argument(
+        "--balanced-pass",
+        action="store_true",
+        help="Run AGY pytest slice, then post-workflow + Codex scoped review.",
+    )
+    parser.add_argument(
+        "--agy-prompt",
+        type=Path,
+        default=Path("prompts/agy/phase20_portfolio_gate.md"),
+        help="AGY task file copied into the run directory (with --balanced-pass).",
+    )
+    parser.add_argument(
+        "--agy-test-paths",
+        default="tests/test_portfolio_backtest_gate.py",
+        help="Comma-separated pytest paths for the AGY slice.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print planned commands without running Gemini, Codex, or tests.",
+    )
+    return parser.parse_args()
+
+
+def shell_join(args: list[str]) -> str:
+    return " ".join(shlex.quote(str(arg)) for arg in args)
+
+
+def read_task(args: argparse.Namespace) -> str:
+    if args.task:
+        return args.task
+    if args.task_file:
+        return args.task_file.read_text(encoding="utf-8")
+    return ""
+
+
+def run_command(
+    args: list[str],
+    *,
+    log_path: Path,
+    input_text: str | None = None,
+    env: dict[str, str] | None = None,
+    timeout: int | None = None,
+    stdout_copy_path: Path | None = None,
+    dry_run: bool = False,
+) -> int:
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    command_text = shell_join(args)
+    if dry_run:
+        log_path.write_text(f"$ {command_text}\nDRY RUN\n", encoding="utf-8")
+        print(f"[dry-run] {command_text}")
+        return 0
+
+    result = subprocess.run(
+        args,
+        cwd=ROOT,
+        input=input_text,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=timeout,
+        check=False,
+    )
+    if stdout_copy_path is not None:
+        stdout_copy_path.write_text(result.stdout, encoding="utf-8")
+    log_path.write_text(
+        "\n".join(
+            [
+                f"$ {command_text}",
+                f"exit_code={result.returncode}",
+                "",
+                "## stdout",
+                result.stdout,
+                "",
+                "## stderr",
+                result.stderr,
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return result.returncode
+
+
+def gemini_prompt(task_text: str) -> str:
+    return f"""You are Gemini CLI implementing work in this trading-bot repository.
+
+Task:
+{task_text}
+
+Follow GEMINI.md. Do not commit, push, deploy, edit secrets, or place live
+trades. When done, leave a concise handoff summary with changed files, tests
+run, tests not run, assumptions, and areas Codex should review carefully.
+"""
+
+
+def codex_prompt(packet_path: Path, todo_path: Path) -> str:
+    return f"""Review the implementation work using this packet:
+{packet_path}
+
+Follow AGENTS.md (Codex review-only section) and docs/agent_review_harness.md.
+You are the reviewer/planner, not the implementation agent. Do not edit files.
+Lead with findings, verify the test logs, identify residual risk, and produce a
+concrete next plan for Cursor (or Gemini CLI if the packet says implementation_agent=gemini).
+
+Label tasks with [Cursor], [Gemini], or [Either] when helpful.
+
+At the end, include a section titled exactly:
+# NEXT_TODO
+
+That section should be suitable to save as:
+{todo_path}
+"""
+
+
+def write_json(path: Path, data: dict) -> None:
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def check_stop_conditions(
+    out_dir: Path,
+    max_changed_files: int,
+    history: list[dict],
+    *,
+    ignore_artifacts: bool = False,
+) -> str | None:
+    changed_files_path = out_dir / "changed_files.txt"
+    if changed_files_path.exists():
+        changed_files = changed_files_path.read_text(encoding="utf-8").splitlines()
+        if len(changed_files) > max_changed_files:
+            return f"Too many changed files: {len(changed_files)} > {max_changed_files}"
+
+        artifacts = [
+            f
+            for f in changed_files
+            if any(p in f for p in ["models/", "logs/", "reports/", ".pytest_cache/"])
+        ]
+        if artifacts and not ignore_artifacts:
+            return f"Generated artifacts detected in diff (excluded from review loop): {artifacts}"
+
+        sensitive = [
+            f
+            for f in changed_files
+            if f == ".env"
+            or "secret" in f.lower()
+            or "config/portfolio_config.json" in f
+            or f.startswith(".git/")
+        ]
+        if sensitive:
+            return f"Sensitive files touched: {sensitive}"
+
+    summary_path = out_dir / "summary.json"
+    if summary_path.exists():
+        try:
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            if summary.get("overall_status") == "fail":
+                curr_fail = (
+                    summary.get("gemini_review_harness_exit_code"),
+                    summary.get("runtime_harness_exit_code"),
+                )
+                if history:
+                    last_summary_path = Path(history[-1]["output_dir"]) / "summary.json"
+                    if last_summary_path.exists():
+                        last_summary = json.loads(last_summary_path.read_text(encoding="utf-8"))
+                        last_fail = (
+                            last_summary.get("gemini_review_harness_exit_code"),
+                            last_summary.get("runtime_harness_exit_code"),
+                        )
+                        if curr_fail == last_fail and any(c != 0 and c is not None for c in curr_fail):
+                            return f"Same failing check twice (exit codes {curr_fail})"
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    return None
+
+
+def main() -> int:
+    args = parse_args()
+    base_run_id = args.run_id or dt.datetime.now().strftime("%Y%m%dT%H%M%S")
+    
+    task_text = read_task(args)
+    if args.continue_from_codex_todo:
+        if args.continue_from_codex_todo.exists():
+            task_text = args.continue_from_codex_todo.read_text(encoding="utf-8")
+        else:
+            print(f"Codex TODO file not found: {args.continue_from_codex_todo}", file=sys.stderr)
+            return 2
+
+    if args.run_gemini and not task_text.strip():
+        print("--run-gemini requires --task, --task-file, or --continue-from-codex-todo", file=sys.stderr)
+        return 2
+    if args.gemini_approval_mode == "yolo":
+        print("Refusing Gemini yolo mode in this orchestrator.", file=sys.stderr)
+        return 2
+
+    if args.balanced_pass:
+        args.run_codex_review = True
+        args.ignore_artifacts = True
+        pre_dir = REPORT_ROOT / (args.run_id or dt.datetime.now().strftime("%Y%m%dT%H%M%S"))
+        pre_dir.mkdir(parents=True, exist_ok=True)
+        if args.agy_prompt.is_file():
+            (pre_dir / "AGY_TASK.md").write_text(
+                args.agy_prompt.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+        agy_env = os.environ.copy()
+        agy_env["AGY_PROMPT"] = str(args.agy_prompt)
+        agy_env["AGY_TEST_PATHS"] = args.agy_test_paths.replace(",", " ")
+        print("--- Balanced pass: AGY pytest slice ---")
+        agy_code = run_command(
+            ["bash", "scripts/run_agy_slice.sh"],
+            log_path=pre_dir / "agy_slice.log",
+            env=agy_env,
+            dry_run=args.dry_run,
+        )
+        if agy_code != 0:
+            print(f"AGY slice failed with exit code {agy_code}", file=sys.stderr)
+            return agy_code
+        os.environ.setdefault("IMPLEMENTATION_AGENT", "cursor+agy")
+
+    history: list[dict] = []
+    
+    for i in range(args.max_iterations):
+        iteration_run_id = f"{base_run_id}_it{i}" if args.max_iterations > 1 else base_run_id
+        out_dir = REPORT_ROOT / iteration_run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        print(f"\n--- Iteration {i+1}/{args.max_iterations} (Run ID: {iteration_run_id}) ---")
+        (out_dir / "TASK.md").write_text(task_text, encoding="utf-8")
+
+        gemini_code = None
+        if args.run_gemini:
+            gemini_args = [
+                "gemini",
+                "--skip-trust",
+                "--approval-mode",
+                args.gemini_approval_mode,
+                "--prompt",
+                gemini_prompt(task_text),
+            ]
+            if args.gemini_model:
+                gemini_args[1:1] = ["--model", args.gemini_model]
+            gemini_code = run_command(
+                gemini_args,
+                log_path=out_dir / "gemini_cli.log",
+                dry_run=args.dry_run,
+            )
+        elif args.dry_run:
+            print("[dry-run] skipping Gemini CLI; no --run-gemini flag")
+
+        env = os.environ.copy()
+        env["RUN_ID"] = iteration_run_id
+        if args.run_gemini:
+            env["IMPLEMENTATION_AGENT"] = "gemini"
+        else:
+            env.setdefault("IMPLEMENTATION_AGENT", "cursor")
+        post_code = run_command(
+            ["bash", "scripts/run_cursor_post_workflow.sh"],
+            log_path=out_dir / "post_workflow_command.log",
+            env=env,
+            dry_run=args.dry_run,
+        )
+
+        # Check stop conditions after Gemini + Post-workflow
+        stop_reason = check_stop_conditions(
+            out_dir,
+            args.max_changed_files,
+            history,
+            ignore_artifacts=args.ignore_artifacts,
+        )
+        if stop_reason:
+            print(f"STOP CONDITION: {stop_reason}")
+            break
+
+        codex_code = None
+        codex_output = out_dir / "CODEX_REVIEW_AND_TODO.md"
+        codex_todo = out_dir / "NEXT_TODO.codex.md"
+        if args.run_codex_review:
+            packet_path = out_dir / "review_packet.md"
+            if args.scoped_review:
+                # Scoped review: prioritize the packet and avoid --uncommitted on artifacts
+                codex_args = [
+                    "codex",
+                    "--ask-for-approval", "never",
+                    "--sandbox", "read-only",
+                    "review",
+                    str(packet_path),
+                ]
+            else:
+                codex_args = [
+
+--- run_pass ---
+#!/usr/bin/env bash
+# Close one dev pass: pytest → review packet → Codex scoped review → NEXT_TODO.
+#
+# Usage:
+#   RUN_ID=phase20_golden bash scripts/run_pass_complete.sh
+#   RUN_ID=phase20_golden bash scripts/run_pass_complete.sh "Cursor feature + AGY golden tests"
+#   RUN_ID=phase20_golden TASK_FILE=prompts/my_pass.md bash scripts/run_pass_complete.sh
+#
+# Requires: .venv, Codex CLI with credits for step 3.
+# FULL_PYTEST=1 for entire suite; SKIP_PYTEST=1 if already green.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+RUN_ID="${RUN_ID:?Set RUN_ID, e.g. RUN_ID=phase20_golden}"
+IMPLEMENTATION_AGENT="${IMPLEMENTATION_AGENT:-cursor}"
+OUT_DIR="reports/agent_pipeline/${RUN_ID}"
+mkdir -p "$OUT_DIR"
+
+if [[ -n "${1:-}" ]]; then
+  printf '%s\n' "$1" >"$OUT_DIR/TASK.md"
+elif [[ -n "${TASK_FILE:-}" && -f "$TASK_FILE" ]]; then
+  cp "$TASK_FILE" "$OUT_DIR/TASK.md"
+elif [[ ! -f "$OUT_DIR/TASK.md" ]]; then
+  printf 'Pass %s: Cursor implementation + AGY tests complete. Request Codex review.\n' "$RUN_ID" >"$OUT_DIR/TASK.md"
+fi
+
+echo "=== [1/3] pytest ==="
+if [[ "${SKIP_PYTEST:-}" == "1" ]]; then
+  echo "SKIP_PYTEST=1 — skipped"
+elif [[ "${FULL_PYTEST:-}" == "1" ]]; then
+  PYTHONPATH=. .venv/bin/python -m pytest -q
+else
+  # Default: harness-aligned subset (fast, no optional qlib/xgboost stack required).
+  PYTHONPATH=. .venv/bin/python -m pytest -q \
+    tests/test_report_performance.py \
+    tests/test_reappraise_regime.py \
+    tests/test_portfolio_backtest_golden.py \
+    tests/test_portfolio_backtest_gate.py
+fi
+
+echo "=== [2/3] Codex review via orchestrator (post-workflow + scoped review) ==="
+export IMPLEMENTATION_AGENT
+CODEX_EXIT=0
+.venv/bin/python scripts/agent_orchestrator.py \
+  --run-id "$RUN_ID" \
+  --task-file "$OUT_DIR/TASK.md" \
+  --run-codex-review \
+  --scoped-review \
+  --ignore-artifacts \
+  || CODEX_EXIT=$?
+
+echo ""
+echo "=== [3/3] Pass outputs ==="
+echo "  Review packet:  $OUT_DIR/review_packet.md"
+echo "  Draft TODO:     $OUT_DIR/NEXT_TODO.md"
+if [[ -f "$OUT_DIR/NEXT_TODO.codex.md" ]]; then
+  echo "  Codex TODO:     $OUT_DIR/NEXT_TODO.codex.md  ← read this next"
+  echo ""
+  echo "--- NEXT_TODO.codex.md (preview) ---"
+  head -40 "$OUT_DIR/NEXT_TODO.codex.md" || true
+else
+  echo "  Codex TODO:     (missing — Codex did not finish)"
+  if [[ -f "$OUT_DIR/codex_review_command.log" ]]; then
+    echo ""
+    echo "--- codex_review_command.log (tail) ---"
+    tail -15 "$OUT_DIR/codex_review_command.log" || true
+  fi
+fi
+
+echo ""
+if [[ "$CODEX_EXIT" -ne 0 ]] || [[ ! -f "$OUT_DIR/NEXT_TODO.codex.md" ]]; then
+  echo "Codex review incomplete (exit ${CODEX_EXIT:-?}). Fix credits/CLI, then re-run:"
+  echo "  RUN_ID=$RUN_ID SKIP_PYTEST=1 bash scripts/run_pass_complete.sh"
+  exit "${CODEX_EXIT:-1}"
+fi
+
+echo "Pass complete. Implement items from NEXT_TODO.codex.md in Cursor, then repeat."
+PYTHONPATH=. .venv/bin/python scripts/agent_workload_report.py --record 2>/dev/null || true
+exit 0
+
+--- check tests file exists? ---
+prompts/agy/phase20_portfolio_gate.md
+scripts/run_agy_slice.sh
+scripts/run_balanced_pass.sh
+tests/test_portfolio_backtest_gate.py
+
+exec
+/bin/bash -lc "sed -n '380,760p' scripts/agent_orchestrator.py; sed -n '1,200p' scripts/run_agy_slice.sh; sed -n '1,120p' scripts/run_balanced_pass.sh" in /home/kimyo/trading-bot
+ succeeded in 128ms:
+                codex_args = [
+                    "codex",
+                    "--ask-for-approval", "never",
+                    "--sandbox", "read-only",
+                    "review",
+                    "--uncommitted",
+                ]
+            
+            if args.codex_model:
+                codex_args.extend(["--model", args.codex_model])
+            
+            # Pass reasoning effort override to Codex (defaults to 'low' to save tokens)
+            codex_args.extend(["-c", f"model_reasoning_effort=\"{args.codex_reasoning_effort}\""])
+            
+            try:
+                codex_code = run_command(
+                    codex_args,
+                    log_path=out_dir / "codex_review_command.log",
+                    timeout=args.codex_timeout_seconds,
+                    stdout_copy_path=codex_output,
+                    dry_run=args.dry_run,
+                )
+            except subprocess.TimeoutExpired:
+                codex_code = 124
+                timeout_message = (
+                    f"Codex review timed out after {args.codex_timeout_seconds} seconds.\n"
+                    f"Review packet remains available at {packet_path}\n"
+                )
+                (out_dir / "codex_review_command.log").write_text(timeout_message, encoding="utf-8")
+                codex_output.write_text(timeout_message, encoding="utf-8")
+                print(f"STOP CONDITION: Codex review timeout")
+                break
+
+            if codex_code == 0 and codex_output.exists():
+                # Extract TODO for next iteration
+                review_content = codex_output.read_text(encoding="utf-8")
+                todo_marker = None
+                for marker in ("# NEXT_TODO\n", "# NEXT_TODO for Cursor\n", "# NEXT_TODO for Gemini CLI\n"):
+                    if marker in review_content:
+                        todo_marker = marker
+                        break
+                if todo_marker:
+                    todo_content = review_content.split(todo_marker)[-1].strip()
+                    codex_todo.write_text(todo_content, encoding="utf-8")
+                    task_text = todo_content  # Feed into next iteration
+                else:
+                    # If no NEXT_TODO section, we might want to stop or use the whole output
+                    codex_todo.write_text(review_content, encoding="utf-8")
+        elif args.dry_run:
+            print("[dry-run] skipping Codex review; no --run-codex-review flag")
+
+        summary = {
+            "run_id": iteration_run_id,
+            "output_dir": str(out_dir),
+            "gemini_exit_code": gemini_code,
+            "post_workflow_exit_code": post_code,
+            "codex_review_exit_code": codex_code,
+            "review_packet": str(out_dir / "review_packet.md"),
+            "draft_todo": str(out_dir / "NEXT_TODO.md"),
+            "codex_todo": str(codex_todo) if codex_todo.exists() else None,
+        }
+        write_json(out_dir / "orchestrator_summary.json", summary)
+        history.append(summary)
+
+        if not args.run_codex_review:
+            # If we don't run codex, we can't get the next task automatically
+            break
+        if codex_code != 0:
+            print(f"Codex review failed with exit code {codex_code}. Stopping loop.")
+            break
+
+    last_out_dir = Path(history[-1]["output_dir"]) if history else out_dir
+    print(f"\nFinal Orchestrator output: {last_out_dir}")
+    if history:
+        last_codex_todo = Path(history[-1]["codex_todo"]) if history[-1].get("codex_todo") else None
+        if last_codex_todo and last_codex_todo.exists():
+            print(f"Last Codex TODO: {last_codex_todo}")
+
+    exit_codes = []
+    for h in history:
+        exit_codes.extend([h["gemini_exit_code"], h["post_workflow_exit_code"], h["codex_review_exit_code"]])
+    exit_codes = [code for code in exit_codes if code is not None]
+    return 1 if any(code != 0 for code in exit_codes) else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+#!/usr/bin/env bash
+# Run the [AGY] test slice for a pass (pytest only; no main.py edits).
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+AGY_PROMPT="${AGY_PROMPT:-${1:-}}"
+TEST_PATHS="${AGY_TEST_PATHS:-tests/test_portfolio_backtest_gate.py}"
+
+if [[ -n "$AGY_PROMPT" && -f "$AGY_PROMPT" ]]; then
+  echo "AGY prompt: $AGY_PROMPT"
+fi
+
+echo "=== AGY slice: pytest ==="
+PYTHONPATH=. .venv/bin/python -m pytest -q $TEST_PATHS
+echo "AGY slice pytest: OK"
+#!/usr/bin/env bash
+# Balanced multi-account pass: AGY tests → orchestrator (post-workflow + Codex).
+#
+# Usage:
+#   RUN_ID=phase20_portfolio_gate bash scripts/run_balanced_pass.sh
+#   RUN_ID=phase20_portfolio_gate AGY_PROMPT=prompts/agy/phase20_portfolio_gate.md bash scripts/run_balanced_pass.sh
+#
+# Optional: AGY_USE_GEMINI=1 with `gemini` on PATH to implement tests from prompt (legacy).
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+RUN_ID="${RUN_ID:?Set RUN_ID}"
+AGY_PROMPT="${AGY_PROMPT:-prompts/agy/phase20_portfolio_gate.md}"
+OUT_DIR="reports/agent_pipeline/${RUN_ID}"
+mkdir -p "$OUT_DIR"
+
+if [[ -f "$AGY_PROMPT" ]]; then
+  cp "$AGY_PROMPT" "$OUT_DIR/AGY_TASK.md"
+fi
+
+echo "=== Balanced pass: $RUN_ID ==="
+
+if [[ "${AGY_USE_GEMINI:-}" == "1" ]] && command -v gemini >/dev/null 2>&1; then
+  echo "=== [AGY] Gemini CLI slice (AGY_USE_GEMINI=1) ==="
+  gemini --skip-trust --approval-mode auto_edit --prompt "$(cat "$AGY_PROMPT")"
+elif [[ "${SKIP_AGY:-}" == "1" ]]; then
+  echo "SKIP_AGY=1 — skipping AGY pytest slice"
+else
+  AGY_PROMPT="$AGY_PROMPT" bash scripts/run_agy_slice.sh
+fi
+
+exec .venv/bin/python scripts/agent_orchestrator.py \
+  --run-id "$RUN_ID" \
+  --balanced-pass \
+  --agy-prompt "$AGY_PROMPT" \
+  --task-file "$OUT_DIR/AGY_TASK.md" \
+  ${AGY_TEST_PATHS:+--agy-test-paths "$AGY_TEST_PATHS"}
+
+exec
+/bin/bash -lc 'git status --short' in /home/kimyo/trading-bot
+ succeeded in 136ms:
+ M .cursor/skills/pass-complete/SKILL.md
+ M logs/ml/ai_model_metrics.csv
+ M logs/retrain_history.csv
+ M models/ai_score_model.joblib
+ M scripts/agent_orchestrator.py
+ M scripts/run_pass_complete.sh
+?? .antigravitycli/
+?? reports/agent_pipeline/phase20_golden/
+?? reports/agent_pipeline/phase20_portfolio_gate/
+?? scripts/run_agy_slice.sh
+?? scripts/run_balanced_pass.sh
+?? tests/test_portfolio_backtest_gate.py
+
+exec
+/bin/bash -lc "nl -ba scripts/run_pass_complete.sh | sed -n '32,43p'; nl -ba scripts/agent_orchestrator.py | sed -n '284,306p'; nl -ba .cursor/skills/pass-complete/SKILL.md | sed -n '30,42p'" in /home/kimyo/trading-bot
+ succeeded in 116ms:
+    32	elif [[ "${FULL_PYTEST:-}" == "1" ]]; then
+    33	  PYTHONPATH=. .venv/bin/python -m pytest -q
+    34	else
+    35	  # Default: harness-aligned subset (fast, no optional qlib/xgboost stack required).
+    36	  PYTHONPATH=. .venv/bin/python -m pytest -q \
+    37	    tests/test_report_performance.py \
+    38	    tests/test_reappraise_regime.py \
+    39	    tests/test_portfolio_backtest_golden.py \
+    40	    tests/test_portfolio_backtest_gate.py
+    41	fi
+    42	
+    43	echo "=== [2/3] Codex review via orchestrator (post-workflow + scoped review) ==="
+   284	        print("Refusing Gemini yolo mode in this orchestrator.", file=sys.stderr)
+   285	        return 2
+   286	
+   287	    if args.balanced_pass:
+   288	        args.run_codex_review = True
+   289	        args.ignore_artifacts = True
+   290	        pre_dir = REPORT_ROOT / (args.run_id or dt.datetime.now().strftime("%Y%m%dT%H%M%S"))
+   291	        pre_dir.mkdir(parents=True, exist_ok=True)
+   292	        if args.agy_prompt.is_file():
+   293	            (pre_dir / "AGY_TASK.md").write_text(
+   294	                args.agy_prompt.read_text(encoding="utf-8"), encoding="utf-8"
+   295	            )
+   296	        agy_env = os.environ.copy()
+   297	        agy_env["AGY_PROMPT"] = str(args.agy_prompt)
+   298	        agy_env["AGY_TEST_PATHS"] = args.agy_test_paths.replace(",", " ")
+   299	        print("--- Balanced pass: AGY pytest slice ---")
+   300	        agy_code = run_command(
+   301	            ["bash", "scripts/run_agy_slice.sh"],
+   302	            log_path=pre_dir / "agy_slice.log",
+   303	            env=agy_env,
+   304	            dry_run=args.dry_run,
+   305	        )
+   306	        if agy_code != 0:
+    30	
+    31	2. Run **balanced pass** (AGY pytest + orchestrator + Codex) — preferred:
+    32	
+    33	```bash
+    34	cd <repo-root>
+    35	RUN_ID=<run_id> bash scripts/run_balanced_pass.sh
+    36	# or: .venv/bin/python scripts/agent_orchestrator.py --run-id <run_id> --balanced-pass --task-file prompts/agy/<task>.md
+    37	```
+    38	
+    39	Legacy (Codex only, tests already green):
+    40	
+    41	```bash
+    42	RUN_ID=<run_id> bash scripts/run_pass_complete.sh "<one-line summary>"
+
+codex
+The patch wires a new pytest target into the default workflow without including that target in the tracked changes, so the workflow breaks on a clean checkout. The implementation also does not match the requested tests-only scope.
+
+Review comment:
+
+- [P1] Include the new gate test before invoking it — /home/kimyo/trading-bot/scripts/run_pass_complete.sh:40-40
+  As submitted in the tracked patch, `run_pass_complete.sh` now always asks pytest to collect `tests/test_portfolio_backtest_gate.py`, but that test file is not part of the tracked diff/review packet. In a clean checkout of this patch, the default pass-complete command will fail immediately with `file or directory not found` instead of running the harness.

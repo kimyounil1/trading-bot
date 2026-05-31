@@ -1,0 +1,6 @@
+.cursor/skills/pass-complete/SKILL.md
+logs/ml/ai_model_metrics.csv
+logs/retrain_history.csv
+models/ai_score_model.joblib
+scripts/agent_orchestrator.py
+scripts/run_pass_complete.sh

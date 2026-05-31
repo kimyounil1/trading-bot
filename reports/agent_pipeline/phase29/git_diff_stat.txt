@@ -1,0 +1,12 @@
+ TODO.md                                       | 82 +++++++-----------------
+ app/streamlit_app.py                          |  9 ++-
+ config/strategy_config.json                   | 14 ++--
+ docs/promotion_gates.md                       | 21 ++++--
+ logs/portfolio_backtest/portfolio_summary.csv |  2 +-
+ src/benchmark_gap_report.py                   | 47 +++++++++++++-
+ src/portfolio_backtester.py                   | 92 ++++++++++++++++++---------
+ src/promotion_summary.py                      | 20 ++++--
+ src/run_portfolio_backtest.py                 | 39 ++----------
+ src/train_ai_model.py                         |  3 +
+ tests/test_promotion_summary.py               |  3 +-
+ 11 files changed, 185 insertions(+), 147 deletions(-)

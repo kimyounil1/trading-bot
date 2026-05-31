@@ -1,0 +1,33 @@
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   TODO.md
+	modified:   docs/TODO_ARCHIVE.md
+	modified:   docs/runbook.md
+	modified:   scripts/run_ops_reports.sh
+	modified:   scripts/run_pass_complete.sh
+	modified:   src/leverage_stress_report.py
+	modified:   src/llm_cache_report.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	.antigravitycli/
+	config/crowding_paper_proposal.json
+	config/leverage_stress_config.json
+	config/llm_monitoring_config.json
+	scripts/run_crowding_paper_gate.sh
+	scripts/run_execution_alignment_report.sh
+	src/crowding_paper_gate.py
+	src/execution_alignment_report.py
+	tests/fixtures/audit_daily/golden_output/audit_20260530.json
+	tests/fixtures/audit_daily/golden_output/latest_summary.json
+	tests/fixtures/guard_impact/
+	tests/test_crowding_paper_gate.py
+	tests/test_execution_alignment_report.py
+	tests/test_leverage_stress_alerts.py
+	tests/test_llm_cache_alerts.py
+
+no changes added to commit (use "git add" and/or "git commit -a")

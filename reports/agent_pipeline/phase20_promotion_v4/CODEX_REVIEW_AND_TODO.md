@@ -1,0 +1,1 @@
+The phase20_promotion_v4 changes address the prior holdout warmup and fit-window metadata issues: the challenger trains and retunes on the fit slice, metadata is built from that fit slice, and portfolio OOS evaluation uses full history with an evaluation window. I did not find a discrete introduced correctness issue that should block the patch.

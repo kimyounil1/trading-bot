@@ -1,0 +1,321 @@
+diff --git a/TODO.md b/TODO.md
+index 3681dba..f81a15a 100644
+--- a/TODO.md
++++ b/TODO.md
+@@ -50,7 +50,7 @@ RUN_ID=<phase>_final bash scripts/run_pass_complete.sh "Phase N complete"
+ | **관측** | 일별 audit, 주간 slippage, guard/leverage/LLM cache 리포트 스크립트 (`docs/runbook.md`) |
+ | **비활성** | `deep_model.py`, `rl_portfolio.py` — `docs/RESEARCH_MODELS.md` |
+ 
+-**완료 로드맵:** Phase 0–25 → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
++**완료 로드맵:** Phase 0–26 → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
+ 
+ **우선순위 가이드 (2026 Q2)**
+ 1. **운영 자동화** — 리포트·audit 타이머, 단일 ops 진입점
+@@ -60,16 +60,7 @@ RUN_ID=<phase>_final bash scripts/run_pass_complete.sh "Phase N complete"
+ 
+ ---
+ 
+-## Phase 26 — 실행·리스크 라이브 정합 ← **다음**
+-
+-- [ ] `[Cursor]` `crowding_guard_enabled` paper 설정안 + `guard_impact_report` 결과 기반 go/no-go 체크리스트
+-- [ ] `[Cursor]` paper 체결 vs `execution_audit.csv` 스킵 비율 주간 diff (slippage 리포트 연동)
+-- [ ] `[AGY]` leverage > 1.0 stress 리포트 임계값 fixture + runbook 알림 문구
+-- [ ] `[Cursor]` LLM cache miss 급증 시 Telegram (`llm_cache_report` 연동)
+-
+----
+-
+-## Backlog (우선순위 낮음 · live 미사용 시 보류 가능)
++## Backlog (우선순위 낮음 · live 미사용 시 보류 가능) ← **다음**
+ 
+ - [ ] `[Cursor]` 레버리지 > 1.0 paper 소액 실험 + stress 게이트 연동
+ - [ ] `[AGY]` Factor/crowding guard **라이브** 영향도 (백테스트 리포트 vs audit 스킵 로그 대조)
+diff --git a/docs/TODO_ARCHIVE.md b/docs/TODO_ARCHIVE.md
+index f3ded6a..bcd0cff 100644
+--- a/docs/TODO_ARCHIVE.md
++++ b/docs/TODO_ARCHIVE.md
+@@ -24,9 +24,11 @@
+ | 23 | Risk reports | Crowding backtest impact, leverage stress, LLM cache monitoring |
+ | 24 | Ops automation | `run_ops_reports.sh`, systemd timers, post-workflow audit smoke |
+ | 25 | Alpha / promotion quality | Fold variance report, promotion summary CLI, benchmark gap, champion governance |
++| 26 | Live alignment (paper) | Crowding go/no-go, execution vs slippage diff, leverage/LLM cache alerts |
+ 
+ **Milestones**
+ - **2026-05-27:** Phase 0–19 closed (code + pytest + runbook).
+ - **2026-05-30:** Phase 20–23 closed; champion model git-untracked (`models/*.joblib` local-only).
+ - **2026-05-30:** Phase 24 closed; ops report batch + CI pytest/gates.
+ - **2026-05-30:** Phase 25 closed; promotion docs/CLI, fold variance, benchmark gap decomposition.
++- **2026-05-30:** Phase 26 closed; paper crowding gate, execution alignment, stress/cache Telegram alerts.
+diff --git a/docs/runbook.md b/docs/runbook.md
+index 6281d5a..ff727dc 100644
+--- a/docs/runbook.md
++++ b/docs/runbook.md
+@@ -87,6 +87,18 @@
+   bash scripts/run_benchmark_gap_report.sh    # logs/benchmark_gap/latest_summary.json
+   ```
+   승격 게이트 문서: [`docs/promotion_gates.md`](promotion_gates.md)
++- **Paper crowding guard (수동)**:
++  ```bash
++  bash scripts/run_guard_impact_report.sh
++  bash scripts/run_crowding_paper_gate.sh   # logs/crowding_paper/go_no_go_checklist.json
++  ```
++  GO 시 설정안: `config/crowding_paper_proposal.json` (paper only)
++- **실행 정합 (주간)**:
++  ```bash
++  bash scripts/run_execution_alignment_report.sh   # audit vs slippage diff
++  ```
++- **레버리지 stress 알림**: `config/leverage_stress_config.json` — `run_leverage_stress_report.sh --leverage 2.0`
++- **LLM cache 알림**: `config/llm_monitoring_config.json` — `run_llm_cache_report.sh`
+ - **리스크 리포트 (수동/주간)**:
+   ```bash
+   bash scripts/run_guard_impact_report.sh      # logs/guard_impact/latest_summary.json
+diff --git a/scripts/run_ops_reports.sh b/scripts/run_ops_reports.sh
+index 0a8fd7d..420a961 100755
+--- a/scripts/run_ops_reports.sh
++++ b/scripts/run_ops_reports.sh
+@@ -49,11 +49,15 @@ bash "${ROOT}/scripts/run_llm_cache_report.sh"
+ if [[ "$RUN_WEEKLY" -eq 1 ]]; then
+   echo "--- weekly slippage report ---"
+   bash "${ROOT}/scripts/run_weekly_slippage_report.sh"
++  echo "--- execution alignment (audit vs slippage week-over-week) ---"
++  bash "${ROOT}/scripts/run_execution_alignment_report.sh"
+ fi
+ 
+ if [[ "$RUN_HEAVY" -eq 1 ]]; then
+   echo "--- guard impact (backtest comparison) ---"
+   "$PYTHON" -m src.guard_impact_report
++  echo "--- crowding paper go/no-go ---"
++  bash "${ROOT}/scripts/run_crowding_paper_gate.sh"
+   echo "--- leverage stress ---"
+   bash "${ROOT}/scripts/run_leverage_stress_report.sh"
+ fi
+diff --git a/scripts/run_pass_complete.sh b/scripts/run_pass_complete.sh
+index e2eb1c1..1a3ecf9 100755
+--- a/scripts/run_pass_complete.sh
++++ b/scripts/run_pass_complete.sh
+@@ -44,6 +44,10 @@ else
+     tests/test_retrain_notifications.py \
+     tests/test_llm_cache_report_schema.py \
+     tests/test_leverage_stress_report.py \
++    tests/test_leverage_stress_alerts.py \
++    tests/test_crowding_paper_gate.py \
++    tests/test_execution_alignment_report.py \
++    tests/test_llm_cache_alerts.py \
+     tests/test_guard_impact_report.py \
+     tests/test_check_audit_daily_summary.py \
+     tests/test_fold_variance_report.py \
+diff --git a/src/leverage_stress_report.py b/src/leverage_stress_report.py
+index 5d9c843..42983ee 100644
+--- a/src/leverage_stress_report.py
++++ b/src/leverage_stress_report.py
+@@ -12,6 +12,13 @@ import pandas as pd
+ 
+ DEFAULT_OUTPUT_DIR = Path("logs/leverage_stress")
+ DEFAULT_EQUITY_PATH = Path("logs/portfolio_backtest/portfolio_equity.csv")
++DEFAULT_CONFIG_PATH = Path("config/leverage_stress_config.json")
++
++LEVERAGE_STRESS_ALERT_KEYS = (
++    "passed",
++    "failures",
++    "thresholds",
++)
+ 
+ LEVERAGE_STRESS_REPORT_KEYS = (
+     "generated_at",
+@@ -126,6 +133,66 @@ def validate_leverage_stress_report(report: dict[str, Any]) -> dict[str, Any]:
+     return report
+ 
+ 
++def load_leverage_stress_config(path: Path = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
++    if not path.is_file():
++        return {
++            "default_leverage": 2.0,
++            "alert_if_stressed_drawdown_below_pct": -25.0,
++            "alert_if_gap10_final_equity_loss_below_pct": -15.0,
++            "notify_telegram": True,
++        }
++    return json.loads(path.read_text(encoding="utf-8"))
++
++
++def evaluate_leverage_stress_alerts(
++    report: dict[str, Any],
++    *,
++    leverage: float,
++    config: dict[str, Any] | None = None,
++) -> dict[str, Any]:
++    config = config or load_leverage_stress_config()
++    failures: list[str] = []
++    dd_floor = float(config.get("alert_if_stressed_drawdown_below_pct", -25.0))
++    gap10_floor = float(config.get("alert_if_gap10_final_equity_loss_below_pct", -15.0))
++
++    for row in report.get("scenarios") or []:
++        if float(row.get("max_drawdown_pct", 0.0)) < dd_floor:
++            failures.append(
++                f"{row['name']}: max_drawdown_pct={row['max_drawdown_pct']} < {dd_floor}"
++            )
++        if row["name"] == "gap_down_10pct":
++            loss_pct = float(row.get("final_equity_delta_pct", 0.0))
++            if loss_pct < gap10_floor:
++                failures.append(
++                    f"gap_down_10pct: final_equity_delta_pct={loss_pct} < {gap10_floor} "
++                    f"(leverage={leverage})"
++                )
++
++    return {
++        "passed": not failures,
++        "failures": failures,
++        "thresholds": {
++            "alert_if_stressed_drawdown_below_pct": dd_floor,
++            "alert_if_gap10_final_equity_loss_below_pct": gap10_floor,
++            "leverage": leverage,
++        },
++    }
++
++
++def maybe_notify_leverage_stress(
++    report: dict[str, Any],
++    alerts: dict[str, Any],
++    *,
++    notify: bool = True,
++) -> None:
++    if alerts.get("passed") or not notify:
++        return
++    from src.notifier import notify_info
++
++    body = "\n".join(alerts.get("failures") or [])
++    notify_info("⚠️ Leverage stress thresholds breached", body)
++
++
+ def write_leverage_stress_artifacts(
+     report: dict[str, Any],
+     output_dir: Path = DEFAULT_OUTPUT_DIR,
+@@ -139,12 +206,20 @@ def write_leverage_stress_artifacts(
+ def run_leverage_stress_report(
+     equity_path: str | Path = DEFAULT_EQUITY_PATH,
+     *,
+-    leverage: float = 1.0,
++    leverage: float | None = None,
+     output_dir: Path = DEFAULT_OUTPUT_DIR,
++    notify_telegram: bool | None = None,
+ ) -> dict[str, Any]:
++    config = load_leverage_stress_config()
++    leverage = float(leverage if leverage is not None else config.get("default_leverage", 1.0))
+     equity = load_equity_series(equity_path)
+     report = build_leverage_stress_report(equity, leverage=leverage)
++    alerts = evaluate_leverage_stress_alerts(report, leverage=leverage, config=config)
++    report["alerts"] = alerts
+     write_leverage_stress_artifacts(report, output_dir)
++    if notify_telegram is None:
++        notify_telegram = bool(config.get("notify_telegram", True))
++    maybe_notify_leverage_stress(report, alerts, notify=notify_telegram)
+     return report
+ 
+ 
+diff --git a/src/llm_cache_report.py b/src/llm_cache_report.py
+index f12037c..1b786e5 100644
+--- a/src/llm_cache_report.py
++++ b/src/llm_cache_report.py
+@@ -11,6 +11,7 @@ from typing import Any
+ 
+ DEFAULT_CACHE_PATH = Path("data/llm_cache.json")
+ DEFAULT_OUTPUT_DIR = Path("logs/llm_monitoring")
++DEFAULT_CONFIG_PATH = Path("config/llm_monitoring_config.json")
+ 
+ LLM_CACHE_REPORT_KEYS = (
+     "generated_at",
+@@ -117,22 +118,93 @@ def build_llm_cache_report(cache_path: str | Path = DEFAULT_CACHE_PATH) -> dict[
+     return validate_llm_cache_report(report)
+ 
+ 
++def load_llm_monitoring_config(path: Path = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
++    if not path.is_file():
++        return {
++            "min_cache_hit_rate": 0.35,
++            "max_entries_per_ticker_day": 1.2,
++            "notify_telegram": True,
++            "notify_on_empty_cache": False,
++        }
++    return json.loads(path.read_text(encoding="utf-8"))
++
++
++def evaluate_llm_cache_alerts(
++    report: dict[str, Any],
++    config: dict[str, Any] | None = None,
++) -> dict[str, Any]:
++    config = config or load_llm_monitoring_config()
++    failures: list[str] = []
++    hit_rate = float(report.get("estimated_cache_hit_rate", 0.0))
++    entries_ratio = float(report.get("entries_per_ticker_day", 0.0))
++    entry_count = int(report.get("entry_count", 0))
++
++    min_hit = float(config.get("min_cache_hit_rate", 0.35))
++    max_ratio = float(config.get("max_entries_per_ticker_day", 1.2))
++
++    if entry_count == 0 and config.get("notify_on_empty_cache"):
++        failures.append("LLM cache is empty (possible cache miss storm on next run)")
++    elif entry_count > 0 and hit_rate < min_hit:
++        failures.append(
++            f"cache hit proxy {hit_rate:.2f} < min {min_hit:.2f} (miss rate elevated)"
++        )
++    if entries_ratio > max_ratio:
++        failures.append(
++            f"entries_per_ticker_day {entries_ratio:.2f} > max {max_ratio:.2f}"
++        )
++
++    return {
++        "passed": not failures,
++        "failures": failures,
++        "thresholds": {"min_cache_hit_rate": min_hit, "max_entries_per_ticker_day": max_ratio},
++    }
++
++
++def maybe_notify_llm_cache_alerts(
++    report: dict[str, Any],
++    alerts: dict[str, Any],
++    *,
++    notify: bool = True,
++) -> None:
++    if alerts.get("passed") or not notify:
++        return
++    from src.notifier import notify_info
++
++    notify_info(
++        "⚠️ LLM cache monitoring alert",
++        "\n".join(alerts.get("failures") or [])
++        + f"\nEntries: {report.get('entry_count')} | Hit proxy: {report.get('estimated_cache_hit_rate')}",
++    )
++
++
+ def write_llm_cache_artifacts(
+     report: dict[str, Any],
+     output_dir: Path = DEFAULT_OUTPUT_DIR,
+ ) -> Path:
+     output_dir.mkdir(parents=True, exist_ok=True)
+-    path = output_dir / "latest_summary.json"
+-    path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+-    return path
++    latest = output_dir / "latest_summary.json"
++    if latest.is_file():
++        (output_dir / "previous_summary.json").write_text(
++            latest.read_text(encoding="utf-8"),
++            encoding="utf-8",
++        )
++    latest.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
++    return latest
+ 
+ 
+ def run_llm_cache_report(
+     cache_path: str | Path = DEFAULT_CACHE_PATH,
+     output_dir: Path = DEFAULT_OUTPUT_DIR,
++    notify_telegram: bool | None = None,
+ ) -> dict[str, Any]:
++    config = load_llm_monitoring_config()
+     report = build_llm_cache_report(cache_path)
++    alerts = evaluate_llm_cache_alerts(report, config=config)
++    report["alerts"] = alerts
+     write_llm_cache_artifacts(report, output_dir)
++    if notify_telegram is None:
++        notify_telegram = bool(config.get("notify_telegram", True))
++    maybe_notify_llm_cache_alerts(report, alerts, notify=notify_telegram)
+     return report
+ 
+ 

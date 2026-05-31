@@ -1,0 +1,2649 @@
+$ codex --ask-for-approval never --sandbox read-only review /home/kimyo/trading-bot/reports/agent_pipeline/phase20_promotion_v3/review_packet.md -c 'model_reasoning_effort="low"'
+exit_code=0
+
+## stdout
+The patch does exclude the holdout from model fitting, but the promotion OOS backtest is run without required indicator warmup history, making the promotion gate unreliable in realistic configurations. It also persists misleading training-window metadata that includes the holdout.
+
+Full review comments:
+
+- [P1] Preserve pre-holdout history for OOS indicators — /home/kimyo/trading-bot/src/train_ai_model.py:676-683
+  When the configured filters or indicators need lookback history (for example the default 200-day market-regime MA, 50-day slow MA, relative-strength/volume/volatility windows, or AI features), passing only `holdout_ticker_data` into `_run_retrain_oos_portfolio` makes the first part—or all—of the six-month holdout lack enough history. In common market-regime-enabled runs a six-month slice is shorter than the 200-day MA, so the OOS gate can produce no buy signals and reject/compare models on an artificially degraded backtest; use full price history with `evaluation_start/end` to restrict scoring while preserving warmup context.
+
+- [P2] Build metadata from the actual fitting window — /home/kimyo/trading-bot/src/train_ai_model.py:659-666
+  Although the model is now fit on `training_data_fit`, the bundle metadata is still built with full `training_data`, so promoted/challenger metadata reports a `training_window_end` that includes the holdout dates. For promotion governance this makes the saved model appear trained through the OOS holdout and can mask whether the holdout was actually excluded; pass `training_data_fit` here so persisted metadata matches the data used for fitting.
+
+
+## stderr
+OpenAI Codex v0.133.0
+--------
+workdir: /home/kimyo/trading-bot
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: low
+reasoning summaries: none
+session id: 019e786d-09c0-7f21-bd6b-b68cfab65f6d
+--------
+user
+/home/kimyo/trading-bot/reports/agent_pipeline/phase20_promotion_v3/review_packet.md
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+exec
+/bin/bash -lc "sed -n '1,220p' reports/agent_pipeline/phase20_promotion_v3/review_packet.md && git diff --stat && git diff --" in /home/kimyo/trading-bot
+ succeeded in 163ms:
+# Agent Review Packet - Run: phase20_promotion_v3
+
+## Implementation Agent
+cursor
+
+## Task Description
+threshold retune on pre-holdout data only; promotion OOS on holdout slice
+
+## Changed Files
+- logs/ml/ai_model_metrics.csv
+- logs/retrain_history.csv
+- models/ai_score_model.joblib
+- src/ml_model.py
+- src/portfolio_backtest_validation.py
+- src/train_ai_model.py
+- tests/test_model_governance.py
+- tests/test_portfolio_backtest_gate.py
+
+## Git Diff Summary
+```
+ logs/ml/ai_model_metrics.csv          |  10 +-
+ logs/retrain_history.csv              |   1 +
+ models/ai_score_model.joblib          | Bin 1757990 -> 1758310 bytes
+ src/ml_model.py                       | 123 ++++++++++++++++++++++--
+ src/portfolio_backtest_validation.py  |  52 ++++++++---
+ src/train_ai_model.py                 | 170 +++++++++++++++++++++++++++++++++-
+ tests/test_model_governance.py        |  65 ++++++++++++-
+ tests/test_portfolio_backtest_gate.py |  12 +++
+ 8 files changed, 401 insertions(+), 32 deletions(-)
+```
+
+## Test Execution Results (runtime_harness.log)
+```
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/kimyo/trading-bot
+plugins: anyio-4.13.0
+collected 7 items
+
+tests/test_report_performance.py .                                       [ 14%]
+tests/test_reappraise_regime.py ...                                      [ 57%]
+tests/test_portfolio_backtest_golden.py ...                              [100%]
+
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6
+  /home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+========================= 7 passed, 1 warning in 0.63s =========================
+```
+
+## Git Patch
+```diff
+diff --git a/logs/ml/ai_model_metrics.csv b/logs/ml/ai_model_metrics.csv
+index 0638196..f5a77ad 100644
+--- a/logs/ml/ai_model_metrics.csv
++++ b/logs/ml/ai_model_metrics.csv
+@@ -1,6 +1,6 @@
+ fold,accuracy,precision,recall,roc_auc,test_positive_rate,prediction_positive_rate,train_size,test_size
+-1,0.5244384996934738,0.5484398737875423,0.5012817773979918,0.5286340670919325,0.5217633617566739,0.47689906927492615,17946,17943
+-2,0.4494789054227275,0.6544431509507179,0.2940714908456844,0.5158509944937936,0.639246502814468,0.2872429359638856,35889,17943
+-3,0.5586022404280221,0.5981134772045162,0.7847365460341271,0.5298942819902608,0.5944379423730702,0.779914172657861,53832,17943
+-4,0.46853926322242656,0.5456267409470752,0.4729116368903911,0.4732537359173688,0.5771052778242212,0.500195062141225,71775,17943
+-5,0.5130134314217244,0.5579873646209387,0.5064509522834323,0.51604461357988,0.5442791060580728,0.4940088056623753,89718,17943
++1,0.528979045920642,0.5457911357944027,0.5393306790057032,0.5316021297826623,0.5178889879625501,0.5117588051716451,17944,17944
++2,0.45692153366027644,0.6543549218347363,0.33001212961358517,0.5026369607790756,0.6432233615693268,0.32439812750780206,35888,17944
++3,0.5665960766830138,0.6093773110486614,0.7675826734979041,0.5460608256136901,0.5982501114578689,0.7535666518056174,53832,17944
++4,0.451627284886313,0.5284319356691557,0.44508950169327527,0.4455734853749122,0.5759585376727597,0.4851203744984396,71776,17944
++5,0.5106442264823896,0.5542609092986064,0.4986126811221868,0.5146206734442764,0.5422982612572448,0.4878510922871155,89720,17944
+diff --git a/logs/retrain_history.csv b/logs/retrain_history.csv
+index 9e73b35..8e1e7f7 100644
+--- a/logs/retrain_history.csv
++++ b/logs/retrain_history.csv
+@@ -2,3 +2,4 @@ timestamp,status,avg_roc_auc,avg_precision,elapsed_sec
+ 2026-05-26T13:35:17Z,success,0.4985,0.5439,13.9
+ 2026-05-26T13:51:32Z,success,0.5103,0.5616,19.3
+ 2026-05-26T14:22:04Z,success,0.5127,0.5809,19.1
++2026-05-30T09:28:07Z,success,0.5081,0.5784,93.5
+diff --git a/models/ai_score_model.joblib b/models/ai_score_model.joblib
+index 4cc580d..a7de37d 100644
+Binary files a/models/ai_score_model.joblib and b/models/ai_score_model.joblib differ
+diff --git a/src/ml_model.py b/src/ml_model.py
+index e0c664b..2561599 100644
+--- a/src/ml_model.py
++++ b/src/ml_model.py
+@@ -290,25 +290,132 @@ def restore_archived_champion(
+     return model_path, metadata_path
+ 
+ 
++def bundle_to_model_wrapper(bundle: dict[str, Any]) -> RegimeAwareModelWrapper:
++    return RegimeAwareModelWrapper(
++        bundle["models"],
++        bundle["feature_columns"],
++        bundle["prediction_horizon"],
++        bundle["target_return_threshold"],
++    )
++
++
++def _portfolio_oos_rank_key(snapshot: dict[str, Any]) -> tuple[float, float, float]:
++    return (
++        float(snapshot["sharpe_ratio"]),
++        float(snapshot["total_return"]),
++        -abs(float(snapshot["max_drawdown"])),
++    )
++
++
++def portfolio_oos_beats_champion(
++    challenger: dict[str, Any],
++    champion: dict[str, Any],
++) -> bool:
++    """True when challenger ranks higher on Sharpe, then return, then drawdown."""
++    return _portfolio_oos_rank_key(challenger) > _portfolio_oos_rank_key(champion)
++
++
+ def build_promotion_report(
+     challenger_metadata: dict[str, Any],
+     champion_metadata: dict[str, Any] | None,
++    *,
++    challenger_portfolio: dict[str, Any] | None = None,
++    champion_portfolio: dict[str, Any] | None = None,
++    portfolio_thresholds: Any | None = None,
++    require_portfolio_oos: bool = True,
+ ) -> dict[str, Any]:
++    from src.portfolio_backtest_validation import (
++        PortfolioBacktestThresholds,
++        check_portfolio_summary_thresholds,
++    )
++
++    thresholds = portfolio_thresholds or PortfolioBacktestThresholds()
+     challenger_auc = float(challenger_metadata.get("oos_metrics", {}).get("avg_roc_auc", 0.0))
+-    champion_auc = float(champion_metadata.get("oos_metrics", {}).get("avg_roc_auc", 0.0)) if champion_metadata else None
+-    promote = champion_metadata is None or challenger_auc > champion_auc
+-    return {
++    champion_auc = (
++        float(champion_metadata.get("oos_metrics", {}).get("avg_roc_auc", 0.0))
++        if champion_metadata
++        else None
++    )
++    auc_ok = champion_metadata is None or challenger_auc > champion_auc
++
++    portfolio_gate = None
++    portfolio_gate_ok = True
++    portfolio_vs_ok = True
++
++    if require_portfolio_oos:
++        if challenger_portfolio is None:
++            portfolio_gate_ok = False
++            portfolio_vs_ok = False
++        else:
++            portfolio_gate = check_portfolio_summary_thresholds(
++                challenger_portfolio, thresholds
++            )
++            portfolio_gate_ok = portfolio_gate.passed
++
++            if champion_portfolio is None and champion_metadata is not None:
++                stored = champion_metadata.get("portfolio_oos")
++                if isinstance(stored, dict):
++                    champion_portfolio = stored
++
++            if champion_portfolio is not None:
++                portfolio_vs_ok = portfolio_oos_beats_champion(
++                    challenger_portfolio, champion_portfolio
++                )
++
++    promote = auc_ok and portfolio_gate_ok and portfolio_vs_ok
++
++    reasons: list[str] = []
++    if champion_metadata is None:
++        reasons.append("no existing champion metadata")
++    elif not auc_ok:
++        reasons.append(
++            f"challenger_avg_roc_auc={challenger_auc:.4f} vs champion_avg_roc_auc={champion_auc:.4f}"
++        )
++    if require_portfolio_oos and challenger_portfolio is None:
++        reasons.append("missing challenger portfolio OOS evaluation")
++    elif require_portfolio_oos and portfolio_gate is not None and not portfolio_gate_ok:
++        reasons.append("portfolio gates failed: " + "; ".join(portfolio_gate.failures))
++    elif (
++        require_portfolio_oos
++        and champion_portfolio is not None
++        and challenger_portfolio is not None
++        and not portfolio_vs_ok
++    ):
++        c, h = challenger_portfolio, champion_portfolio
++        reasons.append(
++            "portfolio OOS did not beat champion "
++            f"(sharpe {float(c['sharpe_ratio']):.4f} vs {float(h['sharpe_ratio']):.4f}, "
++            f"return {float(c['total_return']):.4f} vs {float(h['total_return']):.4f})"
++        )
++
++    if promote:
++        reason = (
++            "no existing champion; challenger passes portfolio OOS gates"
++            if champion_metadata is None
++            else "challenger passes AUC and portfolio OOS criteria"
++        )
++    else:
++        reason = "; ".join(reasons) if reasons else "challenger retained"
++
++    report: dict[str, Any] = {
+         "generated_at": _utc_now_iso(),
+         "champion_exists": champion_metadata is not None,
+         "champion_avg_roc_auc": champion_auc,
+         "challenger_avg_roc_auc": challenger_auc,
++        "auc_gate_passed": auc_ok,
++        "portfolio_gate_passed": portfolio_gate_ok,
++        "portfolio_vs_champion_passed": portfolio_vs_ok,
+         "decision": "PROMOTE" if promote else "RETAIN_CHAMPION",
+-        "reason": (
+-            "no existing champion metadata"
+-            if champion_metadata is None
+-            else f"challenger_avg_roc_auc={'{:.4f}'.format(challenger_auc)} vs champion_avg_roc_auc={'{:.4f}'.format(champion_auc)}"
+-        ),
++        "reason": reason,
+     }
++    if challenger_portfolio is not None:
++        report["challenger_portfolio_oos"] = challenger_portfolio
++    if champion_portfolio is not None:
++        report["champion_portfolio_oos"] = champion_portfolio
+ logs/ml/ai_model_metrics.csv          |  10 +-
+ logs/retrain_history.csv              |   1 +
+ models/ai_score_model.joblib          | Bin 1757990 -> 1758310 bytes
+ src/ml_model.py                       | 123 ++++++++++++++++++++++--
+ src/portfolio_backtest_validation.py  |  52 ++++++++---
+ src/train_ai_model.py                 | 170 +++++++++++++++++++++++++++++++++-
+ tests/test_model_governance.py        |  65 ++++++++++++-
+ tests/test_portfolio_backtest_gate.py |  12 +++
+ 8 files changed, 401 insertions(+), 32 deletions(-)
+diff --git a/logs/ml/ai_model_metrics.csv b/logs/ml/ai_model_metrics.csv
+index 0638196..f5a77ad 100644
+--- a/logs/ml/ai_model_metrics.csv
++++ b/logs/ml/ai_model_metrics.csv
+@@ -1,6 +1,6 @@
+ fold,accuracy,precision,recall,roc_auc,test_positive_rate,prediction_positive_rate,train_size,test_size
+-1,0.5244384996934738,0.5484398737875423,0.5012817773979918,0.5286340670919325,0.5217633617566739,0.47689906927492615,17946,17943
+-2,0.4494789054227275,0.6544431509507179,0.2940714908456844,0.5158509944937936,0.639246502814468,0.2872429359638856,35889,17943
+-3,0.5586022404280221,0.5981134772045162,0.7847365460341271,0.5298942819902608,0.5944379423730702,0.779914172657861,53832,17943
+-4,0.46853926322242656,0.5456267409470752,0.4729116368903911,0.4732537359173688,0.5771052778242212,0.500195062141225,71775,17943
+-5,0.5130134314217244,0.5579873646209387,0.5064509522834323,0.51604461357988,0.5442791060580728,0.4940088056623753,89718,17943
++1,0.528979045920642,0.5457911357944027,0.5393306790057032,0.5316021297826623,0.5178889879625501,0.5117588051716451,17944,17944
++2,0.45692153366027644,0.6543549218347363,0.33001212961358517,0.5026369607790756,0.6432233615693268,0.32439812750780206,35888,17944
++3,0.5665960766830138,0.6093773110486614,0.7675826734979041,0.5460608256136901,0.5982501114578689,0.7535666518056174,53832,17944
++4,0.451627284886313,0.5284319356691557,0.44508950169327527,0.4455734853749122,0.5759585376727597,0.4851203744984396,71776,17944
++5,0.5106442264823896,0.5542609092986064,0.4986126811221868,0.5146206734442764,0.5422982612572448,0.4878510922871155,89720,17944
+diff --git a/logs/retrain_history.csv b/logs/retrain_history.csv
+index 9e73b35..8e1e7f7 100644
+--- a/logs/retrain_history.csv
++++ b/logs/retrain_history.csv
+@@ -2,3 +2,4 @@ timestamp,status,avg_roc_auc,avg_precision,elapsed_sec
+ 2026-05-26T13:35:17Z,success,0.4985,0.5439,13.9
+ 2026-05-26T13:51:32Z,success,0.5103,0.5616,19.3
+ 2026-05-26T14:22:04Z,success,0.5127,0.5809,19.1
++2026-05-30T09:28:07Z,success,0.5081,0.5784,93.5
+diff --git a/models/ai_score_model.joblib b/models/ai_score_model.joblib
+index 4cc580d..a7de37d 100644
+Binary files a/models/ai_score_model.joblib and b/models/ai_score_model.joblib differ
+diff --git a/src/ml_model.py b/src/ml_model.py
+index e0c664b..2561599 100644
+--- a/src/ml_model.py
++++ b/src/ml_model.py
+@@ -290,25 +290,132 @@ def restore_archived_champion(
+     return model_path, metadata_path
+ 
+ 
++def bundle_to_model_wrapper(bundle: dict[str, Any]) -> RegimeAwareModelWrapper:
++    return RegimeAwareModelWrapper(
++        bundle["models"],
++        bundle["feature_columns"],
++        bundle["prediction_horizon"],
++        bundle["target_return_threshold"],
++    )
++
++
++def _portfolio_oos_rank_key(snapshot: dict[str, Any]) -> tuple[float, float, float]:
++    return (
++        float(snapshot["sharpe_ratio"]),
++        float(snapshot["total_return"]),
++        -abs(float(snapshot["max_drawdown"])),
++    )
++
++
++def portfolio_oos_beats_champion(
++    challenger: dict[str, Any],
++    champion: dict[str, Any],
++) -> bool:
++    """True when challenger ranks higher on Sharpe, then return, then drawdown."""
++    return _portfolio_oos_rank_key(challenger) > _portfolio_oos_rank_key(champion)
++
++
+ def build_promotion_report(
+     challenger_metadata: dict[str, Any],
+     champion_metadata: dict[str, Any] | None,
++    *,
++    challenger_portfolio: dict[str, Any] | None = None,
++    champion_portfolio: dict[str, Any] | None = None,
++    portfolio_thresholds: Any | None = None,
++    require_portfolio_oos: bool = True,
+ ) -> dict[str, Any]:
++    from src.portfolio_backtest_validation import (
++        PortfolioBacktestThresholds,
++        check_portfolio_summary_thresholds,
++    )
++
++    thresholds = portfolio_thresholds or PortfolioBacktestThresholds()
+     challenger_auc = float(challenger_metadata.get("oos_metrics", {}).get("avg_roc_auc", 0.0))
+-    champion_auc = float(champion_metadata.get("oos_metrics", {}).get("avg_roc_auc", 0.0)) if champion_metadata else None
+-    promote = champion_metadata is None or challenger_auc > champion_auc
+-    return {
++    champion_auc = (
++        float(champion_metadata.get("oos_metrics", {}).get("avg_roc_auc", 0.0))
++        if champion_metadata
++        else None
++    )
++    auc_ok = champion_metadata is None or challenger_auc > champion_auc
++
++    portfolio_gate = None
++    portfolio_gate_ok = True
++    portfolio_vs_ok = True
++
++    if require_portfolio_oos:
++        if challenger_portfolio is None:
++            portfolio_gate_ok = False
++            portfolio_vs_ok = False
++        else:
++            portfolio_gate = check_portfolio_summary_thresholds(
++                challenger_portfolio, thresholds
++            )
++            portfolio_gate_ok = portfolio_gate.passed
++
++            if champion_portfolio is None and champion_metadata is not None:
++                stored = champion_metadata.get("portfolio_oos")
++                if isinstance(stored, dict):
++                    champion_portfolio = stored
++
++            if champion_portfolio is not None:
++                portfolio_vs_ok = portfolio_oos_beats_champion(
++                    challenger_portfolio, champion_portfolio
++                )
++
++    promote = auc_ok and portfolio_gate_ok and portfolio_vs_ok
++
++    reasons: list[str] = []
++    if champion_metadata is None:
++        reasons.append("no existing champion metadata")
++    elif not auc_ok:
++        reasons.append(
++            f"challenger_avg_roc_auc={challenger_auc:.4f} vs champion_avg_roc_auc={champion_auc:.4f}"
++        )
++    if require_portfolio_oos and challenger_portfolio is None:
++        reasons.append("missing challenger portfolio OOS evaluation")
++    elif require_portfolio_oos and portfolio_gate is not None and not portfolio_gate_ok:
++        reasons.append("portfolio gates failed: " + "; ".join(portfolio_gate.failures))
++    elif (
++        require_portfolio_oos
++        and champion_portfolio is not None
++        and challenger_portfolio is not None
++        and not portfolio_vs_ok
++    ):
++        c, h = challenger_portfolio, champion_portfolio
++        reasons.append(
++            "portfolio OOS did not beat champion "
++            f"(sharpe {float(c['sharpe_ratio']):.4f} vs {float(h['sharpe_ratio']):.4f}, "
++            f"return {float(c['total_return']):.4f} vs {float(h['total_return']):.4f})"
++        )
++
++    if promote:
++        reason = (
++            "no existing champion; challenger passes portfolio OOS gates"
++            if champion_metadata is None
++            else "challenger passes AUC and portfolio OOS criteria"
++        )
++    else:
++        reason = "; ".join(reasons) if reasons else "challenger retained"
++
++    report: dict[str, Any] = {
+         "generated_at": _utc_now_iso(),
+         "champion_exists": champion_metadata is not None,
+         "champion_avg_roc_auc": champion_auc,
+         "challenger_avg_roc_auc": challenger_auc,
++        "auc_gate_passed": auc_ok,
++        "portfolio_gate_passed": portfolio_gate_ok,
++        "portfolio_vs_champion_passed": portfolio_vs_ok,
+         "decision": "PROMOTE" if promote else "RETAIN_CHAMPION",
+-        "reason": (
+-            "no existing champion metadata"
+-            if champion_metadata is None
+-            else f"challenger_avg_roc_auc={'{:.4f}'.format(challenger_auc)} vs champion_avg_roc_auc={'{:.4f}'.format(champion_auc)}"
+-        ),
++        "reason": reason,
+     }
++    if challenger_portfolio is not None:
++        report["challenger_portfolio_oos"] = challenger_portfolio
++    if champion_portfolio is not None:
++        report["champion_portfolio_oos"] = champion_portfolio
++    if portfolio_gate is not None:
++        report["portfolio_gate_failures"] = portfolio_gate.failures
++        report["portfolio_gate_warnings"] = portfolio_gate.warnings
++    return report
+ 
+ 
+ def train_ai_score_model(
+diff --git a/src/portfolio_backtest_validation.py b/src/portfolio_backtest_validation.py
+index 658e495..7d6d539 100644
+--- a/src/portfolio_backtest_validation.py
++++ b/src/portfolio_backtest_validation.py
+@@ -165,23 +165,13 @@ class PortfolioBacktestThresholdResult:
+     warnings: list[str]
+ 
+ 
+-def check_portfolio_backtest_thresholds(
+-    output_dir: str | Path,
+-    thresholds: PortfolioBacktestThresholds | None = None,
+-    *,
+-    validate_schema: bool = True,
+-) -> PortfolioBacktestThresholdResult:
+-    """Apply portfolio-level gates after schema validation."""
+-    thresholds = thresholds or PortfolioBacktestThresholds()
++def _apply_portfolio_thresholds_to_summary(
++    summary: dict[str, Any],
++    thresholds: PortfolioBacktestThresholds,
++) -> tuple[list[str], list[str]]:
+     failures: list[str] = []
+     warnings: list[str] = []
+ 
+-    if validate_schema:
+-        result = validate_portfolio_backtest_dir(output_dir, min_equity_rows=2)
+-        summary = result["summary"]
+-    else:
+-        summary = load_summary_row(Path(output_dir) / "portfolio_summary.csv")
+-
+     max_dd = float(summary["max_drawdown"])
+     if max_dd < thresholds.max_drawdown_floor:
+         failures.append(
+@@ -204,6 +194,40 @@ def check_portfolio_backtest_thresholds(
+         if sharpe < thresholds.min_sharpe:
+             failures.append(f"sharpe_ratio {sharpe:.4f} < min {thresholds.min_sharpe:.4f}")
+ 
++    return failures, warnings
++
++
++def check_portfolio_summary_thresholds(
++    summary: dict[str, Any],
++    thresholds: PortfolioBacktestThresholds | None = None,
++) -> PortfolioBacktestThresholdResult:
++    """Apply portfolio-level gates to an in-memory summary row (retrain promotion)."""
++    thresholds = thresholds or PortfolioBacktestThresholds()
++    failures, warnings = _apply_portfolio_thresholds_to_summary(summary, thresholds)
++    return PortfolioBacktestThresholdResult(
++        summary=summary,
++        passed=not failures,
++        failures=failures,
++        warnings=warnings,
++    )
++
++
++def check_portfolio_backtest_thresholds(
++    output_dir: str | Path,
++    thresholds: PortfolioBacktestThresholds | None = None,
++    *,
++    validate_schema: bool = True,
++) -> PortfolioBacktestThresholdResult:
++    """Apply portfolio-level gates after schema validation."""
++    thresholds = thresholds or PortfolioBacktestThresholds()
++
++    if validate_schema:
++        result = validate_portfolio_backtest_dir(output_dir, min_equity_rows=2)
++        summary = result["summary"]
++    else:
++        summary = load_summary_row(Path(output_dir) / "portfolio_summary.csv")
++
++    failures, warnings = _apply_portfolio_thresholds_to_summary(summary, thresholds)
+     return PortfolioBacktestThresholdResult(
+         summary=summary,
+         passed=not failures,
+diff --git a/src/train_ai_model.py b/src/train_ai_model.py
+index 0091776..70e8f34 100644
+--- a/src/train_ai_model.py
++++ b/src/train_ai_model.py
+@@ -16,7 +16,9 @@ from src.ml_model import (
+     archive_current_champion,
+     build_model_bundle,
+     build_promotion_report,
++    bundle_to_model_wrapper,
+     find_latest_archived_champion,
++    load_ai_score_model,
+     load_model_metadata,
+     restore_archived_champion,
+     save_challenger_bundle,
+@@ -24,8 +26,17 @@ from src.ml_model import (
+     train_ai_score_model,
+ )
+ from src.macro_loader import load_macro_data
++from src.retrain_holdout import (
++    exclude_holdout_from_ticker_data,
++    portfolio_holdout_window,
++    slice_ticker_data_to_holdout,
++)
+ from src.notifier import notify_info
+-from src.portfolio_backtester import run_portfolio_backtest
++from src.portfolio_backtester import (
++    PortfolioBacktestResult,
++    build_ai_score_frames,
++    run_portfolio_backtest,
++)
+ 
+ VIX_TICKER = "^VIX"
+ RETRAIN_LOG_PATH = Path("logs/retrain_history.csv")
+@@ -332,6 +343,114 @@ def _score_threshold_row(row: dict) -> tuple[float, float, float, float]:
+     )
+ 
+ 
++def _portfolio_oos_snapshot(
++    result: PortfolioBacktestResult,
++    eval_start: pd.Timestamp,
++    eval_end: pd.Timestamp,
++) -> dict:
++    return {
++        "evaluation_start": eval_start.strftime("%Y-%m-%d"),
++        "evaluation_end": eval_end.strftime("%Y-%m-%d"),
++        "total_return": float(result.total_return),
++        "benchmark_return": float(result.benchmark_return),
++        "max_drawdown": float(result.max_drawdown),
++        "sharpe_ratio": float(result.sharpe_ratio),
++        "trades": int(result.trades),
++        "win_rate": float(result.win_rate),
++    }
++
++
++def _run_retrain_oos_portfolio(
++    *,
++    settings,
++    ticker_data: dict[str, pd.DataFrame],
++    vix_df: pd.DataFrame | None,
++    macro_df: pd.DataFrame | None,
++    model_wrapper,
++    eval_start: pd.Timestamp,
++    eval_end: pd.Timestamp,
++) -> dict:
++    """Portfolio backtest on holdout-only price data for model promotion."""
++    benchmark_df = (
++        ticker_data.get(settings.market_regime_ticker)
++        if settings.market_regime_filter_enabled
++        else None
++    )
++    relative_strength_benchmark_df = (
++        ticker_data.get(settings.relative_strength_benchmark_ticker)
++        if settings.relative_strength_filter_enabled
++        else None
++    )
++    spy_df = ticker_data.get("SPY")
++
++    ai_score_frames = None
++    if settings.use_ai_score:
++        ai_score_frames = build_ai_score_frames(
++            ticker_data,
++            ai_model_bundle=model_wrapper,
++            vix_df=vix_df,
++            spy_df=spy_df,
++            macro_df=macro_df,
++        )
++
++    result, _, _ = run_portfolio_backtest(
++        ticker_data=ticker_data,
++        benchmark_df=benchmark_df,
++        relative_strength_benchmark_df=relative_strength_benchmark_df,
++        initial_cash=10000.0,
++        max_positions=settings.max_total_positions,
++        target_position_pct=settings.max_position_pct,
++        transaction_cost_pct=0.001,
++        ma_fast=settings.ma_fast,
++        ma_slow=settings.ma_slow,
++        rsi_buy_limit=settings.rsi_buy_limit,
++        use_ai_score=settings.use_ai_score,
++        ai_score_buy_threshold=settings.ai_score_buy_threshold,
++        market_regime_filter_enabled=settings.market_regime_filter_enabled,
++        market_regime_ma_fast=settings.market_regime_ma_fast,
++        market_regime_ma_slow=settings.market_regime_ma_slow,
++        relative_strength_filter_enabled=settings.relative_strength_filter_enabled,
++        relative_strength_lookback_days=settings.relative_strength_lookback_days,
++        relative_strength_min_excess_return=settings.relative_strength_min_excess_return,
++        volume_filter_enabled=settings.volume_filter_enabled,
++        volume_lookback_days=settings.volume_lookback_days,
++        min_volume_ratio=settings.min_volume_ratio,
++        volatility_filter_enabled=settings.volatility_filter_enabled,
++        volatility_lookback_days=settings.volatility_lookback_days,
++        max_volatility=settings.max_volatility,
++        rank_trend_weight=settings.rank_trend_weight,
++        rank_ai_weight=settings.rank_ai_weight,
++        rank_momentum_weight=settings.rank_momentum_weight,
++        rank_volatility_weight=settings.rank_volatility_weight,
++        ai_exit_enabled=getattr(settings, "ai_exit_enabled", False),
++        ai_exit_threshold=(
++            settings.ai_exit_threshold_bear
++            if getattr(settings, "ai_exit_dynamic_enabled", False)
++            else settings.ai_exit_threshold
++        ),
++        ai_exit_dynamic_enabled=getattr(settings, "ai_exit_dynamic_enabled", False),
++        ai_exit_vix_low=getattr(settings, "ai_exit_vix_low", 15.0),
++        ai_exit_vix_high=getattr(settings, "ai_exit_vix_high", 25.0),
++        ai_exit_threshold_bull=getattr(settings, "ai_exit_threshold_bull", 0.22),
++        ai_exit_threshold_bear=getattr(settings, "ai_exit_threshold_bear", 0.50),
++        vix_df=vix_df,
++        macro_df=macro_df,
++        ai_score_frames=ai_score_frames,
++        evaluation_start_date=eval_start,
++        evaluation_end_date=eval_end,
++    )
++    return _portfolio_oos_snapshot(result, eval_start, eval_end)
++
++
++def _load_champion_model_wrapper():
++    if not MODEL_PATH.exists():
++        return None
++    try:
++        return load_ai_score_model()
++    except (FileNotFoundError, ValueError):
++        return None
++
++
+ def _run_threshold_retune(
+     settings,
+     ticker_data: dict[str, pd.DataFrame],
+@@ -464,9 +583,19 @@ def main() -> None:
+     else:
+         print(f"  Macro data: {len(macro_df)} rows, columns: {list(macro_df.columns)}")
+ 
++    holdout_start, holdout_end = portfolio_holdout_window(training_data)
++    training_data_fit = exclude_holdout_from_ticker_data(training_data, holdout_start)
++    holdout_ticker_data = slice_ticker_data_to_holdout(
++        training_data, holdout_start, holdout_end
++    )
++    print(
++        f"Portfolio promotion holdout: {holdout_start.strftime('%Y-%m-%d')} "
++        f"to {holdout_end.strftime('%Y-%m-%d')} (excluded from challenger training)"
++    )
++
+     print("Training model with LightGBM + enhanced features (21 features)...")
+     model, metrics_df = train_ai_score_model(
+-        training_data=training_data,
++        training_data=training_data_fit,
+         prediction_horizon=20,
+         target_return_threshold=0.0,
+         vix_df=vix_df,
+@@ -509,7 +638,7 @@ def main() -> None:
+ 
+     threshold_retune_report, threshold_retune_results_df = _run_threshold_retune(
+         settings=settings,
+-        ticker_data=training_data,
++        ticker_data=training_data_fit,
+         vix_df=vix_df,
+         macro_df=macro_df,
+     )
+@@ -536,11 +665,46 @@ def main() -> None:
+         target_return_threshold=model.target_return_threshold,
+     )
+ 
++    challenger_portfolio = None
++    champion_portfolio = None
++    if settings.use_ai_score:
++        if not holdout_ticker_data:
++            raise ValueError(
++                "Portfolio holdout slice is empty; cannot score promotion gates"
++            )
++        print("Running holdout-only portfolio evaluation for promotion gates...")
++        challenger_portfolio = _run_retrain_oos_portfolio(
++            settings=settings,
++            ticker_data=holdout_ticker_data,
++            vix_df=vix_df,
++            macro_df=macro_df,
++            model_wrapper=bundle_to_model_wrapper(bundle),
++            eval_start=holdout_start,
++            eval_end=holdout_end,
++        )
++        challenger_portfolio["holdout_excluded_from_training"] = True
++        bundle["metadata"]["portfolio_oos"] = challenger_portfolio
++        champion_wrapper = _load_champion_model_wrapper()
++        if champion_wrapper is not None:
++            champion_portfolio = _run_retrain_oos_portfolio(
++                settings=settings,
++                ticker_data=holdout_ticker_data,
++                vix_df=vix_df,
++                macro_df=macro_df,
++                model_wrapper=champion_wrapper,
++                eval_start=holdout_start,
++                eval_end=holdout_end,
++            )
++            champion_portfolio["holdout_excluded_from_training"] = True
++
+     challenger_model_path, challenger_metadata_path = save_challenger_bundle(bundle)
+     champion_metadata = load_model_metadata()
+     promotion_report = build_promotion_report(
+         challenger_metadata=bundle["metadata"],
+         champion_metadata=champion_metadata,
++        challenger_portfolio=challenger_portfolio,
++        champion_portfolio=champion_portfolio,
++        require_portfolio_oos=settings.use_ai_score,
+     )
+     promotion_report.update(
+         {
+diff --git a/tests/test_model_governance.py b/tests/test_model_governance.py
+index 37ff928..32b3bff 100644
+--- a/tests/test_model_governance.py
++++ b/tests/test_model_governance.py
+@@ -10,9 +10,11 @@ from src.ml_model import (
+     build_promotion_report,
+     find_latest_archived_champion,
+     load_model_metadata,
++    portfolio_oos_beats_champion,
+     restore_archived_champion,
+     save_model_bundle,
+ )
++from src.portfolio_backtest_validation import PortfolioBacktestThresholds
+ from src.train_ai_model import _evaluate_rollback_need
+ 
+ 
+@@ -53,10 +55,69 @@ class ModelGovernanceTest(unittest.TestCase):
+         challenger_metadata = {"oos_metrics": {"avg_roc_auc": 0.63}}
+         champion_metadata = {"oos_metrics": {"avg_roc_auc": 0.60}}
+ 
+-        report = build_promotion_report(challenger_metadata, champion_metadata)
++        report = build_promotion_report(
++            challenger_metadata,
++            champion_metadata,
++            require_portfolio_oos=False,
++        )
++
++        self.assertEqual(report["decision"], "PROMOTE")
++        self.assertTrue(report["auc_gate_passed"])
++
++    def test_build_promotion_report_requires_portfolio_gates(self) -> None:
++        challenger_metadata = {"oos_metrics": {"avg_roc_auc": 0.63}}
++        champion_metadata = {"oos_metrics": {"avg_roc_auc": 0.60}}
++        weak_portfolio = {
++            "total_return": 0.02,
++            "benchmark_return": 0.20,
++            "max_drawdown": -0.30,
++            "sharpe_ratio": -0.2,
++        }
++        strong_portfolio = {
++            "total_return": 0.15,
++            "benchmark_return": 0.10,
++            "max_drawdown": -0.08,
++            "sharpe_ratio": 1.1,
++        }
++
++        report = build_promotion_report(
++            challenger_metadata,
++            champion_metadata,
++            challenger_portfolio=weak_portfolio,
++            champion_portfolio=strong_portfolio,
++            portfolio_thresholds=PortfolioBacktestThresholds(max_drawdown_floor=-0.20),
++        )
++
++        self.assertEqual(report["decision"], "RETAIN_CHAMPION")
++        self.assertTrue(report["auc_gate_passed"])
++        self.assertFalse(report["portfolio_gate_passed"])
++
++    def test_build_promotion_report_promotes_on_auc_and_portfolio(self) -> None:
++        challenger_metadata = {"oos_metrics": {"avg_roc_auc": 0.63}}
++        champion_metadata = {"oos_metrics": {"avg_roc_auc": 0.60}}
++        challenger_portfolio = {
++            "total_return": 0.12,
++            "benchmark_return": 0.10,
++            "max_drawdown": -0.08,
++            "sharpe_ratio": 1.2,
++        }
++        champion_portfolio = {
++            "total_return": 0.08,
++            "benchmark_return": 0.10,
++            "max_drawdown": -0.10,
++            "sharpe_ratio": 0.9,
++        }
++
++        report = build_promotion_report(
++            challenger_metadata,
++            champion_metadata,
++            challenger_portfolio=challenger_portfolio,
++            champion_portfolio=champion_portfolio,
++        )
+ 
+         self.assertEqual(report["decision"], "PROMOTE")
+-        self.assertIn("challenger_avg_roc_auc", report["reason"])
++        self.assertTrue(report["portfolio_vs_champion_passed"])
++        self.assertTrue(portfolio_oos_beats_champion(challenger_portfolio, champion_portfolio))
+ 
+     def test_save_model_bundle_persists_metadata_json(self) -> None:
+         bundle = {
+diff --git a/tests/test_portfolio_backtest_gate.py b/tests/test_portfolio_backtest_gate.py
+index 520a2a7..3ad0db1 100644
+--- a/tests/test_portfolio_backtest_gate.py
++++ b/tests/test_portfolio_backtest_gate.py
+@@ -8,6 +8,7 @@ import pytest
+ from src.portfolio_backtest_validation import (
+     PortfolioBacktestThresholds,
+     check_portfolio_backtest_thresholds,
++    check_portfolio_summary_thresholds,
+ )
+ 
+ 
+@@ -34,6 +35,17 @@ def _write_minimal_bundle(dir_path: Path, summary_row: dict) -> None:
+     ).to_csv(dir_path / "portfolio_trades.csv", index=False)
+ 
+ 
++def test_summary_thresholds_pass_in_memory():
++    summary = {
++        "total_return": 0.10,
++        "benchmark_return": 0.12,
++        "max_drawdown": -0.08,
++        "sharpe_ratio": 1.2,
++    }
++    result = check_portfolio_summary_thresholds(summary)
++    assert result.passed
++
++
+ def test_thresholds_pass(tmp_path: Path):
+     _write_minimal_bundle(
+         tmp_path,
+
+exec
+/bin/bash -lc "git diff -- src/train_ai_model.py | sed -n '1,260p'
+git diff -- src/ml_model.py | sed -n '1,220p'
+rg \"def portfolio_holdout_window|slice_ticker|exclude_holdout\" -n src tests && sed -n '1,220p' src/retrain_holdout.py" in /home/kimyo/trading-bot
+ succeeded in 158ms:
+diff --git a/src/train_ai_model.py b/src/train_ai_model.py
+index 0091776..70e8f34 100644
+--- a/src/train_ai_model.py
++++ b/src/train_ai_model.py
+@@ -16,7 +16,9 @@ from src.ml_model import (
+     archive_current_champion,
+     build_model_bundle,
+     build_promotion_report,
++    bundle_to_model_wrapper,
+     find_latest_archived_champion,
++    load_ai_score_model,
+     load_model_metadata,
+     restore_archived_champion,
+     save_challenger_bundle,
+@@ -24,8 +26,17 @@ from src.ml_model import (
+     train_ai_score_model,
+ )
+ from src.macro_loader import load_macro_data
++from src.retrain_holdout import (
++    exclude_holdout_from_ticker_data,
++    portfolio_holdout_window,
++    slice_ticker_data_to_holdout,
++)
+ from src.notifier import notify_info
+-from src.portfolio_backtester import run_portfolio_backtest
++from src.portfolio_backtester import (
++    PortfolioBacktestResult,
++    build_ai_score_frames,
++    run_portfolio_backtest,
++)
+ 
+ VIX_TICKER = "^VIX"
+ RETRAIN_LOG_PATH = Path("logs/retrain_history.csv")
+@@ -332,6 +343,114 @@ def _score_threshold_row(row: dict) -> tuple[float, float, float, float]:
+     )
+ 
+ 
++def _portfolio_oos_snapshot(
++    result: PortfolioBacktestResult,
++    eval_start: pd.Timestamp,
++    eval_end: pd.Timestamp,
++) -> dict:
++    return {
++        "evaluation_start": eval_start.strftime("%Y-%m-%d"),
++        "evaluation_end": eval_end.strftime("%Y-%m-%d"),
++        "total_return": float(result.total_return),
++        "benchmark_return": float(result.benchmark_return),
++        "max_drawdown": float(result.max_drawdown),
++        "sharpe_ratio": float(result.sharpe_ratio),
++        "trades": int(result.trades),
++        "win_rate": float(result.win_rate),
++    }
++
++
++def _run_retrain_oos_portfolio(
++    *,
++    settings,
++    ticker_data: dict[str, pd.DataFrame],
++    vix_df: pd.DataFrame | None,
++    macro_df: pd.DataFrame | None,
++    model_wrapper,
++    eval_start: pd.Timestamp,
++    eval_end: pd.Timestamp,
++) -> dict:
++    """Portfolio backtest on holdout-only price data for model promotion."""
++    benchmark_df = (
++        ticker_data.get(settings.market_regime_ticker)
++        if settings.market_regime_filter_enabled
++        else None
++    )
++    relative_strength_benchmark_df = (
++        ticker_data.get(settings.relative_strength_benchmark_ticker)
++        if settings.relative_strength_filter_enabled
++        else None
++    )
++    spy_df = ticker_data.get("SPY")
++
++    ai_score_frames = None
++    if settings.use_ai_score:
++        ai_score_frames = build_ai_score_frames(
++            ticker_data,
++            ai_model_bundle=model_wrapper,
++            vix_df=vix_df,
++            spy_df=spy_df,
++            macro_df=macro_df,
++        )
++
++    result, _, _ = run_portfolio_backtest(
++        ticker_data=ticker_data,
++        benchmark_df=benchmark_df,
++        relative_strength_benchmark_df=relative_strength_benchmark_df,
++        initial_cash=10000.0,
++        max_positions=settings.max_total_positions,
++        target_position_pct=settings.max_position_pct,
++        transaction_cost_pct=0.001,
++        ma_fast=settings.ma_fast,
++        ma_slow=settings.ma_slow,
++        rsi_buy_limit=settings.rsi_buy_limit,
++        use_ai_score=settings.use_ai_score,
++        ai_score_buy_threshold=settings.ai_score_buy_threshold,
++        market_regime_filter_enabled=settings.market_regime_filter_enabled,
++        market_regime_ma_fast=settings.market_regime_ma_fast,
++        market_regime_ma_slow=settings.market_regime_ma_slow,
++        relative_strength_filter_enabled=settings.relative_strength_filter_enabled,
++        relative_strength_lookback_days=settings.relative_strength_lookback_days,
++        relative_strength_min_excess_return=settings.relative_strength_min_excess_return,
++        volume_filter_enabled=settings.volume_filter_enabled,
++        volume_lookback_days=settings.volume_lookback_days,
++        min_volume_ratio=settings.min_volume_ratio,
++        volatility_filter_enabled=settings.volatility_filter_enabled,
++        volatility_lookback_days=settings.volatility_lookback_days,
++        max_volatility=settings.max_volatility,
++        rank_trend_weight=settings.rank_trend_weight,
++        rank_ai_weight=settings.rank_ai_weight,
++        rank_momentum_weight=settings.rank_momentum_weight,
++        rank_volatility_weight=settings.rank_volatility_weight,
++        ai_exit_enabled=getattr(settings, "ai_exit_enabled", False),
++        ai_exit_threshold=(
++            settings.ai_exit_threshold_bear
++            if getattr(settings, "ai_exit_dynamic_enabled", False)
++            else settings.ai_exit_threshold
++        ),
++        ai_exit_dynamic_enabled=getattr(settings, "ai_exit_dynamic_enabled", False),
++        ai_exit_vix_low=getattr(settings, "ai_exit_vix_low", 15.0),
++        ai_exit_vix_high=getattr(settings, "ai_exit_vix_high", 25.0),
++        ai_exit_threshold_bull=getattr(settings, "ai_exit_threshold_bull", 0.22),
++        ai_exit_threshold_bear=getattr(settings, "ai_exit_threshold_bear", 0.50),
++        vix_df=vix_df,
++        macro_df=macro_df,
++        ai_score_frames=ai_score_frames,
++        evaluation_start_date=eval_start,
++        evaluation_end_date=eval_end,
++    )
++    return _portfolio_oos_snapshot(result, eval_start, eval_end)
++
++
++def _load_champion_model_wrapper():
++    if not MODEL_PATH.exists():
++        return None
++    try:
++        return load_ai_score_model()
++    except (FileNotFoundError, ValueError):
++        return None
++
++
+ def _run_threshold_retune(
+     settings,
+     ticker_data: dict[str, pd.DataFrame],
+@@ -464,9 +583,19 @@ def main() -> None:
+     else:
+         print(f"  Macro data: {len(macro_df)} rows, columns: {list(macro_df.columns)}")
+ 
++    holdout_start, holdout_end = portfolio_holdout_window(training_data)
++    training_data_fit = exclude_holdout_from_ticker_data(training_data, holdout_start)
++    holdout_ticker_data = slice_ticker_data_to_holdout(
++        training_data, holdout_start, holdout_end
++    )
++    print(
++        f"Portfolio promotion holdout: {holdout_start.strftime('%Y-%m-%d')} "
++        f"to {holdout_end.strftime('%Y-%m-%d')} (excluded from challenger training)"
++    )
++
+     print("Training model with LightGBM + enhanced features (21 features)...")
+     model, metrics_df = train_ai_score_model(
+-        training_data=training_data,
++        training_data=training_data_fit,
+         prediction_horizon=20,
+         target_return_threshold=0.0,
+         vix_df=vix_df,
+@@ -509,7 +638,7 @@ def main() -> None:
+ 
+     threshold_retune_report, threshold_retune_results_df = _run_threshold_retune(
+         settings=settings,
+-        ticker_data=training_data,
++        ticker_data=training_data_fit,
+         vix_df=vix_df,
+         macro_df=macro_df,
+     )
+@@ -536,11 +665,46 @@ def main() -> None:
+         target_return_threshold=model.target_return_threshold,
+     )
+ 
++    challenger_portfolio = None
++    champion_portfolio = None
++    if settings.use_ai_score:
++        if not holdout_ticker_data:
++            raise ValueError(
++                "Portfolio holdout slice is empty; cannot score promotion gates"
++            )
++        print("Running holdout-only portfolio evaluation for promotion gates...")
++        challenger_portfolio = _run_retrain_oos_portfolio(
++            settings=settings,
++            ticker_data=holdout_ticker_data,
++            vix_df=vix_df,
++            macro_df=macro_df,
++            model_wrapper=bundle_to_model_wrapper(bundle),
++            eval_start=holdout_start,
++            eval_end=holdout_end,
++        )
++        challenger_portfolio["holdout_excluded_from_training"] = True
++        bundle["metadata"]["portfolio_oos"] = challenger_portfolio
++        champion_wrapper = _load_champion_model_wrapper()
++        if champion_wrapper is not None:
++            champion_portfolio = _run_retrain_oos_portfolio(
++                settings=settings,
++                ticker_data=holdout_ticker_data,
++                vix_df=vix_df,
++                macro_df=macro_df,
++                model_wrapper=champion_wrapper,
++                eval_start=holdout_start,
++                eval_end=holdout_end,
++            )
++            champion_portfolio["holdout_excluded_from_training"] = True
++
+     challenger_model_path, challenger_metadata_path = save_challenger_bundle(bundle)
+     champion_metadata = load_model_metadata()
+     promotion_report = build_promotion_report(
+         challenger_metadata=bundle["metadata"],
+         champion_metadata=champion_metadata,
++        challenger_portfolio=challenger_portfolio,
++        champion_portfolio=champion_portfolio,
++        require_portfolio_oos=settings.use_ai_score,
+     )
+     promotion_report.update(
+         {
+diff --git a/src/ml_model.py b/src/ml_model.py
+index e0c664b..2561599 100644
+--- a/src/ml_model.py
++++ b/src/ml_model.py
+@@ -290,25 +290,132 @@ def restore_archived_champion(
+     return model_path, metadata_path
+ 
+ 
++def bundle_to_model_wrapper(bundle: dict[str, Any]) -> RegimeAwareModelWrapper:
++    return RegimeAwareModelWrapper(
++        bundle["models"],
++        bundle["feature_columns"],
++        bundle["prediction_horizon"],
++        bundle["target_return_threshold"],
++    )
++
++
++def _portfolio_oos_rank_key(snapshot: dict[str, Any]) -> tuple[float, float, float]:
++    return (
++        float(snapshot["sharpe_ratio"]),
++        float(snapshot["total_return"]),
++        -abs(float(snapshot["max_drawdown"])),
++    )
++
++
++def portfolio_oos_beats_champion(
++    challenger: dict[str, Any],
++    champion: dict[str, Any],
++) -> bool:
++    """True when challenger ranks higher on Sharpe, then return, then drawdown."""
++    return _portfolio_oos_rank_key(challenger) > _portfolio_oos_rank_key(champion)
++
++
+ def build_promotion_report(
+     challenger_metadata: dict[str, Any],
+     champion_metadata: dict[str, Any] | None,
++    *,
++    challenger_portfolio: dict[str, Any] | None = None,
++    champion_portfolio: dict[str, Any] | None = None,
++    portfolio_thresholds: Any | None = None,
++    require_portfolio_oos: bool = True,
+ ) -> dict[str, Any]:
++    from src.portfolio_backtest_validation import (
++        PortfolioBacktestThresholds,
++        check_portfolio_summary_thresholds,
++    )
++
++    thresholds = portfolio_thresholds or PortfolioBacktestThresholds()
+     challenger_auc = float(challenger_metadata.get("oos_metrics", {}).get("avg_roc_auc", 0.0))
+-    champion_auc = float(champion_metadata.get("oos_metrics", {}).get("avg_roc_auc", 0.0)) if champion_metadata else None
+-    promote = champion_metadata is None or challenger_auc > champion_auc
+-    return {
++    champion_auc = (
++        float(champion_metadata.get("oos_metrics", {}).get("avg_roc_auc", 0.0))
++        if champion_metadata
++        else None
++    )
++    auc_ok = champion_metadata is None or challenger_auc > champion_auc
++
++    portfolio_gate = None
++    portfolio_gate_ok = True
++    portfolio_vs_ok = True
++
++    if require_portfolio_oos:
++        if challenger_portfolio is None:
++            portfolio_gate_ok = False
++            portfolio_vs_ok = False
++        else:
++            portfolio_gate = check_portfolio_summary_thresholds(
++                challenger_portfolio, thresholds
++            )
++            portfolio_gate_ok = portfolio_gate.passed
++
++            if champion_portfolio is None and champion_metadata is not None:
++                stored = champion_metadata.get("portfolio_oos")
++                if isinstance(stored, dict):
++                    champion_portfolio = stored
++
++            if champion_portfolio is not None:
++                portfolio_vs_ok = portfolio_oos_beats_champion(
++                    challenger_portfolio, champion_portfolio
++                )
++
++    promote = auc_ok and portfolio_gate_ok and portfolio_vs_ok
++
++    reasons: list[str] = []
++    if champion_metadata is None:
++        reasons.append("no existing champion metadata")
++    elif not auc_ok:
++        reasons.append(
++            f"challenger_avg_roc_auc={challenger_auc:.4f} vs champion_avg_roc_auc={champion_auc:.4f}"
++        )
++    if require_portfolio_oos and challenger_portfolio is None:
++        reasons.append("missing challenger portfolio OOS evaluation")
++    elif require_portfolio_oos and portfolio_gate is not None and not portfolio_gate_ok:
++        reasons.append("portfolio gates failed: " + "; ".join(portfolio_gate.failures))
++    elif (
++        require_portfolio_oos
++        and champion_portfolio is not None
++        and challenger_portfolio is not None
++        and not portfolio_vs_ok
++    ):
++        c, h = challenger_portfolio, champion_portfolio
++        reasons.append(
++            "portfolio OOS did not beat champion "
++            f"(sharpe {float(c['sharpe_ratio']):.4f} vs {float(h['sharpe_ratio']):.4f}, "
++            f"return {float(c['total_return']):.4f} vs {float(h['total_return']):.4f})"
++        )
++
++    if promote:
++        reason = (
++            "no existing champion; challenger passes portfolio OOS gates"
++            if champion_metadata is None
++            else "challenger passes AUC and portfolio OOS criteria"
++        )
++    else:
++        reason = "; ".join(reasons) if reasons else "challenger retained"
++
++    report: dict[str, Any] = {
+         "generated_at": _utc_now_iso(),
+         "champion_exists": champion_metadata is not None,
+         "champion_avg_roc_auc": champion_auc,
+         "challenger_avg_roc_auc": challenger_auc,
++        "auc_gate_passed": auc_ok,
++        "portfolio_gate_passed": portfolio_gate_ok,
++        "portfolio_vs_champion_passed": portfolio_vs_ok,
+         "decision": "PROMOTE" if promote else "RETAIN_CHAMPION",
+-        "reason": (
+-            "no existing champion metadata"
+-            if champion_metadata is None
+-            else f"challenger_avg_roc_auc={'{:.4f}'.format(challenger_auc)} vs champion_avg_roc_auc={'{:.4f}'.format(champion_auc)}"
+-        ),
++        "reason": reason,
+     }
++    if challenger_portfolio is not None:
++        report["challenger_portfolio_oos"] = challenger_portfolio
++    if champion_portfolio is not None:
++        report["champion_portfolio_oos"] = champion_portfolio
++    if portfolio_gate is not None:
++        report["portfolio_gate_failures"] = portfolio_gate.failures
++        report["portfolio_gate_warnings"] = portfolio_gate.warnings
++    return report
+ 
+ 
+ def train_ai_score_model(
+tests/test_retrain_holdout.py:6:    exclude_holdout_from_ticker_data,
+tests/test_retrain_holdout.py:8:    slice_ticker_data_to_holdout,
+tests/test_retrain_holdout.py:29:    fit = exclude_holdout_from_ticker_data(ticker_data, holdout_start)
+tests/test_retrain_holdout.py:30:    holdout = slice_ticker_data_to_holdout(ticker_data, holdout_start, holdout_end)
+src/retrain_holdout.py:10:def portfolio_holdout_window(
+src/retrain_holdout.py:29:def exclude_holdout_from_ticker_data(
+src/retrain_holdout.py:44:def slice_ticker_data_to_holdout(
+src/train_ai_model.py:30:    exclude_holdout_from_ticker_data,
+src/train_ai_model.py:32:    slice_ticker_data_to_holdout,
+src/train_ai_model.py:587:    training_data_fit = exclude_holdout_from_ticker_data(training_data, holdout_start)
+src/train_ai_model.py:588:    holdout_ticker_data = slice_ticker_data_to_holdout(
+"""Holdout window helpers for retrain portfolio promotion (no ML deps)."""
+
+from __future__ import annotations
+
+import pandas as pd
+
+PORTFOLIO_HOLDOUT_MONTHS = 6
+
+
+def portfolio_holdout_window(
+    ticker_data: dict[str, pd.DataFrame],
+    *,
+    months: int = PORTFOLIO_HOLDOUT_MONTHS,
+) -> tuple[pd.Timestamp, pd.Timestamp]:
+    latest_dates = []
+    for df in ticker_data.values():
+        if df is None or df.empty or "date" not in df.columns:
+            continue
+        series = pd.to_datetime(df["date"], errors="coerce").dropna()
+        if not series.empty:
+            latest_dates.append(series.max())
+    if not latest_dates:
+        raise ValueError("No valid dates found in ticker_data")
+    eval_end = max(latest_dates)
+    eval_start = eval_end - pd.DateOffset(months=months)
+    return eval_start, eval_end
+
+
+def exclude_holdout_from_ticker_data(
+    ticker_data: dict[str, pd.DataFrame],
+    holdout_start: pd.Timestamp,
+) -> dict[str, pd.DataFrame]:
+    """Rows with date >= holdout_start are removed (challenger training set)."""
+    out: dict[str, pd.DataFrame] = {}
+    for ticker, df in ticker_data.items():
+        if df is None or df.empty or "date" not in df.columns:
+            continue
+        frame = df.copy()
+        frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
+        out[ticker] = frame[frame["date"] < holdout_start].reset_index(drop=True)
+    return out
+
+
+def slice_ticker_data_to_holdout(
+    ticker_data: dict[str, pd.DataFrame],
+    holdout_start: pd.Timestamp,
+    holdout_end: pd.Timestamp,
+) -> dict[str, pd.DataFrame]:
+    """Rows within [holdout_start, holdout_end] for portfolio OOS scoring."""
+    out: dict[str, pd.DataFrame] = {}
+    for ticker, df in ticker_data.items():
+        if df is None or df.empty or "date" not in df.columns:
+            continue
+        frame = df.copy()
+        frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
+        mask = (frame["date"] >= holdout_start) & (frame["date"] <= holdout_end)
+        sliced = frame.loc[mask].reset_index(drop=True)
+        if not sliced.empty:
+            out[ticker] = sliced
+    return out
+
+exec
+/bin/bash -lc "rg \"evaluation_start_date|def run_portfolio_backtest|build_ai_score_frames\" -n src/portfolio_backtester.py && sed -n '1,240p' src/portfolio_backtester.py && sed -n '240,620p' src/portfolio_backtester.py" in /home/kimyo/trading-bot
+ succeeded in 147ms:
+142:def build_ai_score_frames(
+215:def run_portfolio_backtest(
+261:    evaluation_start_date: str | pd.Timestamp | None = None,
+294:        _ai_score_frames = build_ai_score_frames(
+354:    if evaluation_start_date is not None:
+355:        start_ts = pd.Timestamp(evaluation_start_date)
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+import pandas as pd
+
+from src.strategy import add_indicators, build_market_regime_frame
+from src.features import FEATURE_COLUMNS, build_features
+from src.ml_model import load_ai_score_model
+from src.portfolio_optimizer import compute_candidate_weights
+
+
+@dataclass
+class PortfolioBacktestResult:
+    initial_cash: float
+    final_equity: float
+    total_return: float
+    max_drawdown: float
+    trades: int
+    win_rate: float
+    benchmark_return: float
+    sharpe_ratio: float = 0.0
+
+
+def _prepare_ticker_frame(
+    ticker: str,
+    df: pd.DataFrame,
+    ma_fast: int = 20,
+    ma_slow: int = 50,
+    rsi_buy_limit: float = 70,
+    use_ai_score: bool = False,
+    ai_score_buy_threshold: float = 0.55,
+    ai_model_bundle=None,
+    ai_score_frame: pd.DataFrame | None = None,
+    relative_strength_lookback_days: int = 20,
+    volume_filter_enabled: bool = False,
+    volume_lookback_days: int = 20,
+    min_volume_ratio: float = 1.0,
+    volatility_filter_enabled: bool = False,
+    volatility_lookback_days: int = 20,
+    max_volatility: float = 0.04,
+) -> pd.DataFrame:
+    raw_df = df.copy()
+    df = add_indicators(df, ma_fast=ma_fast, ma_slow=ma_slow).copy()
+    df = df.sort_values("date").reset_index(drop=True)
+
+    df["ticker"] = ticker
+    df["ai_score"] = None
+    df["relative_return"] = df["close"].pct_change(relative_strength_lookback_days)
+    df["volume_ratio"] = df["volume"] / df["volume"].rolling(volume_lookback_days).mean()
+    df["volatility"] = df["close"].pct_change().rolling(volatility_lookback_days).std()
+    df["volatility_20d"] = df["volatility"]
+
+    if use_ai_score and ai_score_frame is not None:
+        score_df = ai_score_frame[["date", "ai_score"]].copy()
+        score_df["date"] = pd.to_datetime(score_df["date"])
+        df["date"] = pd.to_datetime(df["date"])
+        df = df.merge(score_df, on="date", how="left", suffixes=("", "_model"))
+        if "ai_score_model" in df.columns:
+            df["ai_score"] = df["ai_score_model"]
+            df = df.drop(columns=["ai_score_model"])
+    elif use_ai_score:
+        try:
+            if ai_model_bundle is None:
+                raise ValueError("AI score model was not loaded")
+            score_df = build_ai_score_frame(raw_df, ai_model_bundle, vix_df=None, spy_df=None)
+            score_df["date"] = pd.to_datetime(score_df["date"])
+            df["date"] = pd.to_datetime(df["date"])
+            df = df.merge(score_df, on="date", how="left", suffixes=("", "_model"))
+            if "ai_score_model" in df.columns:
+                df["ai_score"] = df["ai_score_model"]
+                df = df.drop(columns=["ai_score_model"])
+
+        except Exception:
+            df["ai_score"] = None
+
+    base_buy_signal = (df["ma_fast"] > df["ma_slow"]) & (df["rsi"] < rsi_buy_limit)
+
+    if use_ai_score:
+        df["buy_signal"] = base_buy_signal & (
+            pd.to_numeric(df["ai_score"], errors="coerce") >= ai_score_buy_threshold
+        )
+    else:
+        df["buy_signal"] = base_buy_signal
+
+    if volume_filter_enabled:
+        df["buy_signal"] = df["buy_signal"] & (
+            pd.to_numeric(df["volume_ratio"], errors="coerce") >= min_volume_ratio
+        )
+
+    if volatility_filter_enabled:
+        df["buy_signal"] = df["buy_signal"] & (
+            pd.to_numeric(df["volatility"], errors="coerce") <= max_volatility
+        )
+
+    df["sell_signal"] = df["ma_fast"] < df["ma_slow"]
+
+    return df[
+        [
+            "date",
+            "ticker",
+            "close",
+            "ma20",
+            "ma50",
+            "ma_fast",
+            "ma_slow",
+            "rsi",
+            "ai_score",
+            "relative_return",
+            "volume_ratio",
+            "volatility",
+            "volatility_20d",
+            "buy_signal",
+            "sell_signal",
+        ]
+    ]
+
+
+def build_ai_score_frame(
+    df: pd.DataFrame,
+    ai_model_bundle,
+    vix_df: pd.DataFrame | None = None,
+    spy_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    feature_df = build_features(
+        df,
+        prediction_horizon=ai_model_bundle.prediction_horizon,
+        target_return_threshold=ai_model_bundle.target_return_threshold,
+        vix_df=vix_df,
+        spy_df=spy_df,
+        macro_df=macro_df,
+    )
+    score_df = feature_df[["date"]].copy()
+    score_df["ai_score"] = ai_model_bundle.predict_proba(
+        df, vix_df=vix_df, spy_df=spy_df, macro_df=macro_df
+    ).values
+    return score_df[["date", "ai_score"]]
+
+
+def build_ai_score_frames(
+    ticker_data: dict[str, pd.DataFrame],
+    ai_model_bundle=None,
+    vix_df: pd.DataFrame | None = None,
+    spy_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
+) -> dict[str, pd.DataFrame]:
+    if ai_model_bundle is None:
+        ai_model_bundle = load_ai_score_model()
+
+    score_frames = {}
+    for ticker, df in ticker_data.items():
+        score_frames[ticker] = build_ai_score_frame(
+            df, ai_model_bundle, vix_df=vix_df, spy_df=spy_df, macro_df=macro_df
+        )
+    return score_frames
+
+
+def _apply_market_regime_filter(
+    market_df: pd.DataFrame,
+    benchmark_df: pd.DataFrame,
+    market_regime_ma_fast: int,
+    market_regime_ma_slow: int,
+) -> pd.DataFrame:
+    regime_df = build_market_regime_frame(
+        benchmark_df,
+        ma_fast=market_regime_ma_fast,
+        ma_slow=market_regime_ma_slow,
+    )
+    filtered_df = market_df.merge(regime_df, on="date", how="left")
+    filtered_df["market_regime_bullish"] = filtered_df["market_regime_bullish"] == True
+    filtered_df["buy_signal"] = filtered_df["buy_signal"] & filtered_df["market_regime_bullish"]
+    return filtered_df
+
+
+def _build_benchmark_relative_return_frame(
+    benchmark_df: pd.DataFrame,
+    lookback_days: int,
+) -> pd.DataFrame:
+    if benchmark_df.empty:
+        raise ValueError("No benchmark price data available for relative strength filter")
+    if "date" not in benchmark_df.columns or "close" not in benchmark_df.columns:
+        raise ValueError("Benchmark data must contain date and close columns")
+
+    frame = benchmark_df[["date", "close"]].copy()
+    frame["date"] = pd.to_datetime(frame["date"])
+    frame = frame.sort_values("date").reset_index(drop=True)
+    frame["benchmark_relative_return"] = frame["close"].pct_change(lookback_days)
+    return frame[["date", "benchmark_relative_return"]]
+
+
+def _apply_relative_strength_filter(
+    market_df: pd.DataFrame,
+    benchmark_df: pd.DataFrame,
+    lookback_days: int,
+    min_excess_return: float,
+) -> pd.DataFrame:
+    benchmark_returns = _build_benchmark_relative_return_frame(
+        benchmark_df,
+        lookback_days=lookback_days,
+    )
+    filtered_df = market_df.merge(benchmark_returns, on="date", how="left")
+    filtered_df["relative_strength_excess_return"] = (
+        pd.to_numeric(filtered_df["relative_return"], errors="coerce")
+        - pd.to_numeric(filtered_df["benchmark_relative_return"], errors="coerce")
+    )
+    filtered_df["relative_strength_pass"] = (
+        filtered_df["relative_strength_excess_return"] >= min_excess_return
+    )
+    filtered_df["buy_signal"] = filtered_df["buy_signal"] & filtered_df["relative_strength_pass"]
+    return filtered_df
+
+
+def run_portfolio_backtest(
+    ticker_data: dict[str, pd.DataFrame],
+    benchmark_df: pd.DataFrame | None = None,
+    relative_strength_benchmark_df: pd.DataFrame | None = None,
+    initial_cash: float = 10000.0,
+    max_positions: int = 3,
+    target_position_pct: float = 0.30,
+    transaction_cost_pct: float = 0.001,
+    ma_fast: int = 20,
+    ma_slow: int = 50,
+    rsi_buy_limit: float = 70,
+    use_ai_score: bool = False,
+    ai_score_buy_threshold: float = 0.55,
+    market_regime_filter_enabled: bool = False,
+    market_regime_ma_fast: int = 50,
+    market_regime_ma_slow: int = 200,
+    stop_loss_pct: float = 0.0,
+    take_profit_pct: float = 0.0,
+    trailing_stop_pct: float = 0.0,
+    rank_trend_weight: float = 1.0,
+    rank_ai_weight: float = 0.0,
+    rank_momentum_weight: float = 0.0,
+    rank_volatility_weight: float = 0.0,
+    relative_strength_filter_enabled: bool = False,
+    relative_strength_lookback_days: int = 20,
+    relative_strength_min_excess_return: float = 0.0,
+    relative_strength_min_excess_return: float = 0.0,
+    volume_filter_enabled: bool = False,
+    volume_lookback_days: int = 20,
+    min_volume_ratio: float = 1.0,
+    volatility_filter_enabled: bool = False,
+    volatility_lookback_days: int = 20,
+    max_volatility: float = 0.04,
+    ai_score_frames: dict[str, pd.DataFrame] | None = None,
+    allocation_method: str = "equal_weight",
+    mvo_lookback_days: int = 60,
+    mvo_min_weight: float = 0.05,
+    mvo_max_weight: float = 0.40,
+    ai_exit_enabled: bool = False,
+    ai_exit_threshold: float = 0.30,
+    ai_exit_dynamic_enabled: bool = False,
+    ai_exit_vix_low: float = 15.0,
+    ai_exit_vix_high: float = 25.0,
+    ai_exit_threshold_bull: float = 0.55,
+    ai_exit_threshold_bear: float = 0.28,
+    vix_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
+    evaluation_start_date: str | pd.Timestamp | None = None,
+    evaluation_end_date: str | pd.Timestamp | None = None,
+) -> tuple[PortfolioBacktestResult, pd.DataFrame, pd.DataFrame]:
+    if relative_strength_lookback_days <= 0:
+        raise ValueError("relative_strength_lookback_days must be positive")
+    if volume_lookback_days <= 0:
+        raise ValueError("volume_lookback_days must be positive")
+    if min_volume_ratio < 0:
+        raise ValueError("min_volume_ratio must be non-negative")
+    if volatility_lookback_days <= 0:
+        raise ValueError("volatility_lookback_days must be positive")
+    if max_volatility < 0:
+        raise ValueError("max_volatility must be non-negative")
+    if not 0 <= stop_loss_pct < 1:
+        raise ValueError("stop_loss_pct must be between 0 and 1")
+    if take_profit_pct < 0:
+        raise ValueError("take_profit_pct must be non-negative")
+    if not 0 <= trailing_stop_pct < 1:
+        raise ValueError("trailing_stop_pct must be between 0 and 1")
+
+    ai_model_bundle = None
+    if use_ai_score:
+        try:
+            ai_model_bundle = load_ai_score_model()
+        except Exception:
+            ai_model_bundle = None
+
+    # SPY data for relative return feature
+    spy_df = ticker_data.get("SPY")
+
+    # Pre-compute AI score frames with full context (VIX + macro)
+    _ai_score_frames = ai_score_frames
+    if use_ai_score and ai_model_bundle is not None and _ai_score_frames is None:
+        _ai_score_frames = build_ai_score_frames(
+            ticker_data,
+            ai_model_bundle=ai_model_bundle,
+            vix_df=vix_df,
+            spy_df=spy_df,
+            macro_df=macro_df,
+        )
+
+    prepared_frames = [
+        _prepare_ticker_frame(
+            ticker,
+            df,
+            ma_fast=ma_fast,
+            ma_slow=ma_slow,
+            rsi_buy_limit=rsi_buy_limit,
+            use_ai_score=use_ai_score,
+            ai_score_buy_threshold=ai_score_buy_threshold,
+            ai_model_bundle=ai_model_bundle,
+            ai_score_frame=_ai_score_frames.get(ticker) if _ai_score_frames else None,
+            relative_strength_lookback_days=relative_strength_lookback_days,
+            volume_filter_enabled=volume_filter_enabled,
+            volume_lookback_days=volume_lookback_days,
+            min_volume_ratio=min_volume_ratio,
+            volatility_filter_enabled=volatility_filter_enabled,
+            volatility_lookback_days=volatility_lookback_days,
+            max_volatility=max_volatility,
+        )
+        for ticker, df in ticker_data.items()
+    ]
+
+    market_df = pd.concat(prepared_frames, ignore_index=True)
+    market_df["date"] = pd.to_datetime(market_df["date"])
+    market_df = market_df.sort_values(["date", "ticker"]).reset_index(drop=True)
+    if market_regime_filter_enabled:
+        if benchmark_df is None:
+            raise ValueError("benchmark_df is required when market_regime_filter_enabled=True")
+        market_df = _apply_market_regime_filter(
+            market_df,
+            benchmark_df,
+            market_regime_ma_fast=market_regime_ma_fast,
+            market_regime_ma_slow=market_regime_ma_slow,
+        )
+    if relative_strength_filter_enabled:
+        benchmark_for_relative_strength = relative_strength_benchmark_df
+        if benchmark_for_relative_strength is None:
+            benchmark_for_relative_strength = benchmark_df
+        if benchmark_for_relative_strength is None:
+            raise ValueError(
+                "relative_strength_benchmark_df is required when "
+                "relative_strength_filter_enabled=True"
+            )
+        market_df = _apply_relative_strength_filter(
+            market_df,
+            benchmark_for_relative_strength,
+            lookback_days=relative_strength_lookback_days,
+            min_excess_return=relative_strength_min_excess_return,
+        )
+
+    all_dates = sorted(market_df["date"].unique())
+    trading_dates = all_dates
+    if evaluation_start_date is not None:
+        start_ts = pd.Timestamp(evaluation_start_date)
+        trading_dates = [date for date in trading_dates if pd.Timestamp(date) >= start_ts]
+    if evaluation_end_date is not None:
+        end_ts = pd.Timestamp(evaluation_end_date)
+        trading_dates = [date for date in trading_dates if pd.Timestamp(date) <= end_ts]
+    if not trading_dates:
+        raise ValueError("No dates available inside the requested evaluation window")
+
+    # VIX lookup index for dynamic AI exit threshold
+    _vix_by_date: dict = {}
+    if ai_exit_dynamic_enabled and vix_df is not None and not vix_df.empty:
+        _vix_tmp = vix_df.copy()
+        _vix_tmp["date"] = pd.to_datetime(_vix_tmp["date"])
+        _vix_tmp = _vix_tmp.sort_values("date")
+        close_col = "adj_close" if "adj_close" in _vix_tmp.columns else "close"
+        _vix_by_date = dict(zip(_vix_tmp["date"], _vix_tmp[close_col]))
+
+    cash = initial_cash
+    positions: dict[str, dict] = {}
+
+    trades: list[dict] = []
+    equity_rows: list[dict] = []
+
+    for current_date in trading_dates:
+        day_df = market_df[market_df["date"] == current_date].copy()
+        day_prices = {
+            row["ticker"]: float(row["close"])
+            for _, row in day_df.iterrows()
+        }
+
+        for ticker in list(positions.keys()):
+            ticker_row = day_df[day_df["ticker"] == ticker]
+
+            if ticker_row.empty:
+                continue
+
+            row = ticker_row.iloc[0]
+            close = float(row["close"])
+            position = positions[ticker]
+            position["highest_price"] = max(
+                float(position.get("highest_price", position["entry_price"])),
+                close,
+            )
+
+            exit_reason = None
+            gross_return_pct = (close / float(position["entry_price"])) - 1.0
+            drawdown_from_high = (close / float(position["highest_price"])) - 1.0
+
+            ai_exit_triggered = False
+            if ai_exit_enabled:
+                ai_score_val = pd.to_numeric(row.get("ai_score"), errors="coerce")
+                if not pd.isna(ai_score_val):
+                    effective_threshold = ai_exit_threshold
+                    if ai_exit_dynamic_enabled and _vix_by_date:
+                        ts = pd.Timestamp(current_date)
+                        vix_val = _vix_by_date.get(ts)
+                        if vix_val is None:
+                            past = {k: v for k, v in _vix_by_date.items() if k <= ts}
+                            vix_val = past[max(past)] if past else None
+                        if vix_val is not None:
+                            if float(vix_val) < ai_exit_vix_low:
+                                effective_threshold = ai_exit_threshold_bull
+                            elif float(vix_val) > ai_exit_vix_high:
+                                effective_threshold = ai_exit_threshold_bear
+                    ai_exit_triggered = float(ai_score_val) < effective_threshold
+
+            if stop_loss_pct > 0 and gross_return_pct <= -stop_loss_pct:
+                exit_reason = "STOP_LOSS"
+            elif trailing_stop_pct > 0 and drawdown_from_high <= -trailing_stop_pct:
+                exit_reason = "TRAILING_STOP"
+            elif ai_exit_triggered:
+                exit_reason = "AI_EXIT"
+            elif bool(row["sell_signal"]):
+                exit_reason = "SELL_SIGNAL"
+            elif take_profit_pct > 0 and gross_return_pct >= take_profit_pct:
+                exit_reason = "TAKE_PROFIT"
+
+            if exit_reason is not None:
+                position = positions.pop(ticker)
+                qty = position["qty"]
+                entry_price = position["entry_price"]
+                entry_date = position["entry_date"]
+
+                gross_value = qty * close
+                cost = gross_value * transaction_cost_pct
+                net_value = gross_value - cost
+                cash += net_value
+
+                return_pct = (net_value / position["cost_basis"]) - 1.0
+
+                trades.append(
+                    {
+                        "ticker": ticker,
+                        "entry_date": entry_date,
+                        "exit_date": current_date,
+                        "entry_price": entry_price,
+                        "exit_price": close,
+                        "qty": qty,
+                        "cost_basis": position["cost_basis"],
+                        "exit_value": net_value,
+                        "return_pct": return_pct,
+                        "exit_reason": exit_reason,
+                    }
+                )
+
+        positions_value = sum(
+            pos["qty"] * day_prices.get(ticker, pos["last_price"])
+            for ticker, pos in positions.items()
+        )
+        equity = cash + positions_value
+
+        slots_left = max_positions - len(positions)
+
+        if slots_left > 0:
+            buy_candidates = day_df[
+                (day_df["buy_signal"]) &
+                (~day_df["ticker"].isin(positions.keys()))
+            ].copy()
+
+            buy_candidates["trend_strength"] = (
+                buy_candidates["ma_fast"] / buy_candidates["ma_slow"]
+            )
+            buy_candidates["rank_ai_score"] = pd.to_numeric(
+                buy_candidates["ai_score"],
+                errors="coerce",
+            ).fillna(0.0)
+            buy_candidates["rank_momentum"] = pd.to_numeric(
+                buy_candidates["relative_return"],
+                errors="coerce",
+            ).fillna(0.0)
+            buy_candidates["rank_volatility"] = pd.to_numeric(
+                buy_candidates["volatility"],
+                errors="coerce",
+            ).fillna(0.0)
+            buy_candidates["rank_score"] = (
+                rank_trend_weight * (buy_candidates["trend_strength"] - 1.0)
+                + rank_ai_weight * buy_candidates["rank_ai_score"]
+                + rank_momentum_weight * buy_candidates["rank_momentum"]
+                - rank_volatility_weight * buy_candidates["rank_volatility"]
+            )
+
+            buy_candidates = buy_candidates.sort_values(
+                ["rank_score", "trend_strength", "rsi"],
+                ascending=[False, False, True],
+            )
+
+            selected = buy_candidates.head(slots_left)
+            candidate_tickers = selected["ticker"].tolist()
+
+            # Compute dynamic weights when using MVO/BL
+            if allocation_method != "equal_weight" and len(candidate_tickers) > 1:
+                candidate_ai_scores = {
+                    row["ticker"]: float(
+                        pd.to_numeric(row["ai_score"], errors="coerce") or 0.5
+                    )
+                    for _, row in selected.iterrows()
+                }
+                alloc_weights = compute_candidate_weights(
+                    market_df=market_df,
+                    candidate_tickers=candidate_tickers,
+                    current_date=current_date,
+                    ai_scores=candidate_ai_scores,
+                    allocation_method=allocation_method,
+                    lookback_days=mvo_lookback_days,
+                    min_weight=mvo_min_weight,
+                    max_weight=mvo_max_weight,
+                )
+                # Total capital same as equal-weight baseline: N * target_position_pct * equity
+                total_to_deploy = len(candidate_tickers) * target_position_pct * equity
+            else:
+                alloc_weights = {t: 1.0 / max(len(candidate_tickers), 1) for t in candidate_tickers}
+                total_to_deploy = None  # use original target_position_pct per ticker
+
+            for _, row in selected.iterrows():
+                ticker = row["ticker"]
+                close = float(row["close"])
+
+                if close <= 0:
+                    continue
+
+                if total_to_deploy is not None:
+                    target_value = total_to_deploy * alloc_weights.get(
+                        ticker, 1.0 / len(candidate_tickers)
+                    )
+                else:
+                    target_value = equity * target_position_pct
+
+                available_value = min(cash, target_value)
+
+                if available_value <= 0:
+                    continue
+
+                cost = available_value * transaction_cost_pct
+                net_investment = available_value - cost
+
+                if net_investment <= 0:
+                    continue
+
+                qty = net_investment / close
+                cash -= available_value
+
+                positions[ticker] = {
+                    "qty": qty,
+                    "entry_price": close,
+                    "entry_date": current_date,
+                    "cost_basis": available_value,
+                    "last_price": close,
+                    "highest_price": close,
+                }
+
+        for ticker, pos in positions.items():
+            if ticker in day_prices:
+                pos["last_price"] = day_prices[ticker]
+
+        positions_value = sum(
+            pos["qty"] * pos["last_price"]
+            for pos in positions.values()
+        )
+        equity = cash + positions_value
+
+        equity_rows.append(
+            {
+                "date": current_date,
+                "cash": cash,
+                "positions_value": positions_value,
+                "equity": equity,
+                "positions_count": len(positions),
+                "open_symbols": ",".join(sorted(positions.keys())),
+            }
+        )
+
+    equity_df = pd.DataFrame(equity_rows)
+
+    if equity_df.empty:
+        raise ValueError("No equity rows generated")
+
+    equity_df["daily_return"] = equity_df["equity"].pct_change().fillna(0.0)
+    equity_df["running_max"] = equity_df["equity"].cummax()
+    equity_df["drawdown"] = equity_df["equity"] / equity_df["running_max"] - 1.0
+
+    trades_df = pd.DataFrame(trades)
+
+    final_equity = float(equity_df["equity"].iloc[-1])
+    total_return = final_equity / initial_cash - 1.0
+    max_drawdown = float(equity_df["drawdown"].min())
+
+    trades_count = int(len(trades_df))
+
+    if trades_count > 0:
+        win_rate = float((trades_df["return_pct"] > 0).mean())
+    else:
+        win_rate = 0.0
+
+    benchmark_values = []
+    shares = {}
+
+    first_date = equity_df["date"].iloc[0]
+    first_day = market_df[market_df["date"] == first_date]
+
+    equal_cash = initial_cash / len(ticker_data)
+
+    for _, row in first_day.iterrows():
+        ticker = row["ticker"]
+        close = float(row["close"])
+        shares[ticker] = equal_cash / close
+
+
+exec
+/bin/bash -lc "sed -n '620,820p' src/portfolio_backtester.py && rg \"save_model_bundle|promotion_report|archive_current\" -n src/train_ai_model.py src/ml_model.py | head -50 && sed -n '680,760p' src/train_ai_model.py" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+
+    for current_date in equity_df["date"]:
+        day_df = market_df[market_df["date"] == current_date]
+        prices = {
+            row["ticker"]: float(row["close"])
+            for _, row in day_df.iterrows()
+        }
+
+        value = 0.0
+        for ticker, qty in shares.items():
+            price = prices.get(ticker)
+            if price is not None:
+                value += qty * price
+
+        benchmark_values.append(value)
+
+    equity_df["benchmark_equity"] = benchmark_values
+    benchmark_return = (
+        float(equity_df["benchmark_equity"].iloc[-1]) / initial_cash - 1.0
+    )
+
+    # Annualized Sharpe (252 trading days, risk-free=0)
+    daily_returns = equity_df["daily_return"]
+    std = float(daily_returns.std())
+    sharpe_ratio = float(daily_returns.mean() / std * (252 ** 0.5)) if std > 1e-10 else 0.0
+
+    result = PortfolioBacktestResult(
+        initial_cash=initial_cash,
+        final_equity=final_equity,
+        total_return=total_return,
+        max_drawdown=max_drawdown,
+        trades=trades_count,
+        win_rate=win_rate,
+        benchmark_return=benchmark_return,
+        sharpe_ratio=sharpe_ratio,
+    )
+
+    return result, equity_df, trades_df
+
+
+def save_portfolio_backtest_outputs(
+    output_dir: str | Path,
+    result: PortfolioBacktestResult,
+    equity_df: pd.DataFrame,
+    trades_df: pd.DataFrame,
+) -> None:
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    summary_df = pd.DataFrame(
+        [
+            {
+                "initial_cash": result.initial_cash,
+                "final_equity": result.final_equity,
+                "total_return": result.total_return,
+                "benchmark_return": result.benchmark_return,
+                "max_drawdown": result.max_drawdown,
+                "sharpe_ratio": result.sharpe_ratio,
+                "trades": result.trades,
+                "win_rate": result.win_rate,
+            }
+        ]
+    )
+
+    summary_df.to_csv(output_dir / "portfolio_summary.csv", index=False)
+    equity_df.to_csv(output_dir / "portfolio_equity.csv", index=False)
+    trades_df.to_csv(output_dir / "portfolio_trades.csv", index=False)
+src/ml_model.py:214:def save_model_bundle(
+src/ml_model.py:243:    return save_model_bundle(bundle, model_path=model_path, metadata_path=metadata_path)
+src/ml_model.py:246:def archive_current_champion(
+src/ml_model.py:318:def build_promotion_report(
+src/train_ai_model.py:16:    archive_current_champion,
+src/train_ai_model.py:18:    build_promotion_report,
+src/train_ai_model.py:25:    save_model_bundle,
+src/train_ai_model.py:702:    promotion_report = build_promotion_report(
+src/train_ai_model.py:709:    promotion_report.update(
+src/train_ai_model.py:717:    promotion_report_path = output_dir / "model_promotion_report.json"
+src/train_ai_model.py:718:    promotion_report_path.write_text(
+src/train_ai_model.py:719:        json.dumps(promotion_report, indent=2, sort_keys=True),
+src/train_ai_model.py:723:    if promotion_report["decision"] == "PROMOTE":
+src/train_ai_model.py:724:        archived = archive_current_champion()
+src/train_ai_model.py:725:        save_model_bundle(bundle)
+src/train_ai_model.py:727:            promotion_report["archived_previous_champion_model_path"] = str(archived[0])
+src/train_ai_model.py:728:            promotion_report["archived_previous_champion_metadata_path"] = str(archived[1])
+src/train_ai_model.py:732:        "promotion_decision": promotion_report["decision"],
+src/train_ai_model.py:734:    if promotion_report["decision"] == "PROMOTE":
+src/train_ai_model.py:762:    print(f"Promotion decision: {promotion_report['decision']}")
+src/train_ai_model.py:763:    if promotion_report["decision"] == "PROMOTE":
+src/train_ai_model.py:768:    print(f"Saved promotion report to {promotion_report_path}")
+            macro_df=macro_df,
+            model_wrapper=bundle_to_model_wrapper(bundle),
+            eval_start=holdout_start,
+            eval_end=holdout_end,
+        )
+        challenger_portfolio["holdout_excluded_from_training"] = True
+        bundle["metadata"]["portfolio_oos"] = challenger_portfolio
+        champion_wrapper = _load_champion_model_wrapper()
+        if champion_wrapper is not None:
+            champion_portfolio = _run_retrain_oos_portfolio(
+                settings=settings,
+                ticker_data=holdout_ticker_data,
+                vix_df=vix_df,
+                macro_df=macro_df,
+                model_wrapper=champion_wrapper,
+                eval_start=holdout_start,
+                eval_end=holdout_end,
+            )
+            champion_portfolio["holdout_excluded_from_training"] = True
+
+    challenger_model_path, challenger_metadata_path = save_challenger_bundle(bundle)
+    champion_metadata = load_model_metadata()
+    promotion_report = build_promotion_report(
+        challenger_metadata=bundle["metadata"],
+        champion_metadata=champion_metadata,
+        challenger_portfolio=challenger_portfolio,
+        champion_portfolio=champion_portfolio,
+        require_portfolio_oos=settings.use_ai_score,
+    )
+    promotion_report.update(
+        {
+            "challenger_model_path": str(challenger_model_path),
+            "challenger_metadata_path": str(challenger_metadata_path),
+            "champion_model_path": str(MODEL_PATH),
+            "champion_metadata_path": str(MODEL_METADATA_PATH),
+        }
+    )
+    promotion_report_path = output_dir / "model_promotion_report.json"
+    promotion_report_path.write_text(
+        json.dumps(promotion_report, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    if promotion_report["decision"] == "PROMOTE":
+        archived = archive_current_champion()
+        save_model_bundle(bundle)
+        if archived is not None:
+            promotion_report["archived_previous_champion_model_path"] = str(archived[0])
+            promotion_report["archived_previous_champion_metadata_path"] = str(archived[1])
+
+    rollback_report = {
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "promotion_decision": promotion_report["decision"],
+    }
+    if promotion_report["decision"] == "PROMOTE":
+        rollback_report["decision"] = "SKIP_ROLLBACK_AFTER_PROMOTION"
+        rollback_report["reason"] = "new challenger promoted; wait for fresh performance before rollback evaluation"
+    else:
+        rollback_eval = _evaluate_rollback_need(_load_recent_performance_snapshot())
+        rollback_report.update(rollback_eval)
+        if rollback_eval["should_rollback"]:
+            archived = find_latest_archived_champion(CHAMPION_ARCHIVE_DIR)
+            if archived is None:
+                rollback_report["decision"] = "NO_ROLLBACK_AVAILABLE"
+                rollback_report["reason"] = f"{rollback_eval['reason']}; no archived champion available"
+            else:
+                restore_archived_champion(*archived)
+                rollback_report["decision"] = "ROLLBACK_TO_ARCHIVED_CHAMPION"
+                rollback_report["restored_model_path"] = str(archived[0])
+                rollback_report["restored_metadata_path"] = str(archived[1])
+        else:
+            rollback_report["decision"] = "NO_ROLLBACK_NEEDED"
+    _write_rollback_report(rollback_report)
+
+    elapsed = time.time() - started_at
+    _append_retrain_log("success", metrics_df, elapsed)
+
+    print("AI score model trained.")
+    print(f"Model: LightGBM (n_estimators=500, max_depth=6)")
+    print(f"Features: {len(model.feature_columns)} ({', '.join(model.feature_columns)})")
+    print(f"Saved challenger model to {challenger_model_path}")
+
+exec
+/bin/bash -lc 'rg "market_regime_filter_enabled|market_regime_ma_slow|use_ai_score" -n src/config.py src/settings.py src | head -40' in /home/kimyo/trading-bot
+ succeeded in 189ms:
+src/settings.py:31:    use_ai_score: bool
+src/settings.py:33:    market_regime_filter_enabled: bool
+src/settings.py:36:    market_regime_ma_slow: int
+src/settings.py:64:    use_ai_score: bool = False
+src/settings.py:66:    market_regime_filter_enabled: bool = False
+src/settings.py:69:    market_regime_ma_slow: int = 200
+src/optimize_entry_ranking.py:27:    if settings.use_ai_score:
+src/optimize_entry_ranking.py:43:        "use_ai_score": settings.use_ai_score,
+src/tune_qlib_strategy.py:76:    if settings.use_ai_score:
+src/train_ai_model.py:376:        if settings.market_regime_filter_enabled
+src/train_ai_model.py:387:    if settings.use_ai_score:
+src/train_ai_model.py:407:        use_ai_score=settings.use_ai_score,
+src/train_ai_model.py:409:        market_regime_filter_enabled=settings.market_regime_filter_enabled,
+src/train_ai_model.py:411:        market_regime_ma_slow=settings.market_regime_ma_slow,
+src/train_ai_model.py:462:        if settings.market_regime_filter_enabled
+src/train_ai_model.py:488:                use_ai_score=settings.use_ai_score,
+src/train_ai_model.py:490:                market_regime_filter_enabled=settings.market_regime_filter_enabled,
+src/train_ai_model.py:492:                market_regime_ma_slow=settings.market_regime_ma_slow,
+src/train_ai_model.py:670:    if settings.use_ai_score:
+src/train_ai_model.py:707:        require_portfolio_oos=settings.use_ai_score,
+src/run_selected_strategy.py:29:    if settings.market_regime_filter_enabled:
+src/run_selected_strategy.py:38:        if settings.market_regime_filter_enabled
+src/run_selected_strategy.py:52:        market_regime_filter_enabled=settings.market_regime_filter_enabled,
+src/run_selected_strategy.py:54:        market_regime_ma_slow=settings.market_regime_ma_slow,
+src/qlib_backtest_runner.py:136:        if settings.use_ai_score and ai_model_bundle is not None:
+src/qlib_backtest_runner.py:766:        if settings.use_ai_score:
+src/generate_baseline_snapshot.py:27:    if settings.market_regime_filter_enabled:
+src/generate_baseline_snapshot.py:36:        if settings.market_regime_filter_enabled
+src/generate_baseline_snapshot.py:56:        use_ai_score=settings.use_ai_score,
+src/generate_baseline_snapshot.py:58:        market_regime_filter_enabled=settings.market_regime_filter_enabled,
+src/generate_baseline_snapshot.py:60:        market_regime_ma_slow=settings.market_regime_ma_slow,
+src/optimize_exit_strategy.py:27:    if settings.use_ai_score:
+src/optimize_exit_strategy.py:43:        "use_ai_score": settings.use_ai_score,
+src/optimize_volume_volatility.py:35:    use_ai_score: bool,
+src/optimize_volume_volatility.py:54:        "use_ai_score": use_ai_score,
+src/optimize_volume_volatility.py:82:    use_ai_score = bool(settings.use_ai_score and not args.no_ai_score)
+src/optimize_volume_volatility.py:84:    if use_ai_score:
+src/optimize_volume_volatility.py:100:        "use_ai_score": use_ai_score,
+src/optimize_volume_volatility.py:113:            use_ai_score=use_ai_score,
+src/optimize_volume_volatility.py:137:                    use_ai_score=use_ai_score,
+
+exec
+/bin/bash -lc "sed -n '1,120p' src/settings.py && sed -n '430,520p' src/train_ai_model.py" in /home/kimyo/trading-bot
+ succeeded in 181ms:
+import json
+from dataclasses import asdict, dataclass, field, fields
+from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+# 경로 설정
+CONFIG_PATH = Path("config/strategy_config.json")
+PROFILES_PATH = Path("config/strategy_profiles.json")
+
+
+class AllocationType(Enum):
+    EQUAL_WEIGHT = "equal_weight"
+    FIXED_WEIGHT = "fixed_weight"
+    RISK_PARITY = "risk_parity"
+
+
+@dataclass
+class StrategyProfile:
+    """개별 전략의 기술적 지표 및 필터 설정"""
+
+    name: str
+    tickers: List[str]
+
+    # 기술적 지표 (MA, RSI 등)
+    ma_fast: int
+    ma_slow: int
+    rsi_buy_limit: float
+
+    # 필터 설정
+    use_ai_score: bool
+    ai_score_buy_threshold: float
+    market_regime_filter_enabled: bool
+    market_regime_ticker: str
+    market_regime_ma_fast: int
+    market_regime_ma_slow: int
+    relative_strength_filter_enabled: bool = False
+    relative_strength_benchmark_ticker: str = "SPY"
+    relative_strength_lookback_days: int = 20
+    relative_strength_min_excess_return: float = 0.0
+    volume_filter_enabled: bool = False
+    volume_lookback_days: int = 20
+    min_volume_ratio: float = 1.0
+    volatility_filter_enabled: bool = False
+    volatility_lookback_days: int = 20
+    max_volatility: float = 0.04
+
+    # 랭킹 가중치
+    rank_trend_weight: float = 1.0
+    rank_ai_weight: float = 0.0
+    rank_momentum_weight: float = 0.0
+    rank_volatility_weight: float = 0.0
+
+
+@dataclass
+class StrategySettings(StrategyProfile):
+    """Legacy single-strategy settings used by backtests and tests."""
+
+    name: str = "default"
+    tickers: List[str] = field(default_factory=lambda: ["NVDA", "MSFT", "GOOGL", "AMZN", "AMD"])
+    ma_fast: int = 10
+    ma_slow: int = 50
+    rsi_buy_limit: float = 65.0
+    use_ai_score: bool = False
+    ai_score_buy_threshold: float = 0.55
+    market_regime_filter_enabled: bool = False
+    market_regime_ticker: str = "SPY"
+    market_regime_ma_fast: int = 50
+    market_regime_ma_slow: int = 200
+
+    max_position_pct: float = 0.4
+    max_total_positions: int = 2
+    max_sector_positions: int = 2
+    stop_loss_pct: float = 0.05
+    take_profit_pct: float = 0.1
+    max_test_order_amount: float = 10.0
+    max_orders_per_run: int = 1
+    max_daily_order_amount: float = 1000.0
+    buy_cooldown_days: int = 1
+    allocation_method: str = "equal_weight"
+    ai_exit_enabled: bool = False
+    ai_exit_threshold: float = 0.30
+    ai_exit_dynamic_enabled: bool = False
+    ai_exit_vix_low: float = 15.0
+    ai_exit_vix_high: float = 25.0
+    ai_exit_threshold_bull: float = 0.22
+    ai_exit_threshold_bear: float = 0.50
+    news_sentiment_enabled: bool = False
+    news_sentiment_threshold: float = -0.30
+    max_portfolio_drawdown_pct: float = 0.15
+    max_holding_days: int = 30
+    correlation_guard_enabled: bool = False
+    max_correlation_threshold: float = 0.85
+    max_portfolio_avg_correlation_threshold: float = 0.70
+    correlation_lookback_days: int = 60
+    earnings_filter_enabled: bool = False
+    earnings_lookback_days: int = 3
+    earnings_lookforward_days: int = 1
+    take_profit_partial_pct: float = 0.0
+    partial_exit_ratio: float = 0.5
+    leverage_factor: float = 1.0
+    max_gross_exposure_pct: float = 1.0
+    min_cash_buffer_pct: float = 0.05
+    max_single_name_loss_pct: float = 0.02
+    crowding_guard_enabled: bool = False
+    crowding_lookback_days: int = 60
+    crowding_max_positions: int = 2
+    crowding_momentum_threshold: float = 0.15
+    crowding_trend_gap_threshold: float = 0.05
+    dynamic_universe_enabled: bool = False
+    dynamic_count: int = 50
+    trailing_stop_pct: float = 0.05
+    adaptive_trailing_stop_enabled: bool = False
+    atr_multiplier: float = 3.0
+    rebalance_threshold_pct: float = 0.20
+    sector_rotation_enabled: bool = False
+    macro_event_risk_enabled: bool = False
+    macro_event_lookahead_days: int = 2
+    macro_event_lookback_days: int = 1
+    llm_degraded_mode: str = "PASS"  # "PASS" or "FAIL"
+        ),
+        ai_exit_dynamic_enabled=getattr(settings, "ai_exit_dynamic_enabled", False),
+        ai_exit_vix_low=getattr(settings, "ai_exit_vix_low", 15.0),
+        ai_exit_vix_high=getattr(settings, "ai_exit_vix_high", 25.0),
+        ai_exit_threshold_bull=getattr(settings, "ai_exit_threshold_bull", 0.22),
+        ai_exit_threshold_bear=getattr(settings, "ai_exit_threshold_bear", 0.50),
+        vix_df=vix_df,
+        macro_df=macro_df,
+        ai_score_frames=ai_score_frames,
+        evaluation_start_date=eval_start,
+        evaluation_end_date=eval_end,
+    )
+    return _portfolio_oos_snapshot(result, eval_start, eval_end)
+
+
+def _load_champion_model_wrapper():
+    if not MODEL_PATH.exists():
+        return None
+    try:
+        return load_ai_score_model()
+    except (FileNotFoundError, ValueError):
+        return None
+
+
+def _run_threshold_retune(
+    settings,
+    ticker_data: dict[str, pd.DataFrame],
+    vix_df: pd.DataFrame | None,
+    macro_df: pd.DataFrame | None,
+) -> tuple[dict, pd.DataFrame]:
+    benchmark_df = (
+        ticker_data.get(settings.market_regime_ticker)
+        if settings.market_regime_filter_enabled
+        else None
+    )
+    relative_strength_benchmark_df = (
+        ticker_data.get(settings.relative_strength_benchmark_ticker)
+        if settings.relative_strength_filter_enabled
+        else None
+    )
+
+    eval_end = _pick_latest_date(ticker_data)
+    eval_start = eval_end - pd.DateOffset(months=6)
+
+    rows = []
+    for buy_threshold in BUY_THRESHOLD_GRID:
+        for exit_threshold in EXIT_THRESHOLD_GRID:
+            result, _, _ = run_portfolio_backtest(
+                ticker_data=ticker_data,
+                benchmark_df=benchmark_df,
+                relative_strength_benchmark_df=relative_strength_benchmark_df,
+                initial_cash=10000.0,
+                max_positions=settings.max_total_positions,
+                target_position_pct=settings.max_position_pct,
+                transaction_cost_pct=0.001,
+                ma_fast=settings.ma_fast,
+                ma_slow=settings.ma_slow,
+                rsi_buy_limit=settings.rsi_buy_limit,
+                use_ai_score=settings.use_ai_score,
+                ai_score_buy_threshold=buy_threshold,
+                market_regime_filter_enabled=settings.market_regime_filter_enabled,
+                market_regime_ma_fast=settings.market_regime_ma_fast,
+                market_regime_ma_slow=settings.market_regime_ma_slow,
+                relative_strength_filter_enabled=settings.relative_strength_filter_enabled,
+                relative_strength_lookback_days=settings.relative_strength_lookback_days,
+                relative_strength_min_excess_return=settings.relative_strength_min_excess_return,
+                volume_filter_enabled=settings.volume_filter_enabled,
+                volume_lookback_days=settings.volume_lookback_days,
+                min_volume_ratio=settings.min_volume_ratio,
+                volatility_filter_enabled=settings.volatility_filter_enabled,
+                volatility_lookback_days=settings.volatility_lookback_days,
+                max_volatility=settings.max_volatility,
+                rank_trend_weight=settings.rank_trend_weight,
+                rank_ai_weight=settings.rank_ai_weight,
+                rank_momentum_weight=settings.rank_momentum_weight,
+                rank_volatility_weight=settings.rank_volatility_weight,
+                ai_exit_enabled=getattr(settings, "ai_exit_enabled", False),
+                ai_exit_threshold=exit_threshold,
+                ai_exit_dynamic_enabled=getattr(settings, "ai_exit_dynamic_enabled", False),
+                ai_exit_vix_low=getattr(settings, "ai_exit_vix_low", 15.0),
+                ai_exit_vix_high=getattr(settings, "ai_exit_vix_high", 25.0),
+                ai_exit_threshold_bull=getattr(settings, "ai_exit_threshold_bull", 0.22),
+                ai_exit_threshold_bear=exit_threshold if getattr(settings, "ai_exit_dynamic_enabled", False) else getattr(settings, "ai_exit_threshold_bear", 0.50),
+                vix_df=vix_df,
+                macro_df=macro_df,
+                evaluation_start_date=eval_start,
+                evaluation_end_date=eval_end,
+            )
+            rows.append(
+                {
+                    "buy_threshold": buy_threshold,
+
+exec
+/bin/bash -lc "nl -ba src/train_ai_model.py | sed -n '580,700p'" in /home/kimyo/trading-bot
+ succeeded in 206ms:
+   580	    if macro_df.empty:
+   581	        print("  WARNING: macro data unavailable, training without macro features")
+   582	        macro_df = None
+   583	    else:
+   584	        print(f"  Macro data: {len(macro_df)} rows, columns: {list(macro_df.columns)}")
+   585	
+   586	    holdout_start, holdout_end = portfolio_holdout_window(training_data)
+   587	    training_data_fit = exclude_holdout_from_ticker_data(training_data, holdout_start)
+   588	    holdout_ticker_data = slice_ticker_data_to_holdout(
+   589	        training_data, holdout_start, holdout_end
+   590	    )
+   591	    print(
+   592	        f"Portfolio promotion holdout: {holdout_start.strftime('%Y-%m-%d')} "
+   593	        f"to {holdout_end.strftime('%Y-%m-%d')} (excluded from challenger training)"
+   594	    )
+   595	
+   596	    print("Training model with LightGBM + enhanced features (21 features)...")
+   597	    model, metrics_df = train_ai_score_model(
+   598	        training_data=training_data_fit,
+   599	        prediction_horizon=20,
+   600	        target_return_threshold=0.0,
+   601	        vix_df=vix_df,
+   602	        spy_df=spy_df,
+   603	        macro_df=macro_df,
+   604	    )
+   605	
+   606	    baseline_feature_stats = _load_feature_stats()
+   607	    current_feature_stats = _build_feature_stats(
+   608	        training_data=training_data,
+   609	        prediction_horizon=20,
+   610	        target_return_threshold=0.0,
+   611	        vix_df=vix_df,
+   612	        spy_df=spy_df,
+   613	        macro_df=macro_df,
+   614	    )
+   615	    drift_report = _compare_feature_stats(baseline_feature_stats, current_feature_stats)
+   616	    _write_drift_report(drift_report)
+   617	    _write_feature_stats(current_feature_stats)
+   618	    calibration_report, calibration_bins_df = _build_calibration_report(metrics_df)
+   619	    _write_calibration_report(calibration_report, calibration_bins_df)
+   620	
+   621	    if drift_report["drifted_feature_count"] > 0:
+   622	        top_features = ", ".join(
+   623	            f"{item['feature']}({item['zscore_shift']:.2f})"
+   624	            for item in drift_report["drifted_features"][:5]
+   625	        )
+   626	        notify_info(
+   627	            "⚠️ Feature Drift Detected",
+   628	            f"Drifted features: {drift_report['drifted_feature_count']}\n"
+   629	            f"Top shifts: {top_features}\n"
+   630	            f"Report: {DRIFT_REPORT_PATH}"
+   631	        )
+   632	    if calibration_report["overall_avg_brier_score"] > 0.25:
+   633	        notify_info(
+   634	            "⚠️ Calibration Quality Warning",
+   635	            f"Average Brier score: {calibration_report['overall_avg_brier_score']:.4f}\n"
+   636	            f"Report: {CALIBRATION_REPORT_PATH}"
+   637	        )
+   638	
+   639	    threshold_retune_report, threshold_retune_results_df = _run_threshold_retune(
+   640	        settings=settings,
+   641	        ticker_data=training_data_fit,
+   642	        vix_df=vix_df,
+   643	        macro_df=macro_df,
+   644	    )
+   645	    _write_threshold_retune_report(threshold_retune_report, threshold_retune_results_df)
+   646	    settings.ai_score_buy_threshold = float(threshold_retune_report["best_buy_threshold"])
+   647	    if getattr(settings, "ai_exit_dynamic_enabled", False):
+   648	        settings.ai_exit_threshold_bear = float(threshold_retune_report["best_exit_threshold"])
+   649	    else:
+   650	        settings.ai_exit_threshold = float(threshold_retune_report["best_exit_threshold"])
+   651	    save_settings(settings)
+   652	
+   653	    output_dir = Path("logs/ml")
+   654	    output_dir.mkdir(parents=True, exist_ok=True)
+   655	
+   656	    metrics_path = output_dir / "ai_model_metrics.csv"
+   657	    metrics_df.to_csv(metrics_path, index=False)
+   658	
+   659	    bundle = build_model_bundle(
+   660	        trained_models=model.models,
+   661	        metrics_df=metrics_df,
+   662	        training_data=training_data,
+   663	        feature_columns=FEATURE_COLUMNS,
+   664	        prediction_horizon=model.prediction_horizon,
+   665	        target_return_threshold=model.target_return_threshold,
+   666	    )
+   667	
+   668	    challenger_portfolio = None
+   669	    champion_portfolio = None
+   670	    if settings.use_ai_score:
+   671	        if not holdout_ticker_data:
+   672	            raise ValueError(
+   673	                "Portfolio holdout slice is empty; cannot score promotion gates"
+   674	            )
+   675	        print("Running holdout-only portfolio evaluation for promotion gates...")
+   676	        challenger_portfolio = _run_retrain_oos_portfolio(
+   677	            settings=settings,
+   678	            ticker_data=holdout_ticker_data,
+   679	            vix_df=vix_df,
+   680	            macro_df=macro_df,
+   681	            model_wrapper=bundle_to_model_wrapper(bundle),
+   682	            eval_start=holdout_start,
+   683	            eval_end=holdout_end,
+   684	        )
+   685	        challenger_portfolio["holdout_excluded_from_training"] = True
+   686	        bundle["metadata"]["portfolio_oos"] = challenger_portfolio
+   687	        champion_wrapper = _load_champion_model_wrapper()
+   688	        if champion_wrapper is not None:
+   689	            champion_portfolio = _run_retrain_oos_portfolio(
+   690	                settings=settings,
+   691	                ticker_data=holdout_ticker_data,
+   692	                vix_df=vix_df,
+   693	                macro_df=macro_df,
+   694	                model_wrapper=champion_wrapper,
+   695	                eval_start=holdout_start,
+   696	                eval_end=holdout_end,
+   697	            )
+   698	            champion_portfolio["holdout_excluded_from_training"] = True
+   699	
+   700	    challenger_model_path, challenger_metadata_path = save_challenger_bundle(bundle)
+
+exec
+/bin/bash -lc "sed -n '180,245p' src/ml_model.py && nl -ba src/ml_model.py | sed -n '210,240p'" in /home/kimyo/trading-bot
+ succeeded in 173ms:
+        "feature_set_version": f"features_v{len(feature_columns)}",
+        "feature_columns": list(feature_columns),
+        "prediction_horizon": int(prediction_horizon),
+        "target_return_threshold": float(target_return_threshold),
+        "trained_regimes": sorted(trained_models.keys()),
+        "oos_metrics": _summarize_metrics(metrics_df),
+    }
+
+
+def build_model_bundle(
+    *,
+    trained_models: Dict[str, Any],
+    metrics_df: pd.DataFrame,
+    training_data: Dict[str, pd.DataFrame],
+    feature_columns: List[str],
+    prediction_horizon: int,
+    target_return_threshold: float,
+) -> dict[str, Any]:
+    return {
+        "models": trained_models,
+        "feature_columns": feature_columns,
+        "prediction_horizon": prediction_horizon,
+        "target_return_threshold": target_return_threshold,
+        "metadata": build_model_metadata(
+            training_data=training_data,
+            trained_models=trained_models,
+            metrics_df=metrics_df,
+            feature_columns=feature_columns,
+            prediction_horizon=prediction_horizon,
+            target_return_threshold=target_return_threshold,
+        ),
+    }
+
+
+def save_model_bundle(
+    bundle: dict[str, Any],
+    *,
+    model_path: Path = MODEL_PATH,
+    metadata_path: Path = MODEL_METADATA_PATH,
+) -> tuple[Path, Path]:
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    metadata_path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(bundle, model_path)
+    metadata = bundle.get("metadata", {})
+    metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
+    return model_path, metadata_path
+
+
+def load_model_metadata(metadata_path: Path = MODEL_METADATA_PATH) -> dict[str, Any] | None:
+    if not metadata_path.exists():
+        return None
+    return json.loads(metadata_path.read_text(encoding="utf-8"))
+
+
+def save_challenger_bundle(
+    bundle: dict[str, Any],
+    *,
+    challenger_dir: Path = CHALLENGER_DIR,
+) -> tuple[Path, Path]:
+    challenger_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    model_path = challenger_dir / f"ai_score_model_{timestamp}.joblib"
+    metadata_path = challenger_dir / f"ai_score_model_{timestamp}_metadata.json"
+    return save_model_bundle(bundle, model_path=model_path, metadata_path=metadata_path)
+
+
+   210	        ),
+   211	    }
+   212	
+   213	
+   214	def save_model_bundle(
+   215	    bundle: dict[str, Any],
+   216	    *,
+   217	    model_path: Path = MODEL_PATH,
+   218	    metadata_path: Path = MODEL_METADATA_PATH,
+   219	) -> tuple[Path, Path]:
+   220	    model_path.parent.mkdir(parents=True, exist_ok=True)
+   221	    metadata_path.parent.mkdir(parents=True, exist_ok=True)
+   222	    joblib.dump(bundle, model_path)
+   223	    metadata = bundle.get("metadata", {})
+   224	    metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
+   225	    return model_path, metadata_path
+   226	
+   227	
+   228	def load_model_metadata(metadata_path: Path = MODEL_METADATA_PATH) -> dict[str, Any] | None:
+   229	    if not metadata_path.exists():
+   230	        return None
+   231	    return json.loads(metadata_path.read_text(encoding="utf-8"))
+   232	
+   233	
+   234	def save_challenger_bundle(
+   235	    bundle: dict[str, Any],
+   236	    *,
+   237	    challenger_dir: Path = CHALLENGER_DIR,
+   238	) -> tuple[Path, Path]:
+   239	    challenger_dir.mkdir(parents=True, exist_ok=True)
+   240	    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+exec
+/bin/bash -lc "sed -n '140,185p' src/ml_model.py" in /home/kimyo/trading-bot
+ succeeded in 101ms:
+
+def _summarize_metrics(metrics_df: pd.DataFrame) -> dict[str, Any]:
+    if metrics_df is None or metrics_df.empty:
+        return {"avg_roc_auc": 0.0, "regimes": {}}
+
+    summary = {"avg_roc_auc": float(metrics_df["roc_auc"].mean()) if "roc_auc" in metrics_df.columns else 0.0, "regimes": {}}
+    if "regime" in metrics_df.columns:
+        for regime, regime_df in metrics_df.groupby("regime"):
+            summary["regimes"][str(regime)] = {
+                "avg_roc_auc": float(regime_df["roc_auc"].mean()) if "roc_auc" in regime_df.columns else 0.0,
+                "folds": int(len(regime_df)),
+            }
+    return summary
+
+
+def build_model_metadata(
+    *,
+    training_data: Dict[str, pd.DataFrame],
+    trained_models: Dict[str, Any],
+    metrics_df: pd.DataFrame,
+    feature_columns: List[str],
+    prediction_horizon: int,
+    target_return_threshold: float,
+) -> dict[str, Any]:
+    date_bounds = []
+    for df in training_data.values():
+        if df is None or df.empty or "date" not in df.columns:
+            continue
+        series = pd.to_datetime(df["date"], errors="coerce").dropna()
+        if not series.empty:
+            date_bounds.append((series.min(), series.max()))
+
+    training_start = min((start for start, _ in date_bounds), default=None)
+    training_end = max((end for _, end in date_bounds), default=None)
+
+    return {
+        "saved_at": _utc_now_iso(),
+        "training_window_start": training_start.strftime("%Y-%m-%d") if training_start is not None else None,
+        "training_window_end": training_end.strftime("%Y-%m-%d") if training_end is not None else None,
+        "ticker_count": int(len(training_data)),
+        "feature_set_version": f"features_v{len(feature_columns)}",
+        "feature_columns": list(feature_columns),
+        "prediction_horizon": int(prediction_horizon),
+        "target_return_threshold": float(target_return_threshold),
+        "trained_regimes": sorted(trained_models.keys()),
+        "oos_metrics": _summarize_metrics(metrics_df),
+
+codex
+The patch does exclude the holdout from model fitting, but the promotion OOS backtest is run without required indicator warmup history, making the promotion gate unreliable in realistic configurations. It also persists misleading training-window metadata that includes the holdout.
+
+Full review comments:
+
+- [P1] Preserve pre-holdout history for OOS indicators — /home/kimyo/trading-bot/src/train_ai_model.py:676-683
+  When the configured filters or indicators need lookback history (for example the default 200-day market-regime MA, 50-day slow MA, relative-strength/volume/volatility windows, or AI features), passing only `holdout_ticker_data` into `_run_retrain_oos_portfolio` makes the first part—or all—of the six-month holdout lack enough history. In common market-regime-enabled runs a six-month slice is shorter than the 200-day MA, so the OOS gate can produce no buy signals and reject/compare models on an artificially degraded backtest; use full price history with `evaluation_start/end` to restrict scoring while preserving warmup context.
+
+- [P2] Build metadata from the actual fitting window — /home/kimyo/trading-bot/src/train_ai_model.py:659-666
+  Although the model is now fit on `training_data_fit`, the bundle metadata is still built with full `training_data`, so promoted/challenger metadata reports a `training_window_end` that includes the holdout dates. For promotion governance this makes the saved model appear trained through the OOS holdout and can mask whether the holdout was actually excluded; pass `training_data_fit` here so persisted metadata matches the data used for fitting.

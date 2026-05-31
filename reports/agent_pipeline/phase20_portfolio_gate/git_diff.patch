@@ -1,0 +1,125 @@
+diff --git a/.cursor/skills/pass-complete/SKILL.md b/.cursor/skills/pass-complete/SKILL.md
+index 2f1fddc..c0710d4 100644
+--- a/.cursor/skills/pass-complete/SKILL.md
++++ b/.cursor/skills/pass-complete/SKILL.md
+@@ -28,11 +28,18 @@ In this repo **Cursor** implements, **AGY** owns `[AGY]` tests, **Codex** review
+ 
+ 1. Choose `RUN_ID` (e.g. `phase20_ci`, `cursor_$(date +%Y%m%dT%H%M%S)`).
+ 
+-2. Run pass closure:
++2. Run **balanced pass** (AGY pytest + orchestrator + Codex) — preferred:
+ 
+ ```bash
+ cd <repo-root>
+-RUN_ID=<run_id> bash scripts/run_pass_complete.sh "<one-line summary of this pass>"
++RUN_ID=<run_id> bash scripts/run_balanced_pass.sh
++# or: .venv/bin/python scripts/agent_orchestrator.py --run-id <run_id> --balanced-pass --task-file prompts/agy/<task>.md
++```
++
++Legacy (Codex only, tests already green):
++
++```bash
++RUN_ID=<run_id> bash scripts/run_pass_complete.sh "<one-line summary>"
+ ```
+ 
+ Use `SKIP_PYTEST=1` only if pytest already passed in this session.  
+diff --git a/logs/ml/ai_model_metrics.csv b/logs/ml/ai_model_metrics.csv
+index 0638196..f5a77ad 100644
+--- a/logs/ml/ai_model_metrics.csv
++++ b/logs/ml/ai_model_metrics.csv
+@@ -1,6 +1,6 @@
+ fold,accuracy,precision,recall,roc_auc,test_positive_rate,prediction_positive_rate,train_size,test_size
+-1,0.5244384996934738,0.5484398737875423,0.5012817773979918,0.5286340670919325,0.5217633617566739,0.47689906927492615,17946,17943
+-2,0.4494789054227275,0.6544431509507179,0.2940714908456844,0.5158509944937936,0.639246502814468,0.2872429359638856,35889,17943
+-3,0.5586022404280221,0.5981134772045162,0.7847365460341271,0.5298942819902608,0.5944379423730702,0.779914172657861,53832,17943
+-4,0.46853926322242656,0.5456267409470752,0.4729116368903911,0.4732537359173688,0.5771052778242212,0.500195062141225,71775,17943
+-5,0.5130134314217244,0.5579873646209387,0.5064509522834323,0.51604461357988,0.5442791060580728,0.4940088056623753,89718,17943
++1,0.528979045920642,0.5457911357944027,0.5393306790057032,0.5316021297826623,0.5178889879625501,0.5117588051716451,17944,17944
++2,0.45692153366027644,0.6543549218347363,0.33001212961358517,0.5026369607790756,0.6432233615693268,0.32439812750780206,35888,17944
++3,0.5665960766830138,0.6093773110486614,0.7675826734979041,0.5460608256136901,0.5982501114578689,0.7535666518056174,53832,17944
++4,0.451627284886313,0.5284319356691557,0.44508950169327527,0.4455734853749122,0.5759585376727597,0.4851203744984396,71776,17944
++5,0.5106442264823896,0.5542609092986064,0.4986126811221868,0.5146206734442764,0.5422982612572448,0.4878510922871155,89720,17944
+diff --git a/logs/retrain_history.csv b/logs/retrain_history.csv
+index 9e73b35..8e1e7f7 100644
+--- a/logs/retrain_history.csv
++++ b/logs/retrain_history.csv
+@@ -2,3 +2,4 @@ timestamp,status,avg_roc_auc,avg_precision,elapsed_sec
+ 2026-05-26T13:35:17Z,success,0.4985,0.5439,13.9
+ 2026-05-26T13:51:32Z,success,0.5103,0.5616,19.3
+ 2026-05-26T14:22:04Z,success,0.5127,0.5809,19.1
++2026-05-30T09:28:07Z,success,0.5081,0.5784,93.5
+diff --git a/models/ai_score_model.joblib b/models/ai_score_model.joblib
+index 4cc580d..a7de37d 100644
+Binary files a/models/ai_score_model.joblib and b/models/ai_score_model.joblib differ
+diff --git a/scripts/agent_orchestrator.py b/scripts/agent_orchestrator.py
+index ebf6a4b..05b51d8 100755
+--- a/scripts/agent_orchestrator.py
++++ b/scripts/agent_orchestrator.py
+@@ -90,6 +90,22 @@ def parse_args() -> argparse.Namespace:
+         action="store_true",
+         help="Allow Codex review when models/logs are in the diff (pass closure).",
+     )
++    parser.add_argument(
++        "--balanced-pass",
++        action="store_true",
++        help="Run AGY pytest slice, then post-workflow + Codex scoped review.",
++    )
++    parser.add_argument(
++        "--agy-prompt",
++        type=Path,
++        default=Path("prompts/agy/phase20_portfolio_gate.md"),
++        help="AGY task file copied into the run directory (with --balanced-pass).",
++    )
++    parser.add_argument(
++        "--agy-test-paths",
++        default="tests/test_portfolio_backtest_gate.py",
++        help="Comma-separated pytest paths for the AGY slice.",
++    )
+     parser.add_argument(
+         "--dry-run",
+         action="store_true",
+@@ -268,6 +284,30 @@ def main() -> int:
+         print("Refusing Gemini yolo mode in this orchestrator.", file=sys.stderr)
+         return 2
+ 
++    if args.balanced_pass:
++        args.run_codex_review = True
++        args.ignore_artifacts = True
++        pre_dir = REPORT_ROOT / (args.run_id or dt.datetime.now().strftime("%Y%m%dT%H%M%S"))
++        pre_dir.mkdir(parents=True, exist_ok=True)
++        if args.agy_prompt.is_file():
++            (pre_dir / "AGY_TASK.md").write_text(
++                args.agy_prompt.read_text(encoding="utf-8"), encoding="utf-8"
++            )
++        agy_env = os.environ.copy()
++        agy_env["AGY_PROMPT"] = str(args.agy_prompt)
++        agy_env["AGY_TEST_PATHS"] = args.agy_test_paths.replace(",", " ")
++        print("--- Balanced pass: AGY pytest slice ---")
++        agy_code = run_command(
++            ["bash", "scripts/run_agy_slice.sh"],
++            log_path=pre_dir / "agy_slice.log",
++            env=agy_env,
++            dry_run=args.dry_run,
++        )
++        if agy_code != 0:
++            print(f"AGY slice failed with exit code {agy_code}", file=sys.stderr)
++            return agy_code
++        os.environ.setdefault("IMPLEMENTATION_AGENT", "cursor+agy")
++
+     history: list[dict] = []
+     
+     for i in range(args.max_iterations):
+diff --git a/scripts/run_pass_complete.sh b/scripts/run_pass_complete.sh
+index 5fb0846..7d238b5 100755
+--- a/scripts/run_pass_complete.sh
++++ b/scripts/run_pass_complete.sh
+@@ -36,7 +36,8 @@ else
+   PYTHONPATH=. .venv/bin/python -m pytest -q \
+     tests/test_report_performance.py \
+     tests/test_reappraise_regime.py \
+-    tests/test_portfolio_backtest_golden.py
++    tests/test_portfolio_backtest_golden.py \
++    tests/test_portfolio_backtest_gate.py
+ fi
+ 
+ echo "=== [2/3] Codex review via orchestrator (post-workflow + scoped review) ==="

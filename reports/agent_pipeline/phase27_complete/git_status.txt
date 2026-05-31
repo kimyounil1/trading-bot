@@ -1,0 +1,30 @@
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   TODO.md
+	modified:   config/strategy_config.json
+	modified:   docs/TODO_ARCHIVE.md
+	modified:   docs/runbook.md
+	modified:   scripts/run_pass_complete.sh
+	modified:   src/main.py
+	modified:   src/risk_manager.py
+	modified:   src/sector.py
+	modified:   src/settings.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	.antigravitycli/
+	config/instrument_registry.json
+	config/universe_master.csv
+	config/universe_smoke.json
+	src/instrument_meta.py
+	src/universe_loader.py
+	tests/fixtures/audit_daily/golden_output/audit_20260530.json
+	tests/fixtures/audit_daily/golden_output/latest_summary.json
+	tests/test_instrument_meta.py
+	tests/test_universe_loader.py
+
+no changes added to commit (use "git add" and/or "git commit -a")

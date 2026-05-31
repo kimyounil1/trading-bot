@@ -1,0 +1,268 @@
+# Agent Review Packet - Run: phase20_golden
+
+## Implementation Agent
+cursor
+
+## Task Description
+Phase 20: portfolio golden test + workload report
+
+## Changed Files
+- AGY.md
+- CURSOR.md
+- README.md
+- TODO.md
+- docs/agent_review_harness.md
+- logs/ml/ai_model_metrics.csv
+- logs/retrain_history.csv
+- models/ai_score_model.joblib
+- scripts/agent_orchestrator.py
+- scripts/run_gemini_post_workflow.sh
+
+## Git Diff Summary
+```
+ AGY.md                              |   3 ++-
+ CURSOR.md                           |  13 ++++++-------
+ README.md                           |   4 ++--
+ TODO.md                             |  11 +++++++++--
+ docs/agent_review_harness.md        |  13 +++++++------
+ logs/ml/ai_model_metrics.csv        |  10 +++++-----
+ logs/retrain_history.csv            |   1 +
+ models/ai_score_model.joblib        | Bin 1757990 -> 1758310 bytes
+ scripts/agent_orchestrator.py       |  20 +++++++++++++++++---
+ scripts/run_gemini_post_workflow.sh |   6 +++++-
+ 10 files changed, 54 insertions(+), 27 deletions(-)
+```
+
+## Test Execution Results (runtime_harness.log)
+```
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/kimyo/trading-bot
+plugins: anyio-4.13.0
+collected 7 items
+
+tests/test_report_performance.py .                                       [ 14%]
+tests/test_reappraise_regime.py ...                                      [ 57%]
+tests/test_portfolio_backtest_golden.py ...                              [100%]
+
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6
+  /home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+========================= 7 passed, 1 warning in 0.62s =========================
+```
+
+## Git Patch
+```diff
+diff --git a/AGY.md b/AGY.md
+index f8e891e..6016e96 100644
+--- a/AGY.md
++++ b/AGY.md
+@@ -58,7 +58,8 @@ AGY must **not**:
+ 1. Cursor lands feature code + minimal smoke test if needed.
+ 2. User invokes AGY with `[AGY]` task file (scope: tests only, files list, interfaces to mock).
+ 3. AGY adds tests; runs `PYTHONPATH=. .venv/bin/python -m pytest <paths>`.
+-4. Cursor merges or rebases; runs full suite; post-workflow → Codex scoped review.
++4. Cursor merges or rebases; runs full suite.
++5. **패스 마감:** `RUN_ID=<pass> bash scripts/run_pass_complete.sh` → Codex 리뷰 → `NEXT_TODO.codex.md` 확인 (AGY 테스트만 끝내고 리뷰 생략 금지).
+ 
+ ## Handoff Format
+ 
+diff --git a/CURSOR.md b/CURSOR.md
+index 79e6077..009917e 100644
+--- a/CURSOR.md
++++ b/CURSOR.md
+@@ -71,19 +71,18 @@ Include:
+ 
+ Codex reviews with `docs/agent_review_harness.md` and `AGENTS.md` (review-only section).
+ 
+-When the implementation pass is complete, run:
++When **Cursor implementation + `[AGY]` tests** are complete, close the pass (do not skip Codex):
+ 
+ ```bash
+-RUN_ID=cursor_$(date +%Y%m%dT%H%M%S) bash scripts/run_cursor_post_workflow.sh
++RUN_ID=cursor_$(date +%Y%m%dT%H%M%S) bash scripts/run_pass_complete.sh "summary of this pass"
+ ```
+ 
+-Then ask Codex to review:
++This runs pytest → `review_packet.md` → Codex scoped review → writes `NEXT_TODO.codex.md`.
+ 
+-```text
+-reports/agent_pipeline/<run_id>/review_packet.md
+-```
++Read `reports/agent_pipeline/<run_id>/NEXT_TODO.codex.md` before starting the next feature.  
++If Codex fails (credits/CLI), fix and re-run with `SKIP_PYTEST=1` after local pytest is already green.
+ 
+-Use `NEXT_TODO.codex.md` (or Codex's rewritten `NEXT_TODO.md`) as the next work queue.
++Legacy (packet only, no Codex): `bash scripts/run_cursor_post_workflow.sh`
+ 
+ **Review-only (no headless implementer):**
+ 
+diff --git a/README.md b/README.md
+index 6d3fe20..fe9a7b3 100644
+--- a/README.md
++++ b/README.md
+@@ -60,8 +60,8 @@ trading-bot/
+ 
+ 1. Cursor에서 기능 구현 (핵심 경로)
+ 2. **AGY**에 `[AGY]` 테스트 슬라이스 위임 → `pytest` green
+-3. `RUN_ID=my_feature bash scripts/run_cursor_post_workflow.sh` 로 리뷰 패킷 생성
+-4. Codex scoped 리뷰 (`--run-codex-review --scoped-review`)
++3. **패스 마감 (필수):** `RUN_ID=my_feature bash scripts/run_pass_complete.sh`
++4. `reports/agent_pipeline/<run_id>/NEXT_TODO.codex.md` 확인 후 Cursor가 follow-up 반영
+ 5. 전략/리스크 대형 변경 시 AGY 설계 리뷰 추가
+ 
+ 작업량 비율: `PYTHONPATH=. .venv/bin/python scripts/agent_workload_report.py --record` (커밋 메시지 `[cursor]` / `[agy]` 태그)
+diff --git a/TODO.md b/TODO.md
+index a87d03d..4dae6d9 100644
+--- a/TODO.md
++++ b/TODO.md
+@@ -4,7 +4,14 @@
+ 항목을 `[x]`로 두려면 다음을 **모두** 충족:
+ 1. **코드** — 요구사항 반영, 프로젝트 스타일 준수
+ 2. **테스트** — 관련 pytest 추가·통과, 전체 suite green
+-3. **운영** — 필요 시 백테스트/리포트 확인; 구현 후 `bash scripts/run_cursor_post_workflow.sh` → Codex scoped review에서 blocking 이슈 없음
++3. **운영** — 필요 시 백테스트/리포트 확인
++4. **Codex 리뷰 (필수)** — Cursor 구현 + `[AGY]` 테스트까지 끝난 뒤 **반드시** 패스 마감:
++
++```bash
++RUN_ID=<pass_id> bash scripts/run_pass_complete.sh "무엇을 했는지 한 줄"
++# → review_packet.md 생성 → Codex scoped review → NEXT_TODO.codex.md 확인
++# blocking 이슈 없을 때만 [x]. 실패 시 Codex 지적 반영 후 재실행.
++```
+ 
+ ---
+ 
+@@ -30,7 +37,7 @@
+ | **AGY** | **`[AGY]` 테스트·하네스** + (선택) 전략·리스크 검토 (~15–25%) |
+ | **Gemini CLI** | 레거시·문서만 (~0–5%, Flash급 — 테스트 금지) |
+ 
+-**권장 패스:** Cursor 구현 → **AGY 테스트 추가** → post-workflow → Codex 리뷰 → Cursor 수정.
++**패스 마감 (필수):** Cursor 구현 → **AGY 테스트** → `bash scripts/run_pass_complete.sh` → **`NEXT_TODO.codex.md` 확인** → Cursor 수정.
+ 
+ **작업량 집계:** `PYTHONPATH=. .venv/bin/python scripts/agent_workload_report.py --record`  
+ 커밋 메시지에 `[cursor]` / `[agy]` / `[codex]` 태그 → `logs/agent_workload_history.csv`에 스냅샷 누적.
+diff --git a/docs/agent_review_harness.md b/docs/agent_review_harness.md
+index 7e5ad3f..5a93af8 100644
+--- a/docs/agent_review_harness.md
++++ b/docs/agent_review_harness.md
+@@ -86,12 +86,13 @@ It collects:
+ The intended loop is:
+ 
+ 1. **Cursor** implements the change in the IDE (production paths).
+-2. **AGY** implements `[AGY]` pytest/harness work (sequential; same branch rule — one implementer at a time).
+-3. `scripts/run_cursor_post_workflow.sh` runs review/runtime checks and creates a packet.
+-4. The user asks **Codex** to review `review_packet.md`.
+-5. Codex leads with findings and produces `NEXT_TODO.codex.md` or rewrites `NEXT_TODO.md`.
+-6. **Cursor** works the next queue (merge AGY tests, fix review findings).
+-7. Repeat. Use **Gemini CLI** only for explicit `[Gemini]` docs/mechanical tasks if AGY is unavailable.
++2. **AGY** implements `[AGY]` pytest/harness work (sequential; one implementer at a time).
++3. **`bash scripts/run_pass_complete.sh`** (required): pytest → post-workflow packet → **Codex** scoped review.
++4. Read **`NEXT_TODO.codex.md`** — confirm no blocking findings; implement follow-ups in Cursor.
++5. Repeat. Do **not** mark TODO `[x]` or start the next feature until step 3–4 succeed.
++6. Use **Gemini CLI** only for explicit `[Gemini]` docs/mechanical tasks if AGY is unavailable.
++
++Shortcut for packet-only (no Codex): `run_cursor_post_workflow.sh` — not sufficient for Definition of Done.
+ 
+ This repository does not automatically invoke Cursor from the orchestrator. Cursor is IDE-driven; the pipeline only collects diffs and runs checks.
+ 
+diff --git a/logs/ml/ai_model_metrics.csv b/logs/ml/ai_model_metrics.csv
+index 0638196..f5a77ad 100644
+--- a/logs/ml/ai_model_metrics.csv
++++ b/logs/ml/ai_model_metrics.csv
+@@ -1,6 +1,6 @@
+ fold,accuracy,precision,recall,roc_auc,test_positive_rate,prediction_positive_rate,train_size,test_size
+-1,0.5244384996934738,0.5484398737875423,0.5012817773979918,0.5286340670919325,0.5217633617566739,0.47689906927492615,17946,17943
+-2,0.4494789054227275,0.6544431509507179,0.2940714908456844,0.5158509944937936,0.639246502814468,0.2872429359638856,35889,17943
+-3,0.5586022404280221,0.5981134772045162,0.7847365460341271,0.5298942819902608,0.5944379423730702,0.779914172657861,53832,17943
+-4,0.46853926322242656,0.5456267409470752,0.4729116368903911,0.4732537359173688,0.5771052778242212,0.500195062141225,71775,17943
+-5,0.5130134314217244,0.5579873646209387,0.5064509522834323,0.51604461357988,0.5442791060580728,0.4940088056623753,89718,17943
++1,0.528979045920642,0.5457911357944027,0.5393306790057032,0.5316021297826623,0.5178889879625501,0.5117588051716451,17944,17944
++2,0.45692153366027644,0.6543549218347363,0.33001212961358517,0.5026369607790756,0.6432233615693268,0.32439812750780206,35888,17944
++3,0.5665960766830138,0.6093773110486614,0.7675826734979041,0.5460608256136901,0.5982501114578689,0.7535666518056174,53832,17944
++4,0.451627284886313,0.5284319356691557,0.44508950169327527,0.4455734853749122,0.5759585376727597,0.4851203744984396,71776,17944
++5,0.5106442264823896,0.5542609092986064,0.4986126811221868,0.5146206734442764,0.5422982612572448,0.4878510922871155,89720,17944
+diff --git a/logs/retrain_history.csv b/logs/retrain_history.csv
+index 9e73b35..8e1e7f7 100644
+--- a/logs/retrain_history.csv
++++ b/logs/retrain_history.csv
+@@ -2,3 +2,4 @@ timestamp,status,avg_roc_auc,avg_precision,elapsed_sec
+ 2026-05-26T13:35:17Z,success,0.4985,0.5439,13.9
+ 2026-05-26T13:51:32Z,success,0.5103,0.5616,19.3
+ 2026-05-26T14:22:04Z,success,0.5127,0.5809,19.1
++2026-05-30T09:28:07Z,success,0.5081,0.5784,93.5
+diff --git a/models/ai_score_model.joblib b/models/ai_score_model.joblib
+index 4cc580d..a7de37d 100644
+Binary files a/models/ai_score_model.joblib and b/models/ai_score_model.joblib differ
+diff --git a/scripts/agent_orchestrator.py b/scripts/agent_orchestrator.py
+index 221eb0c..ebf6a4b 100755
+--- a/scripts/agent_orchestrator.py
++++ b/scripts/agent_orchestrator.py
+@@ -85,6 +85,11 @@ def parse_args() -> argparse.Namespace:
+         default=240,
+         help="Timeout for the Codex review step.",
+     )
++    parser.add_argument(
++        "--ignore-artifacts",
++        action="store_true",
++        help="Allow Codex review when models/logs are in the diff (pass closure).",
++    )
+     parser.add_argument(
+         "--dry-run",
+         action="store_true",
+@@ -188,7 +193,11 @@ def write_json(path: Path, data: dict) -> None:
+ 
+ 
+ def check_stop_conditions(
+-    out_dir: Path, max_changed_files: int, history: list[dict]
++    out_dir: Path,
++    max_changed_files: int,
++    history: list[dict],
++    *,
++    ignore_artifacts: bool = False,
+ ) -> str | None:
+     changed_files_path = out_dir / "changed_files.txt"
+     if changed_files_path.exists():
+@@ -201,7 +210,7 @@ def check_stop_conditions(
+             for f in changed_files
+             if any(p in f for p in ["models/", "logs/", "reports/", ".pytest_cache/"])
+         ]
+-        if artifacts:
++        if artifacts and not ignore_artifacts:
+             return f"Generated artifacts detected in diff (excluded from review loop): {artifacts}"
+ 
+         sensitive = [
+@@ -303,7 +312,12 @@ def main() -> int:
+         )
+ 
+         # Check stop conditions after Gemini + Post-workflow
+-        stop_reason = check_stop_conditions(out_dir, args.max_changed_files, history)
++        stop_reason = check_stop_conditions(
++            out_dir,
++            args.max_changed_files,
++            history,
++            ignore_artifacts=args.ignore_artifacts,
++        )
+         if stop_reason:
+             print(f"STOP CONDITION: {stop_reason}")
+             break
+diff --git a/scripts/run_gemini_post_workflow.sh b/scripts/run_gemini_post_workflow.sh
+index c228a48..304b7b8 100755
+--- a/scripts/run_gemini_post_workflow.sh
++++ b/scripts/run_gemini_post_workflow.sh
+@@ -40,7 +40,11 @@ HARNESS_EXIT=$?
+ cp "$OUT_DIR/review_harness.log" "$OUT_DIR/gemini_review_harness.log" 2>/dev/null || true
+ 
+ echo "Running runtime tests..."
+-.venv/bin/python -m pytest tests/test_report_performance.py tests/test_reappraise_regime.py > "$OUT_DIR/runtime_harness.log" 2>&1
++.venv/bin/python -m pytest \
++  tests/test_report_performance.py \
++  tests/test_reappraise_regime.py \
++  tests/test_portfolio_backtest_golden.py \
++  > "$OUT_DIR/runtime_harness.log" 2>&1
+ RUNTIME_EXIT=$?
+ 
+ echo "Generating review packet..."
+```

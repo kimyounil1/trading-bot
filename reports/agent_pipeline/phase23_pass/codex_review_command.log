@@ -1,0 +1,1212 @@
+$ codex --ask-for-approval never --sandbox read-only review /home/kimyo/trading-bot/reports/agent_pipeline/phase23_pass/review_packet.md -c 'model_reasoning_effort="low"'
+exit_code=0
+
+## stdout
+The patch updates the production model artifact even though its recorded performance is below the project's degradation threshold and worse than the prior logged model. That can directly affect trading decisions for any environment using the committed champion artifact.
+
+Review comment:
+
+- [P1] Do not ship a degraded champion model — /home/kimyo/trading-bot/logs/ml/ai_model_metrics.csv:2-6
+  With this artifact update, the committed champion model is replaced while the accompanying fold metrics average to ROC-AUC 0.5081, which is below the runbook's documented degradation threshold of 0.51 and below the previous logged champion average of 0.5127. In any deployment that loads `models/ai_score_model.joblib` from the repo, this promotes a known-degraded model into live scoring rather than retaining the prior champion.
+
+
+## stderr
+OpenAI Codex v0.133.0
+--------
+workdir: /home/kimyo/trading-bot
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: low
+reasoning summaries: none
+session id: 019e7896-ec1c-7be1-838d-1678a313cb59
+--------
+user
+/home/kimyo/trading-bot/reports/agent_pipeline/phase23_pass/review_packet.md
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+exec
+/bin/bash -lc 'cat reports/agent_pipeline/phase23_pass/review_packet.md' in /home/kimyo/trading-bot
+ succeeded in 144ms:
+# Agent Review Packet - Run: phase23_pass
+
+## Implementation Agent
+cursor
+
+## Task Description
+Phase 22-23: ops observability and risk reports
+
+## Changed Files
+- logs/ml/ai_model_metrics.csv
+- logs/retrain_history.csv
+- models/ai_score_model.joblib
+
+## Git Diff Summary
+```
+ logs/ml/ai_model_metrics.csv |  10 +++++-----
+ logs/retrain_history.csv     |   1 +
+ models/ai_score_model.joblib | Bin 1757990 -> 1758310 bytes
+ 3 files changed, 6 insertions(+), 5 deletions(-)
+```
+
+## Test Execution Results (runtime_harness.log)
+```
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/kimyo/trading-bot
+plugins: anyio-4.13.0
+collected 11 items
+
+tests/test_report_performance.py .....                                   [ 45%]
+tests/test_reappraise_regime.py ...                                      [ 72%]
+tests/test_portfolio_backtest_golden.py ...                              [100%]
+
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6
+  /home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 11 passed, 1 warning in 0.77s =========================
+```
+
+## Git Patch
+```diff
+diff --git a/logs/ml/ai_model_metrics.csv b/logs/ml/ai_model_metrics.csv
+index 0638196..f5a77ad 100644
+--- a/logs/ml/ai_model_metrics.csv
++++ b/logs/ml/ai_model_metrics.csv
+@@ -1,6 +1,6 @@
+ fold,accuracy,precision,recall,roc_auc,test_positive_rate,prediction_positive_rate,train_size,test_size
+-1,0.5244384996934738,0.5484398737875423,0.5012817773979918,0.5286340670919325,0.5217633617566739,0.47689906927492615,17946,17943
+-2,0.4494789054227275,0.6544431509507179,0.2940714908456844,0.5158509944937936,0.639246502814468,0.2872429359638856,35889,17943
+-3,0.5586022404280221,0.5981134772045162,0.7847365460341271,0.5298942819902608,0.5944379423730702,0.779914172657861,53832,17943
+-4,0.46853926322242656,0.5456267409470752,0.4729116368903911,0.4732537359173688,0.5771052778242212,0.500195062141225,71775,17943
+-5,0.5130134314217244,0.5579873646209387,0.5064509522834323,0.51604461357988,0.5442791060580728,0.4940088056623753,89718,17943
++1,0.528979045920642,0.5457911357944027,0.5393306790057032,0.5316021297826623,0.5178889879625501,0.5117588051716451,17944,17944
++2,0.45692153366027644,0.6543549218347363,0.33001212961358517,0.5026369607790756,0.6432233615693268,0.32439812750780206,35888,17944
++3,0.5665960766830138,0.6093773110486614,0.7675826734979041,0.5460608256136901,0.5982501114578689,0.7535666518056174,53832,17944
++4,0.451627284886313,0.5284319356691557,0.44508950169327527,0.4455734853749122,0.5759585376727597,0.4851203744984396,71776,17944
++5,0.5106442264823896,0.5542609092986064,0.4986126811221868,0.5146206734442764,0.5422982612572448,0.4878510922871155,89720,17944
+diff --git a/logs/retrain_history.csv b/logs/retrain_history.csv
+index 9e73b35..8e1e7f7 100644
+--- a/logs/retrain_history.csv
++++ b/logs/retrain_history.csv
+@@ -2,3 +2,4 @@ timestamp,status,avg_roc_auc,avg_precision,elapsed_sec
+ 2026-05-26T13:35:17Z,success,0.4985,0.5439,13.9
+ 2026-05-26T13:51:32Z,success,0.5103,0.5616,19.3
+ 2026-05-26T14:22:04Z,success,0.5127,0.5809,19.1
++2026-05-30T09:28:07Z,success,0.5081,0.5784,93.5
+diff --git a/models/ai_score_model.joblib b/models/ai_score_model.joblib
+index 4cc580d..a7de37d 100644
+Binary files a/models/ai_score_model.joblib and b/models/ai_score_model.joblib differ
+```
+
+exec
+/bin/bash -lc 'git status --short && git diff --stat && git diff -- logs/ml/ai_model_metrics.csv logs/retrain_history.csv' in /home/kimyo/trading-bot
+ succeeded in 143ms:
+ M logs/ml/ai_model_metrics.csv
+ M logs/retrain_history.csv
+ M models/ai_score_model.joblib
+?? .antigravitycli/
+?? reports/agent_pipeline/phase20_golden/
+?? reports/agent_pipeline/phase20_portfolio_gate/
+?? reports/agent_pipeline/phase20_portfolio_gate_v2/
+?? reports/agent_pipeline/phase20_promotion/
+?? reports/agent_pipeline/phase20_promotion_v2/
+?? reports/agent_pipeline/phase20_promotion_v3/
+?? reports/agent_pipeline/phase20_promotion_v4/
+?? reports/agent_pipeline/phase20_slippage/
+?? reports/agent_pipeline/phase20_slippage_v2/
+?? reports/agent_pipeline/phase21_promotion_gates/
+?? reports/agent_pipeline/phase21_quality/
+?? reports/agent_pipeline/phase21_quality_v2/
+?? reports/agent_pipeline/phase23_pass/
+?? tests/fixtures/audit_daily/golden_output/audit_20260530.json
+?? tests/fixtures/audit_daily/golden_output/latest_summary.json
+ logs/ml/ai_model_metrics.csv |  10 +++++-----
+ logs/retrain_history.csv     |   1 +
+ models/ai_score_model.joblib | Bin 1757990 -> 1758310 bytes
+ 3 files changed, 6 insertions(+), 5 deletions(-)
+diff --git a/logs/ml/ai_model_metrics.csv b/logs/ml/ai_model_metrics.csv
+index 0638196..f5a77ad 100644
+--- a/logs/ml/ai_model_metrics.csv
++++ b/logs/ml/ai_model_metrics.csv
+@@ -1,6 +1,6 @@
+ fold,accuracy,precision,recall,roc_auc,test_positive_rate,prediction_positive_rate,train_size,test_size
+-1,0.5244384996934738,0.5484398737875423,0.5012817773979918,0.5286340670919325,0.5217633617566739,0.47689906927492615,17946,17943
+-2,0.4494789054227275,0.6544431509507179,0.2940714908456844,0.5158509944937936,0.639246502814468,0.2872429359638856,35889,17943
+-3,0.5586022404280221,0.5981134772045162,0.7847365460341271,0.5298942819902608,0.5944379423730702,0.779914172657861,53832,17943
+-4,0.46853926322242656,0.5456267409470752,0.4729116368903911,0.4732537359173688,0.5771052778242212,0.500195062141225,71775,17943
+-5,0.5130134314217244,0.5579873646209387,0.5064509522834323,0.51604461357988,0.5442791060580728,0.4940088056623753,89718,17943
++1,0.528979045920642,0.5457911357944027,0.5393306790057032,0.5316021297826623,0.5178889879625501,0.5117588051716451,17944,17944
++2,0.45692153366027644,0.6543549218347363,0.33001212961358517,0.5026369607790756,0.6432233615693268,0.32439812750780206,35888,17944
++3,0.5665960766830138,0.6093773110486614,0.7675826734979041,0.5460608256136901,0.5982501114578689,0.7535666518056174,53832,17944
++4,0.451627284886313,0.5284319356691557,0.44508950169327527,0.4455734853749122,0.5759585376727597,0.4851203744984396,71776,17944
++5,0.5106442264823896,0.5542609092986064,0.4986126811221868,0.5146206734442764,0.5422982612572448,0.4878510922871155,89720,17944
+diff --git a/logs/retrain_history.csv b/logs/retrain_history.csv
+index 9e73b35..8e1e7f7 100644
+--- a/logs/retrain_history.csv
++++ b/logs/retrain_history.csv
+@@ -2,3 +2,4 @@ timestamp,status,avg_roc_auc,avg_precision,elapsed_sec
+ 2026-05-26T13:35:17Z,success,0.4985,0.5439,13.9
+ 2026-05-26T13:51:32Z,success,0.5103,0.5616,19.3
+ 2026-05-26T14:22:04Z,success,0.5127,0.5809,19.1
++2026-05-30T09:28:07Z,success,0.5081,0.5784,93.5
+
+exec
+/bin/bash -lc "rg \"ai_score_model|ai_model_metrics|retrain_history\" -n . --glob '"'!reports/**'"'" in /home/kimyo/trading-bot
+ succeeded in 151ms:
+./TODO.md:71:- **Models:** Regime-aware LGBM+XGB ensemble; last retrain `logs/retrain_history.csv` (ROC-AUC ~0.51)
+./TODO.md:72:- **Walk-forward (5-fold):** ROC-AUC 0.45–0.55 — fold 간 편차 큼 (`logs/ml/ai_model_metrics.csv`)
+./src/ml_model.py:20:MODEL_PATH = Path("models/ai_score_model.joblib")
+./src/ml_model.py:21:MODEL_METADATA_PATH = Path("models/ai_score_model_metadata.json")
+./src/ml_model.py:241:    model_path = challenger_dir / f"ai_score_model_{timestamp}.joblib"
+./src/ml_model.py:242:    metadata_path = challenger_dir / f"ai_score_model_{timestamp}_metadata.json"
+./src/ml_model.py:257:    archived_model_path = archive_dir / f"ai_score_model_{timestamp}.joblib"
+./src/ml_model.py:258:    archived_metadata_path = archive_dir / f"ai_score_model_{timestamp}_metadata.json"
+./src/ml_model.py:267:    metadata_paths = sorted(archive_dir.glob("ai_score_model_*_metadata.json"))
+./src/ml_model.py:438:def train_ai_score_model(
+./src/ml_model.py:568:def load_ai_score_model() -> BaseModel:
+./src/ml_model.py:605:    model = load_ai_score_model()
+./src/walk_forward_validation.py:13:from src.ml_model import train_ai_score_model
+./src/walk_forward_validation.py:108:        model, _ = train_ai_score_model(
+./docs/runbook.md:36:    - **실패**: `AI Retrain Failed` — `logs/retrain_history.csv`에 `status=failure` 기록.
+./docs/runbook.md:41:    1. `logs/retrain_runs/retrain_*.log` 및 `logs/retrain_history.csv` 확인.
+./docs/runbook.md:43:    3. `models/ai_score_model.joblib`이 있으면 봇은 기존 챔피언으로 동작. 수동: `bash scripts/run_retrain.sh`.
+./tests/test_model_governance.py:181:            model_path = Path(temp_dir) / "ai_score_model.joblib"
+./tests/test_model_governance.py:182:            metadata_path = Path(temp_dir) / "ai_score_model_metadata.json"
+./tests/test_model_governance.py:201:            champion_model_path = temp_root / "ai_score_model.joblib"
+./tests/test_model_governance.py:202:            champion_metadata_path = temp_root / "ai_score_model_metadata.json"
+./src/optimize_volume_volatility.py:9:from src.ml_model import load_ai_score_model
+./src/optimize_volume_volatility.py:88:            ai_model_bundle=load_ai_score_model(),
+./src/ml_quality_report.py:36:# Flag when cross-fold / cross-regime ROC-AUC spread is large (see logs/ml/ai_model_metrics.csv history).
+./src/ml_quality_report.py:461:        default=DEFAULT_ML_OUTPUT_DIR / "ai_model_metrics.csv",
+./src/compare_profiles_5m.py:12:from src.ml_model import load_ai_score_model
+./src/compare_profiles_5m.py:77:    model = load_ai_score_model()
+./src/optimize_hyperparameters_5m.py:10:from src.ml_model import load_ai_score_model
+./src/optimize_hyperparameters_5m.py:40:    model = load_ai_score_model()
+./src/dashboard.py:18:from src.ml_model import load_ai_score_model
+./src/dashboard.py:39:AI_METRICS_PATH = Path("logs/ml/ai_model_metrics.csv")
+./src/dashboard.py:53:        model = load_ai_score_model()
+./src/check_ai_score.py:3:from src.ml_model import load_ai_score_model, predict_ai_score_from_bundle
+./src/check_ai_score.py:9:    ai_model_bundle = load_ai_score_model()
+./app/streamlit_app.py:2163:    model_path = ROOT_DIR / "models/ai_score_model.joblib"
+./app/streamlit_app.py:2164:    metrics_path = ROOT_DIR / "logs/ml/ai_model_metrics.csv"
+./src/final_battle_5m.py:10:from src.ml_model import load_ai_score_model
+./src/final_battle_5m.py:50:    model = load_ai_score_model()
+./src/optimize_relative_strength.py:9:from src.ml_model import load_ai_score_model
+./src/optimize_relative_strength.py:49:            ai_model_bundle=load_ai_score_model(),
+./src/main.py:39:from src.ml_model import load_ai_score_model, predict_ai_score_from_bundle
+./src/main.py:296:            ai_model_bundle = load_ai_score_model()
+./src/portfolio_backtester.py:10:from src.ml_model import load_ai_score_model
+./src/portfolio_backtester.py:61:        if "ai_score_model" in df.columns:
+./src/portfolio_backtester.py:62:            df["ai_score"] = df["ai_score_model"]
+./src/portfolio_backtester.py:63:            df = df.drop(columns=["ai_score_model"])
+./src/portfolio_backtester.py:72:            if "ai_score_model" in df.columns:
+./src/portfolio_backtester.py:73:                df["ai_score"] = df["ai_score_model"]
+./src/portfolio_backtester.py:74:                df = df.drop(columns=["ai_score_model"])
+./src/portfolio_backtester.py:151:        ai_model_bundle = load_ai_score_model()
+./src/portfolio_backtester.py:286:            ai_model_bundle = load_ai_score_model()
+./scripts/run_model_quality_report.sh:8:if [[ ! -f "$METRICS_PATH" && -f logs/ml/ai_model_metrics.csv ]]; then
+./scripts/run_model_quality_report.sh:9:  METRICS_PATH="logs/ml/ai_model_metrics.csv"
+./src/validate_model.py:26:from src.ml_model import train_ai_score_model, load_ai_score_model, MODEL_PATH
+./src/validate_model.py:130:    val_model, val_metrics = train_ai_score_model(
+./src/validate_model.py:144:    full_model = load_ai_score_model()
+./scripts/run_retrain.sh:24:  echo "Check logs/retrain_history.csv (status=failure) and Telegram for 'AI Retrain Failed'."
+./src/train_ai_model.py:21:    load_ai_score_model,
+./src/train_ai_model.py:26:    train_ai_score_model,
+./src/train_ai_model.py:49:RETRAIN_LOG_PATH = Path("logs/retrain_history.csv")
+./src/train_ai_model.py:348:        return load_ai_score_model()
+./src/train_ai_model.py:500:    model, metrics_df = train_ai_score_model(
+./src/train_ai_model.py:571:    metrics_path = output_dir / "ai_model_metrics.csv"
+./src/optimize_entry_ranking.py:7:from src.ml_model import load_ai_score_model
+./src/optimize_entry_ranking.py:31:            ai_model_bundle=load_ai_score_model(),
+./src/optimize_exit_strategy.py:8:from src.ml_model import load_ai_score_model
+./src/optimize_exit_strategy.py:31:            ai_model_bundle=load_ai_score_model(),
+./src/optimize_ai_threshold.py:7:from src.ml_model import load_ai_score_model
+./src/optimize_ai_threshold.py:33:        ai_model_bundle=load_ai_score_model(),
+./src/optimize_market_regime.py:8:from src.ml_model import load_ai_score_model
+./src/optimize_market_regime.py:49:            ai_model_bundle=load_ai_score_model(),
+./src/qlib_backtest_runner.py:10:from src.ml_model import load_ai_score_model
+./src/qlib_backtest_runner.py:768:                ai_model_bundle = load_ai_score_model()
+./src/tune_qlib_strategy.py:12:from src.ml_model import load_ai_score_model
+./src/tune_qlib_strategy.py:78:            ai_model_bundle = load_ai_score_model()
+
+exec
+/bin/bash -lc "cat models/ai_score_model_metadata.json && .venv/bin/python - <<'PY'
+import joblib
+m=joblib.load('models/ai_score_model.joblib')
+print(type(m))
+print(getattr(m,'metadata',None))
+print(m.keys() if isinstance(m,dict) else '')
+PY" in /home/kimyo/trading-bot
+ exited 1 in 162ms:
+cat: models/ai_score_model_metadata.json: No such file or directory
+
+exec
+/bin/bash -lc ".venv/bin/python - <<'PY'
+import joblib
+m=joblib.load('models/ai_score_model.joblib')
+print(type(m))
+print(m if isinstance(m,dict) else '')
+print(dir(m)[:20])
+PY" in /home/kimyo/trading-bot
+ exited 1 in 1780ms:
+/home/kimyo/.config/matplotlib is not a writable directory
+Traceback (most recent call last):
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/matplotlib/__init__.py", line 545, in _get_config_or_cache_dir
+    tmpdir = tempfile.mkdtemp(prefix="matplotlib-")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/tempfile.py", line 512, in mkdtemp
+    prefix, suffix, dir, output_type = _sanitize_params(prefix, suffix, dir)
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/tempfile.py", line 265, in _sanitize_params
+    dir = gettempdir()
+          ^^^^^^^^^^^^
+  File "/usr/lib/python3.12/tempfile.py", line 454, in gettempdir
+    return _os.fsdecode(_gettempdir())
+                        ^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/tempfile.py", line 447, in _gettempdir
+    tempdir = _get_default_tempdir()
+              ^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/tempfile.py", line 362, in _get_default_tempdir
+    raise FileNotFoundError(_errno.ENOENT,
+FileNotFoundError: [Errno 2] No usable temporary directory found in ['/tmp', '/var/tmp', '/usr/tmp', '/home/kimyo/trading-bot']
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<stdin>", line 2, in <module>
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/joblib/numpy_pickle.py", line 749, in load
+    obj = _unpickle(
+          ^^^^^^^^^^
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/joblib/numpy_pickle.py", line 626, in _unpickle
+    obj = unpickler.load()
+          ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/pickle.py", line 1205, in load
+    dispatch[key[0]](self)
+  File "/usr/lib/python3.12/pickle.py", line 1530, in load_stack_global
+    self.append(self.find_class(module, name))
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/pickle.py", line 1572, in find_class
+    __import__(module, level=0)
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/lightgbm/__init__.py", line 11, in <module>
+    from .basic import Booster, Dataset, Sequence, register_logger
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/lightgbm/basic.py", line 29, in <module>
+    from .compat import (
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/lightgbm/compat.py", line 191, in <module>
+    import matplotlib  # noqa: F401
+    ^^^^^^^^^^^^^^^^^
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/matplotlib/__init__.py", line 1010, in <module>
+    rcParams._update_raw(_rc_params_in_file(matplotlib_fname()))
+                                            ^^^^^^^^^^^^^^^^^^
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/matplotlib/__init__.py", line 636, in matplotlib_fname
+    for fname in gen_candidates():
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/matplotlib/__init__.py", line 633, in gen_candidates
+    yield os.path.join(get_configdir(), 'matplotlibrc')
+                       ^^^^^^^^^^^^^^^
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/matplotlib/__init__.py", line 340, in wrapper
+    ret = func(**kwargs)
+          ^^^^^^^^^^^^^^
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/matplotlib/__init__.py", line 579, in get_configdir
+    return _get_config_or_cache_dir(_get_xdg_config_dir)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/matplotlib/__init__.py", line 547, in _get_config_or_cache_dir
+    raise OSError(
+OSError: Matplotlib requires access to a writable cache directory, but there was an issue with the default path (/home/kimyo/.config/matplotlib), and a temporary directory could not be created; set the MPLCONFIGDIR environment variable to a writable directory
+
+exec
+/bin/bash -lc "sed -n '430,620p' src/train_ai_model.py && sed -n '1,120p' docs/runbook.md" in /home/kimyo/trading-bot
+ succeeded in 164ms:
+                    "trades": result.trades,
+                    "sharpe_ratio": result.sharpe_ratio,
+                }
+            )
+
+    results_df = pd.DataFrame(rows)
+    best_row = max(rows, key=_score_threshold_row)
+    report = {
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "evaluation_start": best_row["evaluation_start"],
+        "evaluation_end": best_row["evaluation_end"],
+        "buy_threshold_grid": BUY_THRESHOLD_GRID,
+        "exit_threshold_grid": EXIT_THRESHOLD_GRID,
+        "best_buy_threshold": best_row["buy_threshold"],
+        "best_exit_threshold": best_row["exit_threshold"],
+        "best_total_return": best_row["total_return"],
+        "best_max_drawdown": best_row["max_drawdown"],
+        "best_win_rate": best_row["win_rate"],
+        "best_sharpe_ratio": best_row["sharpe_ratio"],
+    }
+    return report, results_df
+
+
+def _write_threshold_retune_report(report: dict, results_df: pd.DataFrame) -> None:
+    THRESHOLD_RETUNE_REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    THRESHOLD_RETUNE_REPORT_PATH.write_text(
+        json.dumps(report, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    results_df.to_csv(THRESHOLD_RETUNE_RESULTS_PATH, index=False)
+
+
+def main() -> None:
+    import time
+    started_at = time.time()
+
+    settings = load_settings()
+
+    print(f"[retrain] started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Loading {len(settings.tickers)} tickers (5y)...")
+    training_data = load_price_data_batch(settings.tickers, period="5y")
+
+    print("Loading VIX and SPY context data...")
+    context_tickers = [VIX_TICKER]
+    if "SPY" not in training_data:
+        context_tickers.append("SPY")
+    context_data = load_price_data_batch(context_tickers, period="5y")
+
+    vix_df = context_data.get(VIX_TICKER)
+    spy_df = training_data.get("SPY") if "SPY" in training_data else context_data.get("SPY")
+
+    print("Loading macro context data (yield, dollar, gold)...")
+    macro_df = load_macro_data(period="5y")
+    if macro_df.empty:
+        print("  WARNING: macro data unavailable, training without macro features")
+        macro_df = None
+    else:
+        print(f"  Macro data: {len(macro_df)} rows, columns: {list(macro_df.columns)}")
+
+    holdout_start, holdout_end = portfolio_holdout_window(training_data)
+    training_data_fit = exclude_holdout_from_ticker_data(training_data, holdout_start)
+    holdout_ticker_data = slice_ticker_data_to_holdout(
+        training_data, holdout_start, holdout_end
+    )
+    print(
+        f"Portfolio promotion holdout: {holdout_start.strftime('%Y-%m-%d')} "
+        f"to {holdout_end.strftime('%Y-%m-%d')} (excluded from challenger training)"
+    )
+
+    print("Training model with LightGBM + enhanced features (21 features)...")
+    model, metrics_df = train_ai_score_model(
+        training_data=training_data_fit,
+        prediction_horizon=20,
+        target_return_threshold=0.0,
+        vix_df=vix_df,
+        spy_df=spy_df,
+        macro_df=macro_df,
+    )
+
+    baseline_feature_stats = _load_feature_stats()
+    current_feature_stats = _build_feature_stats(
+        training_data=training_data,
+        prediction_horizon=20,
+        target_return_threshold=0.0,
+        vix_df=vix_df,
+        spy_df=spy_df,
+        macro_df=macro_df,
+    )
+    output_dir = DEFAULT_ML_OUTPUT_DIR
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    drift_report = _compare_feature_stats(baseline_feature_stats, current_feature_stats)
+    _write_drift_report(drift_report)
+    _write_feature_stats(current_feature_stats)
+    quality_paths = write_ml_quality_reports(output_dir, metrics_df)
+    calibration_report = json.loads(
+        quality_paths["calibration_report"].read_text(encoding="utf-8")
+    )
+    stability_report = json.loads(
+        quality_paths["fold_stability"].read_text(encoding="utf-8")
+    )
+
+    if drift_report["drifted_feature_count"] > 0:
+        top_features = ", ".join(
+            f"{item['feature']}({item['zscore_shift']:.2f})"
+            for item in drift_report["drifted_features"][:5]
+        )
+        notify_info(
+            "⚠️ Feature Drift Detected",
+            f"Drifted features: {drift_report['drifted_feature_count']}\n"
+            f"Top shifts: {top_features}\n"
+            f"Report: {DRIFT_REPORT_PATH}"
+        )
+    if calibration_report["overall_avg_brier_score"] > 0.25:
+        notify_info(
+            "⚠️ Calibration Quality Warning",
+            f"Average Brier score: {calibration_report['overall_avg_brier_score']:.4f}\n"
+            f"Report: {CALIBRATION_REPORT_PATH}"
+        )
+    if stability_report.get("high_variance_warning"):
+        roc = stability_report.get("roc_auc", {})
+        notify_info(
+            "⚠️ Fold ROC-AUC Variance Warning",
+            f"ROC-AUC std={roc.get('std')} (threshold={stability_report.get('roc_auc_std_warn_threshold')})\n"
+            f"Report: {quality_paths['fold_stability']}",
+        )
+
+    threshold_retune_report, threshold_retune_results_df = _run_threshold_retune(
+        settings=settings,
+        ticker_data=training_data_fit,
+        vix_df=vix_df,
+        macro_df=macro_df,
+    )
+    _write_threshold_retune_report(threshold_retune_report, threshold_retune_results_df)
+    settings.ai_score_buy_threshold = float(threshold_retune_report["best_buy_threshold"])
+    if getattr(settings, "ai_exit_dynamic_enabled", False):
+        settings.ai_exit_threshold_bear = float(threshold_retune_report["best_exit_threshold"])
+    else:
+        settings.ai_exit_threshold = float(threshold_retune_report["best_exit_threshold"])
+    save_settings(settings)
+
+    metrics_path = output_dir / "ai_model_metrics.csv"
+    metrics_df.to_csv(metrics_path, index=False)
+
+    bundle = build_model_bundle(
+        trained_models=model.models,
+        metrics_df=metrics_df,
+        training_data=training_data_fit,
+        feature_columns=FEATURE_COLUMNS,
+        prediction_horizon=model.prediction_horizon,
+        target_return_threshold=model.target_return_threshold,
+    )
+
+    challenger_portfolio = None
+    champion_portfolio = None
+    if settings.use_ai_score:
+        if holdout_start > holdout_end:
+            raise ValueError(
+                "Invalid portfolio holdout window; cannot score promotion gates"
+            )
+        print(
+            "Running holdout-window portfolio evaluation for promotion gates "
+            "(full history for indicator warmup)..."
+        )
+        challenger_portfolio = _run_retrain_oos_portfolio(
+            settings=settings,
+            ticker_data=training_data,
+            vix_df=vix_df,
+            macro_df=macro_df,
+            model_wrapper=bundle_to_model_wrapper(bundle),
+            eval_start=holdout_start,
+            eval_end=holdout_end,
+        )
+        challenger_portfolio["holdout_excluded_from_training"] = True
+        bundle["metadata"]["portfolio_oos"] = challenger_portfolio
+        champion_wrapper = _load_champion_model_wrapper()
+        if champion_wrapper is not None:
+            champion_portfolio = _run_retrain_oos_portfolio(
+                settings=settings,
+                ticker_data=training_data,
+                vix_df=vix_df,
+                macro_df=macro_df,
+                model_wrapper=champion_wrapper,
+                eval_start=holdout_start,
+                eval_end=holdout_end,
+            )
+            champion_portfolio["holdout_excluded_from_training"] = True
+
+    challenger_model_path, challenger_metadata_path = save_challenger_bundle(bundle)
+    champion_metadata = load_model_metadata()
+    promotion_report = build_promotion_report(
+# 📘 Operational Runbook: AI Trading Bot
+
+본 문서는 트레이딩 봇 운영 중 발생할 수 있는 주요 장애 시나리오와 대응 절차(SOP)를 정의합니다.
+
+---
+
+## ⚠️ 1. 긴급 중단 및 복구 (Kill Switch)
+
+### 시나리오: 전체 포트폴리오 청산 및 중단
+갑작스러운 시장 폭락이나 시스템 오작동 시 모든 포지션을 정리하고 봇을 중지해야 할 때:
+1. **Systemd 타이머 비활성화**:
+   ```bash
+   systemctl --user stop trading-bot.timer
+   systemctl --user disable trading-bot.timer
+   ```
+2. **수동 전량 청산**: Alpaca 대시보드에서 'Liquidate All' 버튼을 누르거나 아래 명령 실행:
+   ```bash
+   PYTHONPATH=. .venv/bin/python src/close_position.py ALL
+   ```
+
+---
+
+## 🛠 2. 주요 장애 대응 절차
+
+### 2.1 API 연결 및 타임아웃 오류
+- **현상**: `ConnectionError`, `Alpaca Timeout`, `Gemini API quota exceeded` 알림 발생.
+- **원인**: Alpaca 서버 점검, 로컬 네트워크 불안정, LLM API 사용량 초과.
+- **대응**:
+    1. 봇은 자동으로 실행을 중단(Fail-safe)하므로 중복 주문 걱정은 없음.
+    2. 네트워크 상태 확인 후 수동으로 `src/main.py`를 실행하여 정상 동작 확인.
+    3. LLM 할당량 초과 시 `config/strategy_config.json`에서 `llm_degraded_mode`를 `"PASS"`로 설정하여 정량 모델만으로 운용 가능.
+
+### 2.2 Retrain 실패·부분 성공 (Stale Model)
+- **현상**: 매일 아침 06:00 ET retrain 타이머 실패, 또는 학습은 됐으나 챔피언 유지.
+- **Telegram 알림** (`src/train_ai_model.py`):
+    - **실패**: `AI Retrain Failed` — `logs/retrain_history.csv`에 `status=failure` 기록.
+    - **부분 성공**(학습·리포트 완료, 승격 없음): `Retrain finished; champion retained` — `logs/ml/model_promotion_report.json`의 `decision`이 `RETAIN_CHAMPION`.
+    - **품질 경고**(학습 성공 중): feature drift, calibration(Brier), fold ROC 분산 — 각각 별도 `notify_info`.
+    - **성능 저하**: 평균 ROC-AUC < 0.51이면 `AI Model Performance Degradation`.
+- **대응**:
+    1. `logs/retrain_runs/retrain_*.log` 및 `logs/retrain_history.csv` 확인.
+    2. 데이터 소스(yfinance) 차단 여부 확인.
+    3. `models/ai_score_model.joblib`이 있으면 봇은 기존 챔피언으로 동작. 수동: `bash scripts/run_retrain.sh`.
+
+### 2.3 Drawdown Circuit Breaker 발동
+- **현상**: 포트폴리오 자산이 최고점 대비 15% 이상 하락하여 "New buys blocked" 알림 발생.
+- **대응**:
+    1. 현재 시장 레짐이 `BEAR`인지 확인.
+    2. 포트폴리오 구성 종목의 개별 리스크(실적 악화 등) 재평가.
+    3. 시장이 안정되었다고 판단되면 `config/strategy_config.json`의 `max_portfolio_drawdown_pct`를 일시적으로 상향 조정하여 가드 해제 가능.
+
+### 2.4 데이터 최신성(Stale Data) 오류
+- **현상**: `SKIP_BUY - stale price data` 로그 발생.
+- **대응**:
+    1. 특정 종목의 거래 정지 여부 확인.
+    2. 전체 종목이 스킵된다면 yfinance API 지연 문제임. 30분~1시간 후 재실행.
+
+---
+
+## 📈 3. 주기적 점검 사항 (Maintenance)
+
+- **일간**: Telegram 요약 리포트를 통해 실주문 수 및 스킵 사유 집계 확인.
+  ```bash
+  bash scripts/run_daily_audit_summary.sh
+  # 특정일: bash scripts/run_daily_audit_summary.sh --date 2026-05-30
+  ```
+  산출물: `logs/audit_daily/latest_summary.json`, `audit_YYYYMMDD.json` (`logs/execution_audit.csv` 기준)
+- **주간**: paper 체결 vs 시그널 슬리피지 자동 리포트
+  ```bash
+  bash scripts/run_weekly_slippage_report.sh
+  # 또는: PYTHONPATH=. .venv/bin/python -m src.report_performance --weekly
+  ```
+  산출물: `logs/slippage_reports/latest_summary.json` (타이머 설치: `bash scripts/install_slippage_report_timer.sh`)
+- **월간**: `data/llm_cache.json` 및 오래된 로그 파일 정리 (용량 관리).
+- **리스크 리포트 (수동/주간)**:
+  ```bash
+  bash scripts/run_guard_impact_report.sh      # logs/guard_impact/latest_summary.json
+  bash scripts/run_leverage_stress_report.sh   # logs/leverage_stress/latest_summary.json
+  bash scripts/run_llm_cache_report.sh         # logs/llm_monitoring/latest_summary.json
+  ```
+
+---
+
+## 📞 4. 연락처 및 알림 설정
+- 모든 치명적 에러는 **Telegram**으로 즉시 전송됩니다.
+- 알림 설정 변경: `config/notification_config.json` 수정 후 봇 재실행.
+
+exec
+/bin/bash -lc "sed -n '620,760p' src/train_ai_model.py && sed -n '1,360p' src/ml_model.py" in /home/kimyo/trading-bot
+ succeeded in 176ms:
+    promotion_report = build_promotion_report(
+        challenger_metadata=bundle["metadata"],
+        champion_metadata=champion_metadata,
+        challenger_portfolio=challenger_portfolio,
+        champion_portfolio=champion_portfolio,
+        require_portfolio_oos=settings.use_ai_score,
+        fold_stability_report=stability_report,
+        calibration_report=calibration_report,
+        require_ml_quality=True,
+    )
+    promotion_report.update(
+        {
+            "challenger_model_path": str(challenger_model_path),
+            "challenger_metadata_path": str(challenger_metadata_path),
+            "champion_model_path": str(MODEL_PATH),
+            "champion_metadata_path": str(MODEL_METADATA_PATH),
+        }
+    )
+    promotion_report_path = output_dir / "model_promotion_report.json"
+    promotion_report_path.write_text(
+        json.dumps(promotion_report, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    if promotion_report["decision"] == "PROMOTE":
+        archived = archive_current_champion()
+        save_model_bundle(bundle)
+        if archived is not None:
+            promotion_report["archived_previous_champion_model_path"] = str(archived[0])
+            promotion_report["archived_previous_champion_metadata_path"] = str(archived[1])
+    else:
+        notify_champion_retained_if_needed(promotion_report, promotion_report_path)
+
+    archived = find_latest_archived_champion(CHAMPION_ARCHIVE_DIR)
+    rollback_report = resolve_rollback_decision(
+        promotion_report["decision"],
+        _load_recent_performance_snapshot(),
+        archived,
+    )
+    _write_rollback_report(rollback_report)
+
+    elapsed = time.time() - started_at
+    _append_retrain_log("success", metrics_df, elapsed)
+
+    print("AI score model trained.")
+    print(f"Model: LightGBM (n_estimators=500, max_depth=6)")
+    print(f"Features: {len(model.feature_columns)} ({', '.join(model.feature_columns)})")
+    print(f"Saved challenger model to {challenger_model_path}")
+    print(f"Saved challenger metadata to {challenger_metadata_path}")
+    print(f"Promotion decision: {promotion_report['decision']}")
+    if promotion_report["decision"] == "PROMOTE":
+        print(f"Promoted challenger to champion at {MODEL_PATH}")
+    else:
+        print(f"Retained existing champion at {MODEL_PATH}")
+    print(f"Saved metrics to {metrics_path}")
+    print(f"Saved promotion report to {promotion_report_path}")
+    print(f"Saved rollback report to {ROLLBACK_REPORT_PATH}")
+    print(f"Saved feature drift report to {DRIFT_REPORT_PATH}")
+    print(f"Saved fold metrics to {quality_paths['fold_metrics']}")
+    print(f"Saved fold stability report to {quality_paths['fold_stability']}")
+    print(f"Saved calibration report to {CALIBRATION_REPORT_PATH}")
+    print(f"Saved calibration bins to {CALIBRATION_BINS_PATH}")
+    print(f"Saved threshold retune report to {THRESHOLD_RETUNE_REPORT_PATH}")
+    print(f"Saved threshold retune results to {THRESHOLD_RETUNE_RESULTS_PATH}")
+    print(
+        f"Updated thresholds: buy={settings.ai_score_buy_threshold:.2f}, "
+        f"exit={settings.ai_exit_threshold_bear if getattr(settings, 'ai_exit_dynamic_enabled', False) else settings.ai_exit_threshold:.2f}"
+    )
+    print(f"Elapsed: {elapsed:.1f}s")
+    print(metrics_df.to_string(index=False))
+
+
+if __name__ == "__main__":
+    run_retrain_cli(main, _append_retrain_log)
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from datetime import datetime, timezone
+import json
+from pathlib import Path
+from typing import Any, List, Dict, Tuple, Optional
+
+import joblib
+import pandas as pd
+import numpy as np
+from lightgbm import LGBMClassifier
+from xgboost import XGBClassifier
+from sklearn.metrics import accuracy_score, brier_score_loss, precision_score, recall_score, roc_auc_score
+from sklearn.model_selection import TimeSeriesSplit
+
+from src.features import FEATURE_COLUMNS, build_features
+from src.market_regime import compute_daily_regime, get_current_regime
+
+MODEL_PATH = Path("models/ai_score_model.joblib")
+MODEL_METADATA_PATH = Path("models/ai_score_model_metadata.json")
+CHALLENGER_DIR = Path("models/challengers")
+CHAMPION_ARCHIVE_DIR = Path("models/champion_archive")
+
+
+class BaseModel(ABC):
+    @abstractmethod
+    def predict_proba(
+        self,
+        df: pd.DataFrame,
+        vix_df: pd.DataFrame | None = None,
+        spy_df: pd.DataFrame | None = None,
+        macro_df: pd.DataFrame | None = None,
+    ) -> pd.Series:
+        pass
+
+    @abstractmethod
+    def predict(
+        self,
+        df: pd.DataFrame,
+        vix_df: pd.DataFrame | None = None,
+        spy_df: pd.DataFrame | None = None,
+        macro_df: pd.DataFrame | None = None,
+    ) -> pd.Series:
+        pass
+
+
+class SoftVotingEnsemble:
+    """LightGBM과 XGBoost 모델의 예측 확률을 평균하여 최종 결과를 도출한다."""
+    def __init__(self, lgbm_model, xgb_model):
+        self.lgbm_model = lgbm_model
+        self.xgb_model = xgb_model
+
+    def predict_proba(self, X):
+        lgbm_proba = self.lgbm_model.predict_proba(X)[:, 1]
+        xgb_proba = self.xgb_model.predict_proba(X)[:, 1]
+        # Soft Voting: 두 모델의 확률 평균
+        avg_proba = (lgbm_proba + xgb_proba) / 2.0
+        # predict_proba 인터페이스 준수 ([prob_0, prob_1])
+        return np.vstack([1.0 - avg_proba, avg_proba]).T
+
+    def predict(self, X):
+        proba = self.predict_proba(X)[:, 1]
+        return (proba >= 0.5).astype(int)
+
+
+class RegimeAwareModelWrapper(BaseModel):
+    def __init__(
+        self,
+        models: Dict[str, any],
+        feature_columns: List[str],
+        prediction_horizon: int,
+        target_return_threshold: float,
+    ):
+        self.models = models  # e.g., {"BULL": model_a, "BEAR": model_b, "NEUTRAL": model_c}
+        self.feature_columns = feature_columns
+        self.prediction_horizon = prediction_horizon
+        self.target_return_threshold = target_return_threshold
+
+    def _prepare_features(
+        self,
+        df: pd.DataFrame,
+        vix_df: pd.DataFrame | None = None,
+        spy_df: pd.DataFrame | None = None,
+        macro_df: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
+        return build_features(
+            df,
+            prediction_horizon=self.prediction_horizon,
+            target_return_threshold=self.target_return_threshold,
+            vix_df=vix_df,
+            spy_df=spy_df,
+            macro_df=macro_df,
+        )
+
+    def _get_model_for_regime(self, spy_df, vix_df):
+        regime = get_current_regime(spy_df, vix_df)
+        # Fallback to NEUTRAL if specific regime model missing
+        return self.models.get(regime, self.models.get("NEUTRAL"))
+
+    def predict_proba(
+        self,
+        df: pd.DataFrame,
+        vix_df: pd.DataFrame | None = None,
+        spy_df: pd.DataFrame | None = None,
+        macro_df: pd.DataFrame | None = None,
+    ) -> pd.Series:
+        feature_df = self._prepare_features(df, vix_df=vix_df, spy_df=spy_df, macro_df=macro_df)
+        model = self._get_model_for_regime(spy_df, vix_df)
+        
+        available_cols = [c for c in self.feature_columns if c in feature_df.columns]
+        X = feature_df[available_cols]
+        
+        # SoftVotingEnsemble 또는 일반 모델 호환성 유지
+        if hasattr(model, "predict_proba"):
+            proba = model.predict_proba(X)
+            return pd.Series(proba[:, 1], index=feature_df.index)
+        
+        return pd.Series([0.5] * len(X), index=feature_df.index)
+
+    def predict(
+        self,
+        df: pd.DataFrame,
+        vix_df: pd.DataFrame | None = None,
+        spy_df: pd.DataFrame | None = None,
+        macro_df: pd.DataFrame | None = None,
+    ) -> pd.Series:
+        feature_df = self._prepare_features(df, vix_df=vix_df, spy_df=spy_df, macro_df=macro_df)
+        model = self._get_model_for_regime(spy_df, vix_df)
+        
+        available_cols = [c for c in self.feature_columns if c in feature_df.columns]
+        X = feature_df[available_cols]
+        pred = model.predict(X)
+        return pd.Series(pred, index=feature_df.index)
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _summarize_metrics(metrics_df: pd.DataFrame) -> dict[str, Any]:
+    if metrics_df is None or metrics_df.empty:
+        return {"avg_roc_auc": 0.0, "regimes": {}}
+
+    summary = {"avg_roc_auc": float(metrics_df["roc_auc"].mean()) if "roc_auc" in metrics_df.columns else 0.0, "regimes": {}}
+    if "regime" in metrics_df.columns:
+        for regime, regime_df in metrics_df.groupby("regime"):
+            summary["regimes"][str(regime)] = {
+                "avg_roc_auc": float(regime_df["roc_auc"].mean()) if "roc_auc" in regime_df.columns else 0.0,
+                "folds": int(len(regime_df)),
+            }
+    return summary
+
+
+def build_model_metadata(
+    *,
+    training_data: Dict[str, pd.DataFrame],
+    trained_models: Dict[str, Any],
+    metrics_df: pd.DataFrame,
+    feature_columns: List[str],
+    prediction_horizon: int,
+    target_return_threshold: float,
+) -> dict[str, Any]:
+    date_bounds = []
+    for df in training_data.values():
+        if df is None or df.empty or "date" not in df.columns:
+            continue
+        series = pd.to_datetime(df["date"], errors="coerce").dropna()
+        if not series.empty:
+            date_bounds.append((series.min(), series.max()))
+
+    training_start = min((start for start, _ in date_bounds), default=None)
+    training_end = max((end for _, end in date_bounds), default=None)
+
+    return {
+        "saved_at": _utc_now_iso(),
+        "training_window_start": training_start.strftime("%Y-%m-%d") if training_start is not None else None,
+        "training_window_end": training_end.strftime("%Y-%m-%d") if training_end is not None else None,
+        "ticker_count": int(len(training_data)),
+        "feature_set_version": f"features_v{len(feature_columns)}",
+        "feature_columns": list(feature_columns),
+        "prediction_horizon": int(prediction_horizon),
+        "target_return_threshold": float(target_return_threshold),
+        "trained_regimes": sorted(trained_models.keys()),
+        "oos_metrics": _summarize_metrics(metrics_df),
+    }
+
+
+def build_model_bundle(
+    *,
+    trained_models: Dict[str, Any],
+    metrics_df: pd.DataFrame,
+    training_data: Dict[str, pd.DataFrame],
+    feature_columns: List[str],
+    prediction_horizon: int,
+    target_return_threshold: float,
+) -> dict[str, Any]:
+    return {
+        "models": trained_models,
+        "feature_columns": feature_columns,
+        "prediction_horizon": prediction_horizon,
+        "target_return_threshold": target_return_threshold,
+        "metadata": build_model_metadata(
+            training_data=training_data,
+            trained_models=trained_models,
+            metrics_df=metrics_df,
+            feature_columns=feature_columns,
+            prediction_horizon=prediction_horizon,
+            target_return_threshold=target_return_threshold,
+        ),
+    }
+
+
+def save_model_bundle(
+    bundle: dict[str, Any],
+    *,
+    model_path: Path = MODEL_PATH,
+    metadata_path: Path = MODEL_METADATA_PATH,
+) -> tuple[Path, Path]:
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    metadata_path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(bundle, model_path)
+    metadata = bundle.get("metadata", {})
+    metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
+    return model_path, metadata_path
+
+
+def load_model_metadata(metadata_path: Path = MODEL_METADATA_PATH) -> dict[str, Any] | None:
+    if not metadata_path.exists():
+        return None
+    return json.loads(metadata_path.read_text(encoding="utf-8"))
+
+
+def save_challenger_bundle(
+    bundle: dict[str, Any],
+    *,
+    challenger_dir: Path = CHALLENGER_DIR,
+) -> tuple[Path, Path]:
+    challenger_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    model_path = challenger_dir / f"ai_score_model_{timestamp}.joblib"
+    metadata_path = challenger_dir / f"ai_score_model_{timestamp}_metadata.json"
+    return save_model_bundle(bundle, model_path=model_path, metadata_path=metadata_path)
+
+
+def archive_current_champion(
+    *,
+    model_path: Path = MODEL_PATH,
+    metadata_path: Path = MODEL_METADATA_PATH,
+    archive_dir: Path = CHAMPION_ARCHIVE_DIR,
+) -> tuple[Path, Path] | None:
+    if not model_path.exists() or not metadata_path.exists():
+        return None
+
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    archived_model_path = archive_dir / f"ai_score_model_{timestamp}.joblib"
+    archived_metadata_path = archive_dir / f"ai_score_model_{timestamp}_metadata.json"
+    archived_model_path.write_bytes(model_path.read_bytes())
+    archived_metadata_path.write_bytes(metadata_path.read_bytes())
+    return archived_model_path, archived_metadata_path
+
+
+def find_latest_archived_champion(
+    archive_dir: Path = CHAMPION_ARCHIVE_DIR,
+) -> tuple[Path, Path] | None:
+    metadata_paths = sorted(archive_dir.glob("ai_score_model_*_metadata.json"))
+    if not metadata_paths:
+        return None
+
+    latest_metadata_path = metadata_paths[-1]
+    model_stem = latest_metadata_path.name.replace("_metadata.json", ".joblib")
+    model_path = archive_dir / model_stem
+    if not model_path.exists():
+        return None
+    return model_path, latest_metadata_path
+
+
+def restore_archived_champion(
+    archived_model_path: Path,
+    archived_metadata_path: Path,
+    *,
+    model_path: Path = MODEL_PATH,
+    metadata_path: Path = MODEL_METADATA_PATH,
+) -> tuple[Path, Path]:
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    metadata_path.parent.mkdir(parents=True, exist_ok=True)
+    model_path.write_bytes(archived_model_path.read_bytes())
+    metadata_path.write_bytes(archived_metadata_path.read_bytes())
+    return model_path, metadata_path
+
+
+def bundle_to_model_wrapper(bundle: dict[str, Any]) -> RegimeAwareModelWrapper:
+    return RegimeAwareModelWrapper(
+        bundle["models"],
+        bundle["feature_columns"],
+        bundle["prediction_horizon"],
+        bundle["target_return_threshold"],
+    )
+
+
+def _portfolio_oos_rank_key(snapshot: dict[str, Any]) -> tuple[float, float, float]:
+    return (
+        float(snapshot["sharpe_ratio"]),
+        float(snapshot["total_return"]),
+        -abs(float(snapshot["max_drawdown"])),
+    )
+
+
+def portfolio_oos_beats_champion(
+    challenger: dict[str, Any],
+    champion: dict[str, Any],
+) -> bool:
+    """True when challenger ranks higher on Sharpe, then return, then drawdown."""
+    return _portfolio_oos_rank_key(challenger) > _portfolio_oos_rank_key(champion)
+
+
+def build_promotion_report(
+    challenger_metadata: dict[str, Any],
+    champion_metadata: dict[str, Any] | None,
+    *,
+    challenger_portfolio: dict[str, Any] | None = None,
+    champion_portfolio: dict[str, Any] | None = None,
+    portfolio_thresholds: Any | None = None,
+    require_portfolio_oos: bool = True,
+    fold_stability_report: dict[str, Any] | None = None,
+    calibration_report: dict[str, Any] | None = None,
+    require_ml_quality: bool = True,
+    ml_quality_criteria: Any | None = None,
+) -> dict[str, Any]:
+    from src.ml_quality_report import evaluate_ml_quality_promotion_gates
+    from src.portfolio_backtest_validation import (
+        PortfolioBacktestThresholds,
+        check_portfolio_summary_thresholds,
+    )
+
+    thresholds = portfolio_thresholds or PortfolioBacktestThresholds()
+    challenger_auc = float(challenger_metadata.get("oos_metrics", {}).get("avg_roc_auc", 0.0))
+    champion_auc = (
+        float(champion_metadata.get("oos_metrics", {}).get("avg_roc_auc", 0.0))
+        if champion_metadata
+        else None
+    )
+    auc_ok = champion_metadata is None or challenger_auc > champion_auc
+
+    ml_quality_eval = evaluate_ml_quality_promotion_gates(
+        challenger_metadata,
+        fold_stability_report,
+        calibration_report,
+        criteria=ml_quality_criteria,
+    )
+    ml_quality_ok = ml_quality_eval["passed"] if require_ml_quality else True
+
+    portfolio_gate = None
+    portfolio_gate_ok = True
+    portfolio_vs_ok = True
+
+    if require_portfolio_oos:
+        if challenger_portfolio is None:
+            portfolio_gate_ok = False
+
+exec
+/bin/bash -lc "sed -n '360,520p' src/ml_model.py && ls -l models | head && find models -maxdepth 2 -type f | sed 's#"'^#/#'"' | head -50" in /home/kimyo/trading-bot
+ succeeded in 176ms:
+            portfolio_gate_ok = False
+            portfolio_vs_ok = False
+        else:
+            portfolio_gate = check_portfolio_summary_thresholds(
+                challenger_portfolio, thresholds
+            )
+            portfolio_gate_ok = portfolio_gate.passed
+
+            if champion_portfolio is None and champion_metadata is not None:
+                stored = champion_metadata.get("portfolio_oos")
+                if isinstance(stored, dict):
+                    champion_portfolio = stored
+
+            if champion_portfolio is not None:
+                portfolio_vs_ok = portfolio_oos_beats_champion(
+                    challenger_portfolio, champion_portfolio
+                )
+
+    promote = auc_ok and ml_quality_ok and portfolio_gate_ok and portfolio_vs_ok
+
+    reasons: list[str] = []
+    if champion_metadata is None:
+        reasons.append("no existing champion metadata")
+    elif not auc_ok:
+        reasons.append(
+            f"challenger_avg_roc_auc={challenger_auc:.4f} vs champion_avg_roc_auc={champion_auc:.4f}"
+        )
+    if require_ml_quality and not ml_quality_ok:
+        reasons.append("training metrics gates failed: " + "; ".join(ml_quality_eval["failures"]))
+    if require_portfolio_oos and challenger_portfolio is None:
+        reasons.append("missing challenger portfolio OOS evaluation")
+    elif require_portfolio_oos and portfolio_gate is not None and not portfolio_gate_ok:
+        reasons.append("portfolio gates failed: " + "; ".join(portfolio_gate.failures))
+    elif (
+        require_portfolio_oos
+        and champion_portfolio is not None
+        and challenger_portfolio is not None
+        and not portfolio_vs_ok
+    ):
+        c, h = challenger_portfolio, champion_portfolio
+        reasons.append(
+            "portfolio OOS did not beat champion "
+            f"(sharpe {float(c['sharpe_ratio']):.4f} vs {float(h['sharpe_ratio']):.4f}, "
+            f"return {float(c['total_return']):.4f} vs {float(h['total_return']):.4f})"
+        )
+
+    if promote:
+        reason = (
+            "no existing champion; challenger passes training metrics and portfolio OOS gates"
+            if champion_metadata is None
+            else "challenger passes AUC, training metrics, and portfolio OOS criteria"
+        )
+    else:
+        reason = "; ".join(reasons) if reasons else "challenger retained"
+
+    report: dict[str, Any] = {
+        "generated_at": _utc_now_iso(),
+        "champion_exists": champion_metadata is not None,
+        "champion_avg_roc_auc": champion_auc,
+        "challenger_avg_roc_auc": challenger_auc,
+        "auc_gate_passed": auc_ok,
+        "ml_quality_gate_passed": ml_quality_ok,
+        "ml_quality_gate_failures": ml_quality_eval.get("failures", []),
+        "portfolio_gate_passed": portfolio_gate_ok,
+        "portfolio_vs_champion_passed": portfolio_vs_ok,
+        "decision": "PROMOTE" if promote else "RETAIN_CHAMPION",
+        "reason": reason,
+    }
+    if challenger_portfolio is not None:
+        report["challenger_portfolio_oos"] = challenger_portfolio
+    if champion_portfolio is not None:
+        report["champion_portfolio_oos"] = champion_portfolio
+    if portfolio_gate is not None:
+        report["portfolio_gate_failures"] = portfolio_gate.failures
+        report["portfolio_gate_warnings"] = portfolio_gate.warnings
+    return report
+
+
+def train_ai_score_model(
+    training_data: Dict[str, pd.DataFrame],
+    prediction_horizon: int = 5,
+    target_return_threshold: float = 0.0,
+    vix_df: pd.DataFrame | None = None,
+    spy_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
+) -> Tuple[BaseModel, pd.DataFrame]:
+    frames = []
+
+    for ticker, df in training_data.items():
+        try:
+            feature_df = build_features(
+                df,
+                prediction_horizon=prediction_horizon,
+                target_return_threshold=target_return_threshold,
+                vix_df=vix_df,
+                spy_df=spy_df,
+                macro_df=macro_df,
+            )
+        except ValueError:
+            continue
+        feature_df["ticker"] = ticker
+        frames.append(feature_df)
+
+    dataset = pd.concat(frames, ignore_index=True)
+    dataset = dataset.sort_values("date").reset_index(drop=True)
+
+    # 시장 레짐 계산 및 병합
+    if spy_df is not None and vix_df is not None:
+        regime_series = compute_daily_regime(spy_df, vix_df)
+        dataset = dataset.merge(
+            regime_series.rename("regime"), left_on="date", right_index=True, how="left"
+        )
+        dataset["regime"] = dataset["regime"].fillna("NEUTRAL")
+    else:
+        dataset["regime"] = "NEUTRAL"
+
+    regimes = ["BULL", "BEAR", "NEUTRAL"]
+    trained_models = {}
+    all_metrics = []
+    calibration_rows = []
+
+    for regime in regimes:
+        regime_data = dataset[dataset["regime"] == regime]
+        if len(regime_data) < 100:  # 최소 데이터 요구량
+            print(f"  WARNING: insufficient data for {regime} regime (rows={len(regime_data)}), skipping...")
+            continue
+            
+        print(f"  Training {regime} ensemble model (LightGBM + XGBoost, rows={len(regime_data)})...")
+        X_regime = regime_data[FEATURE_COLUMNS]
+        y_regime = regime_data["target"]
+
+        lgbm = LGBMClassifier(
+            n_estimators=500,
+            learning_rate=0.05,
+            max_depth=6,
+            num_leaves=31,
+            min_child_samples=20,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=42,
+            class_weight="balanced" if regime != "BEAR" else None,
+            n_jobs=-1,
+            verbose=-1,
+        )
+        
+        xgb = XGBClassifier(
+            n_estimators=500,
+            learning_rate=0.05,
+            max_depth=6,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=42,
+            n_jobs=-1,
+            verbosity=0,
+        )
+
+        # 교차 검증 (단순화: 앙상블 효과 확인)
+        tscv = TimeSeriesSplit(n_splits=3)
+        for fold, (train_idx, test_idx) in enumerate(tscv.split(X_regime), start=1):
+            X_train, X_test = X_regime.iloc[train_idx], X_regime.iloc[test_idx]
+            y_train, y_test = y_regime.iloc[train_idx], y_regime.iloc[test_idx]
+total 1720
+-rw-r--r-- 1 kimyo kimyo 1758310 May 30 18:28 ai_score_model.joblib
+/models/ai_score_model.joblib
+
+codex
+The patch updates the production model artifact even though its recorded performance is below the project's degradation threshold and worse than the prior logged model. That can directly affect trading decisions for any environment using the committed champion artifact.
+
+Review comment:
+
+- [P1] Do not ship a degraded champion model — /home/kimyo/trading-bot/logs/ml/ai_model_metrics.csv:2-6
+  With this artifact update, the committed champion model is replaced while the accompanying fold metrics average to ROC-AUC 0.5081, which is below the runbook's documented degradation threshold of 0.51 and below the previous logged champion average of 0.5127. In any deployment that loads `models/ai_score_model.joblib` from the repo, this promotes a known-degraded model into live scoring rather than retaining the prior champion.

@@ -1,0 +1,107 @@
+# Agent Review Packet - Run: phase20_portfolio_gate_v2
+
+## Implementation Agent
+cursor+agy
+
+## Task Description
+# [AGY] Phase 20 — portfolio backtest gate tests
+
+## Context
+
+Cursor added (do not modify unless tests require it):
+
+- `src/portfolio_backtest_validation.py` — `check_portfolio_backtest_thresholds`, `PortfolioBacktestThresholds`
+- `scripts/check_portfolio_backtest_gate.py` — CLI used in post-workflow
+- Post-workflow calls gate when `logs/portfolio_backtest/` exists
+
+## Your scope (tests only)
+
+1. Add `tests/test_portfolio_backtest_gate.py`:
+   - pass: summary fixture with acceptable DD and benchmark gap
+   - fail: max_drawdown worse than floor
+   - fail: return vs benchmark below min gap
+   - CLI: `check_portfolio_backtest_gate.py` exit 0/1 with tmp dir fixtures
+
+2. Do **not** change production logic in `src/main.py` or trading paths.
+
+## Verify
+
+```bash
+PYTHONPATH=. .venv/bin/python -m pytest tests/test_portfolio_backtest_gate.py -q
+```
+
+## After tests exist
+
+Orchestrator (Cursor terminal):
+
+```bash
+RUN_ID=phase20_portfolio_gate bash scripts/run_balanced_pass.sh
+```
+
+Commit message must include `[agy]`.
+
+## Changed Files
+- logs/ml/ai_model_metrics.csv
+- logs/retrain_history.csv
+- models/ai_score_model.joblib
+
+## Git Diff Summary
+```
+ logs/ml/ai_model_metrics.csv |  10 +++++-----
+ logs/retrain_history.csv     |   1 +
+ models/ai_score_model.joblib | Bin 1757990 -> 1758310 bytes
+ 3 files changed, 6 insertions(+), 5 deletions(-)
+```
+
+## Test Execution Results (runtime_harness.log)
+```
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/kimyo/trading-bot
+plugins: anyio-4.13.0
+collected 7 items
+
+tests/test_report_performance.py .                                       [ 14%]
+tests/test_reappraise_regime.py ...                                      [ 57%]
+tests/test_portfolio_backtest_golden.py ...                              [100%]
+
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6
+  /home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+========================= 7 passed, 1 warning in 0.73s =========================
+```
+
+## Git Patch
+```diff
+diff --git a/logs/ml/ai_model_metrics.csv b/logs/ml/ai_model_metrics.csv
+index 0638196..f5a77ad 100644
+--- a/logs/ml/ai_model_metrics.csv
++++ b/logs/ml/ai_model_metrics.csv
+@@ -1,6 +1,6 @@
+ fold,accuracy,precision,recall,roc_auc,test_positive_rate,prediction_positive_rate,train_size,test_size
+-1,0.5244384996934738,0.5484398737875423,0.5012817773979918,0.5286340670919325,0.5217633617566739,0.47689906927492615,17946,17943
+-2,0.4494789054227275,0.6544431509507179,0.2940714908456844,0.5158509944937936,0.639246502814468,0.2872429359638856,35889,17943
+-3,0.5586022404280221,0.5981134772045162,0.7847365460341271,0.5298942819902608,0.5944379423730702,0.779914172657861,53832,17943
+-4,0.46853926322242656,0.5456267409470752,0.4729116368903911,0.4732537359173688,0.5771052778242212,0.500195062141225,71775,17943
+-5,0.5130134314217244,0.5579873646209387,0.5064509522834323,0.51604461357988,0.5442791060580728,0.4940088056623753,89718,17943
++1,0.528979045920642,0.5457911357944027,0.5393306790057032,0.5316021297826623,0.5178889879625501,0.5117588051716451,17944,17944
++2,0.45692153366027644,0.6543549218347363,0.33001212961358517,0.5026369607790756,0.6432233615693268,0.32439812750780206,35888,17944
++3,0.5665960766830138,0.6093773110486614,0.7675826734979041,0.5460608256136901,0.5982501114578689,0.7535666518056174,53832,17944
++4,0.451627284886313,0.5284319356691557,0.44508950169327527,0.4455734853749122,0.5759585376727597,0.4851203744984396,71776,17944
++5,0.5106442264823896,0.5542609092986064,0.4986126811221868,0.5146206734442764,0.5422982612572448,0.4878510922871155,89720,17944
+diff --git a/logs/retrain_history.csv b/logs/retrain_history.csv
+index 9e73b35..8e1e7f7 100644
+--- a/logs/retrain_history.csv
++++ b/logs/retrain_history.csv
+@@ -2,3 +2,4 @@ timestamp,status,avg_roc_auc,avg_precision,elapsed_sec
+ 2026-05-26T13:35:17Z,success,0.4985,0.5439,13.9
+ 2026-05-26T13:51:32Z,success,0.5103,0.5616,19.3
+ 2026-05-26T14:22:04Z,success,0.5127,0.5809,19.1
++2026-05-30T09:28:07Z,success,0.5081,0.5784,93.5
+diff --git a/models/ai_score_model.joblib b/models/ai_score_model.joblib
+index 4cc580d..a7de37d 100644
+Binary files a/models/ai_score_model.joblib and b/models/ai_score_model.joblib differ
+```

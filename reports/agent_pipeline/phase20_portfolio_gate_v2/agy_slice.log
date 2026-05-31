@@ -1,0 +1,12 @@
+$ bash scripts/run_agy_slice.sh
+exit_code=0
+
+## stdout
+AGY prompt: prompts/agy/phase20_portfolio_gate.md
+=== AGY slice: pytest ===
+....                                                                     [100%]
+4 passed in 0.61s
+AGY slice pytest: OK
+
+
+## stderr

@@ -1,0 +1,10 @@
+ TODO.md                      | 17 ++++++++++------
+ config/strategy_config.json  |  4 ++++
+ docs/TODO_ARCHIVE.md         |  2 ++
+ docs/runbook.md              | 25 ++++++++++++++++++++++-
+ scripts/run_pass_complete.sh |  2 ++
+ src/main.py                  | 36 ++++++++++++++++++++++++++++++++-
+ src/risk_manager.py          | 47 +++++++++++++++++++++++++++++++++++++++++++-
+ src/sector.py                |  7 ++++++-
+ src/settings.py              | 19 +++++++++++++++++-
+ 9 files changed, 148 insertions(+), 11 deletions(-)

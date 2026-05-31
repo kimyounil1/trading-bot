@@ -1,0 +1,1353 @@
+$ codex --ask-for-approval never --sandbox read-only review /home/kimyo/trading-bot/reports/agent_pipeline/phase21_quality/review_packet.md -c 'model_reasoning_effort="low"'
+exit_code=0
+
+## stdout
+The added report path exists, but the walk-forward ROC-AUC stability artifact is populated from inner training CV metrics instead of the outer validation folds it is meant to describe.
+
+Review comment:
+
+- [P2] Measure walk-forward ROC-AUC on validation folds — /home/kimyo/trading-bot/src/walk_forward_validation.py:103-109
+  In `walk_forward_validation`, `fold_metrics_df` comes from `train_ai_score_model(...)`, which is the model's internal time-series CV over the training window, then it is labeled with the outer walk-forward test period. For walk-forward runs this reports training-window CV ROC-AUC rather than ROC-AUC on the actual `t_start`–`t_end` validation fold, so the new stability report can look stable even when the out-of-sample fold predictions are not.
+
+
+## stderr
+OpenAI Codex v0.133.0
+--------
+workdir: /home/kimyo/trading-bot
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: low
+reasoning summaries: none
+session id: 019e787f-6c00-79e3-9284-f146b2ef8fad
+--------
+user
+/home/kimyo/trading-bot/reports/agent_pipeline/phase21_quality/review_packet.md
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+exec
+/bin/bash -lc "sed -n '1,240p' reports/agent_pipeline/phase21_quality/review_packet.md && git diff --stat && git diff --cached --stat" in /home/kimyo/trading-bot
+ succeeded in 138ms:
+# Agent Review Packet - Run: phase21_quality
+
+## Implementation Agent
+cursor
+
+## Task Description
+ml quality: fold ROC-AUC stability + calibration report path
+
+## Changed Files
+- TODO.md
+- logs/ml/ai_model_metrics.csv
+- logs/retrain_history.csv
+- models/ai_score_model.joblib
+- src/train_ai_model.py
+- src/walk_forward_validation.py
+
+## Git Diff Summary
+```
+ TODO.md                        |   2 +-
+ logs/ml/ai_model_metrics.csv   |  10 ++---
+ logs/retrain_history.csv       |   1 +
+ models/ai_score_model.joblib   | Bin 1757990 -> 1758310 bytes
+ src/train_ai_model.py          |  88 +++++++++++++----------------------------
+ src/walk_forward_validation.py |  24 ++++++++++-
+ 6 files changed, 56 insertions(+), 69 deletions(-)
+```
+
+## Test Execution Results (runtime_harness.log)
+```
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/kimyo/trading-bot
+plugins: anyio-4.13.0
+collected 11 items
+
+tests/test_report_performance.py .....                                   [ 45%]
+tests/test_reappraise_regime.py ...                                      [ 72%]
+tests/test_portfolio_backtest_golden.py ...                              [100%]
+
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6
+  /home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 11 passed, 1 warning in 0.67s =========================
+```
+
+## Git Patch
+```diff
+diff --git a/TODO.md b/TODO.md
+index d22361d..86dceae 100644
+--- a/TODO.md
++++ b/TODO.md
+@@ -89,7 +89,7 @@ RUN_ID=phase20_a bash scripts/run_cursor_post_workflow.sh
+ 
+ ## Phase 21 — 신호·모델 품질 (fold 안정화)
+ 
+-- [ ] `[Cursor]` Walk-forward fold별 ROC-AUC 편차 분석 및 calibration 리포트 **생성 경로** 구현
++- [x] `[Cursor]` Walk-forward fold별 ROC-AUC 편차 분석 및 calibration 리포트 **생성 경로** 구현
+ - [ ] `[AGY]` calibration/Brier 리포트 출력에 대한 pytest + fold별 메트릭 CSV 스키마 회귀 테스트
+ - [ ] `[Cursor]` 챔피언 승격: `train_ai_model` 메트릭 + 포트폴리오 백테스트 **둘 다** 통과해야 교체
+ - [ ] `[AGY]` 승격/롤백 decision path mock 테스트 (챌린저 거절·롤백 시나리오)
+diff --git a/logs/ml/ai_model_metrics.csv b/logs/ml/ai_model_metrics.csv
+index 0638196..f5a77ad 100644
+--- a/logs/ml/ai_model_metrics.csv
++++ b/logs/ml/ai_model_metrics.csv
+@@ -1,6 +1,6 @@
+ fold,accuracy,precision,recall,roc_auc,test_positive_rate,prediction_positive_rate,train_size,test_size
+-1,0.5244384996934738,0.5484398737875423,0.5012817773979918,0.5286340670919325,0.5217633617566739,0.47689906927492615,17946,17943
+-2,0.4494789054227275,0.6544431509507179,0.2940714908456844,0.5158509944937936,0.639246502814468,0.2872429359638856,35889,17943
+-3,0.5586022404280221,0.5981134772045162,0.7847365460341271,0.5298942819902608,0.5944379423730702,0.779914172657861,53832,17943
+-4,0.46853926322242656,0.5456267409470752,0.4729116368903911,0.4732537359173688,0.5771052778242212,0.500195062141225,71775,17943
+-5,0.5130134314217244,0.5579873646209387,0.5064509522834323,0.51604461357988,0.5442791060580728,0.4940088056623753,89718,17943
++1,0.528979045920642,0.5457911357944027,0.5393306790057032,0.5316021297826623,0.5178889879625501,0.5117588051716451,17944,17944
++2,0.45692153366027644,0.6543549218347363,0.33001212961358517,0.5026369607790756,0.6432233615693268,0.32439812750780206,35888,17944
++3,0.5665960766830138,0.6093773110486614,0.7675826734979041,0.5460608256136901,0.5982501114578689,0.7535666518056174,53832,17944
++4,0.451627284886313,0.5284319356691557,0.44508950169327527,0.4455734853749122,0.5759585376727597,0.4851203744984396,71776,17944
++5,0.5106442264823896,0.5542609092986064,0.4986126811221868,0.5146206734442764,0.5422982612572448,0.4878510922871155,89720,17944
+diff --git a/logs/retrain_history.csv b/logs/retrain_history.csv
+index 9e73b35..8e1e7f7 100644
+--- a/logs/retrain_history.csv
++++ b/logs/retrain_history.csv
+@@ -2,3 +2,4 @@ timestamp,status,avg_roc_auc,avg_precision,elapsed_sec
+ 2026-05-26T13:35:17Z,success,0.4985,0.5439,13.9
+ 2026-05-26T13:51:32Z,success,0.5103,0.5616,19.3
+ 2026-05-26T14:22:04Z,success,0.5127,0.5809,19.1
++2026-05-30T09:28:07Z,success,0.5081,0.5784,93.5
+diff --git a/models/ai_score_model.joblib b/models/ai_score_model.joblib
+index 4cc580d..a7de37d 100644
+Binary files a/models/ai_score_model.joblib and b/models/ai_score_model.joblib differ
+diff --git a/src/train_ai_model.py b/src/train_ai_model.py
+index bfd2153..12c5491 100644
+--- a/src/train_ai_model.py
++++ b/src/train_ai_model.py
+@@ -26,6 +26,12 @@ from src.ml_model import (
+     train_ai_score_model,
+ )
+ from src.macro_loader import load_macro_data
++from src.ml_quality_report import (
++    CALIBRATION_BINS_FILENAME,
++    CALIBRATION_REPORT_FILENAME,
++    DEFAULT_ML_OUTPUT_DIR,
++    write_ml_quality_reports,
++)
+ from src.retrain_holdout import (
+     exclude_holdout_from_ticker_data,
+     portfolio_holdout_window,
+@@ -45,8 +51,8 @@ OOS_VALIDATION_PATH = Path("logs/validation/oos_validation.csv")
+ BASELINE_SUMMARY_PATH = Path("logs/baselines/current_strategy/portfolio_summary.csv")
+ FEATURE_STATS_PATH = Path("models/ai_feature_stats.json")
+ DRIFT_REPORT_PATH = Path("logs/ml/feature_drift_report.json")
+-CALIBRATION_REPORT_PATH = Path("logs/ml/model_calibration_report.json")
+-CALIBRATION_BINS_PATH = Path("logs/ml/model_calibration_bins.csv")
++CALIBRATION_REPORT_PATH = DEFAULT_ML_OUTPUT_DIR / CALIBRATION_REPORT_FILENAME
++CALIBRATION_BINS_PATH = DEFAULT_ML_OUTPUT_DIR / CALIBRATION_BINS_FILENAME
+ THRESHOLD_RETUNE_REPORT_PATH = Path("logs/ml/threshold_retune_report.json")
+ THRESHOLD_RETUNE_RESULTS_PATH = Path("logs/ml/threshold_retune_results.csv")
+ ROLLBACK_MIN_TOTAL_RETURN = -0.05
+@@ -267,60 +273,6 @@ def _write_drift_report(report: dict, path: Path = DRIFT_REPORT_PATH) -> None:
+     path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+ 
+ 
+-def _build_calibration_report(metrics_df: pd.DataFrame) -> tuple[dict, pd.DataFrame]:
+-    calibration_rows = metrics_df.attrs.get("calibration_rows", [])
+-    calibration_df = pd.DataFrame(calibration_rows)
+-    if calibration_df.empty:
+-        return {
+-            "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+-            "overall_avg_brier_score": 0.0,
+-            "regimes": {},
+-            "bin_count": 0,
+-        }, pd.DataFrame()
+-
+-    regime_brier = {}
+-    if "brier_score" in metrics_df.columns and "regime" in metrics_df.columns:
+-        for regime, regime_df in metrics_df.groupby("regime"):
+-            regime_brier[str(regime)] = {
+-                "avg_brier_score": float(regime_df["brier_score"].mean()),
+-                "folds": int(len(regime_df)),
+-            }
+-
+-    calibration_df["prob_bin"] = pd.cut(
+-        calibration_df["y_prob"],
+-        bins=[i / 10 for i in range(11)],
+-        include_lowest=True,
+-        duplicates="drop",
+-    )
+-    bin_rows = (
+-        calibration_df.groupby(["regime", "prob_bin"], observed=False)
+-        .agg(
+-            count=("y_true", "size"),
+-            avg_pred=("y_prob", "mean"),
+-            actual_rate=("y_true", "mean"),
+-        )
+-        .reset_index()
+-    )
+-    bin_rows["prob_bin"] = bin_rows["prob_bin"].astype(str)
+-
+-    report = {
+-        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+-        "overall_avg_brier_score": float(metrics_df["brier_score"].mean()) if "brier_score" in metrics_df.columns else 0.0,
+-        "regimes": regime_brier,
+-        "bin_count": int(len(bin_rows)),
+-    }
+-    return report, bin_rows
+-
+-
+-def _write_calibration_report(report: dict, bins_df: pd.DataFrame) -> None:
+-    CALIBRATION_REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+-    CALIBRATION_REPORT_PATH.write_text(
+-        json.dumps(report, indent=2, sort_keys=True),
+-        encoding="utf-8",
+-    )
+-    bins_df.to_csv(CALIBRATION_BINS_PATH, index=False)
+-
+-
+ def _pick_latest_date(ticker_data: dict[str, pd.DataFrame]) -> pd.Timestamp:
+     latest_dates = []
+     for df in ticker_data.values():
+@@ -620,11 +572,19 @@ def main() -> None:
+         spy_df=spy_df,
+         macro_df=macro_df,
+     )
++    output_dir = DEFAULT_ML_OUTPUT_DIR
++    output_dir.mkdir(parents=True, exist_ok=True)
++
+     drift_report = _compare_feature_stats(baseline_feature_stats, current_feature_stats)
+     _write_drift_report(drift_report)
+     _write_feature_stats(current_feature_stats)
+-    calibration_report, calibration_bins_df = _build_calibration_report(metrics_df)
+-    _write_calibration_report(calibration_report, calibration_bins_df)
++    quality_paths = write_ml_quality_reports(output_dir, metrics_df)
++    calibration_report = json.loads(
++        quality_paths["calibration_report"].read_text(encoding="utf-8")
++    )
++    stability_report = json.loads(
++        quality_paths["fold_stability"].read_text(encoding="utf-8")
++    )
+ 
+     if drift_report["drifted_feature_count"] > 0:
+         top_features = ", ".join(
+@@ -643,6 +603,13 @@ def main() -> None:
+             f"Average Brier score: {calibration_report['overall_avg_brier_score']:.4f}\n"
+             f"Report: {CALIBRATION_REPORT_PATH}"
+         )
++    if stability_report.get("high_variance_warning"):
++        roc = stability_report.get("roc_auc", {})
++        notify_info(
++            "⚠️ Fold ROC-AUC Variance Warning",
++            f"ROC-AUC std={roc.get('std')} (threshold={stability_report.get('roc_auc_std_warn_threshold')})\n"
++            f"Report: {quality_paths['fold_stability']}",
++        )
+ 
+     threshold_retune_report, threshold_retune_results_df = _run_threshold_retune(
+         settings=settings,
+@@ -658,9 +625,6 @@ def main() -> None:
+         settings.ai_exit_threshold = float(threshold_retune_report["best_exit_threshold"])
+     save_settings(settings)
+ 
+-    output_dir = Path("logs/ml")
+-    output_dir.mkdir(parents=True, exist_ok=True)
+-
+     metrics_path = output_dir / "ai_model_metrics.csv"
+     metrics_df.to_csv(metrics_path, index=False)
+ 
+@@ -779,6 +743,8 @@ def main() -> None:
+     print(f"Saved promotion report to {promotion_report_path}")
+     print(f"Saved rollback report to {ROLLBACK_REPORT_PATH}")
+     print(f"Saved feature drift report to {DRIFT_REPORT_PATH}")
++    print(f"Saved fold metrics to {quality_paths['fold_metrics']}")
++    print(f"Saved fold stability report to {quality_paths['fold_stability']}")
+     print(f"Saved calibration report to {CALIBRATION_REPORT_PATH}")
+     print(f"Saved calibration bins to {CALIBRATION_BINS_PATH}")
+     print(f"Saved threshold retune report to {THRESHOLD_RETUNE_REPORT_PATH}")
+diff --git a/src/walk_forward_validation.py b/src/walk_forward_validation.py
+index 492f05f..e6cff1b 100644
+--- a/src/walk_forward_validation.py
++++ b/src/walk_forward_validation.py
+@@ -11,6 +11,7 @@ import numpy as np
+ TODO.md                        |   2 +-
+ logs/ml/ai_model_metrics.csv   |  10 ++---
+ logs/retrain_history.csv       |   1 +
+ models/ai_score_model.joblib   | Bin 1757990 -> 1758310 bytes
+ src/train_ai_model.py          |  88 +++++++++++++----------------------------
+ src/walk_forward_validation.py |  24 ++++++++++-
+ 6 files changed, 56 insertions(+), 69 deletions(-)
+
+exec
+/bin/bash -lc "sed -n '240,520p' reports/agent_pipeline/phase21_quality/review_packet.md" in /home/kimyo/trading-bot
+ succeeded in 173ms:
+@@ -11,6 +11,7 @@ import numpy as np
+ from src.settings import load_settings
+ from src.data_loader import load_price_data_batch
+ from src.ml_model import train_ai_score_model
++from src.ml_quality_report import write_ml_quality_reports
+ from src.portfolio_backtester import run_portfolio_backtest, build_ai_score_frames
+ from src.macro_loader import load_macro_data
+ 
+@@ -73,7 +74,8 @@ def main():
+     print(f"Generated {len(folds)} validation folds.\n")
+ 
+     results = []
+-    
++    fold_metrics_frames: list[pd.DataFrame] = []
++
+     # 3. 각 Fold별 학습 및 검증
+     for i, fold in enumerate(folds, 1):
+         t_start, t_end = fold["test_start"], fold["test_end"]
+@@ -98,13 +100,18 @@ def main():
+ 
+         # 모델 학습
+         print(f"  Training model...")
+-        model, _ = train_ai_score_model(
++        model, fold_metrics_df = train_ai_score_model(
+             training_data=train_data,
+             prediction_horizon=20,
+             vix_df=vix_train,
+             spy_df=spy_train,
+             macro_df=macro_train,
+         )
++        period_label = f"{fold['test_start'].date()} ~ {fold['test_end'].date()}"
++        fold_metrics_df = fold_metrics_df.copy()
++        fold_metrics_df["walk_forward_fold"] = i
++        fold_metrics_df["walk_forward_period"] = period_label
++        fold_metrics_frames.append(fold_metrics_df)
+ 
+         # AI 스코어 계산을 위한 데이터 준비 (피처 생성용 룩백 데이터 포함)
+         lookback_start = fold["test_start"] - pd.DateOffset(days=400) # 넉넉하게 400일
+@@ -173,6 +180,19 @@ def main():
+     # 4. 종합 결과 출력 및 저장
+     res_df = pd.DataFrame(results)
+     res_df.to_csv(output_dir / "walk_forward_results.csv", index=False)
++
++    if fold_metrics_frames:
++        combined_metrics = pd.concat(fold_metrics_frames, ignore_index=True)
++        calibration_rows: list[dict] = []
++        for frame in fold_metrics_frames:
++            calibration_rows.extend(frame.attrs.get("calibration_rows", []))
++        combined_metrics.attrs["calibration_rows"] = calibration_rows
++        quality_paths = write_ml_quality_reports(
++            output_dir, combined_metrics, file_prefix="walk_forward"
++        )
++        print(f"Saved walk-forward fold metrics to {quality_paths['fold_metrics']}")
++        print(f"Saved walk-forward fold stability to {quality_paths['fold_stability']}")
++        print(f"Saved walk-forward calibration to {quality_paths['calibration_report']}")
+     
+     print("=" * 72)
+     print("Walk-Forward Validation Summary")
+```
+
+exec
+/bin/bash -lc "git status --short && ls src/ml_quality_report.py && sed -n '1,240p' src/ml_quality_report.py && sed -n '1,260p' src/walk_forward_validation.py" in /home/kimyo/trading-bot
+ succeeded in 151ms:
+ M TODO.md
+ M logs/ml/ai_model_metrics.csv
+ M logs/retrain_history.csv
+ M models/ai_score_model.joblib
+ M src/train_ai_model.py
+ M src/walk_forward_validation.py
+?? .antigravitycli/
+?? reports/agent_pipeline/phase20_golden/
+?? reports/agent_pipeline/phase20_portfolio_gate/
+?? reports/agent_pipeline/phase20_portfolio_gate_v2/
+?? reports/agent_pipeline/phase20_promotion/
+?? reports/agent_pipeline/phase20_promotion_v2/
+?? reports/agent_pipeline/phase20_promotion_v3/
+?? reports/agent_pipeline/phase20_promotion_v4/
+?? reports/agent_pipeline/phase20_slippage/
+?? reports/agent_pipeline/phase20_slippage_v2/
+?? reports/agent_pipeline/phase21_quality/
+?? scripts/run_model_quality_report.sh
+?? src/ml_quality_report.py
+?? tests/test_ml_quality_report.py
+src/ml_quality_report.py
+"""Fold-level ROC-AUC stability and calibration report generation."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+
+FOLD_METRICS_COLUMNS: tuple[str, ...] = (
+    "regime",
+    "fold",
+    "roc_auc",
+    "brier_score",
+    "test_size",
+    "walk_forward_fold",
+    "walk_forward_period",
+)
+
+DEFAULT_ML_OUTPUT_DIR = Path("logs/ml")
+DEFAULT_VALIDATION_OUTPUT_DIR = Path("logs/validation")
+
+FOLD_METRICS_FILENAME = "fold_metrics.csv"
+FOLD_STABILITY_REPORT_FILENAME = "fold_stability_report.json"
+CALIBRATION_REPORT_FILENAME = "model_calibration_report.json"
+CALIBRATION_BINS_FILENAME = "model_calibration_bins.csv"
+
+# Flag when cross-fold / cross-regime ROC-AUC spread is large (see logs/ml/ai_model_metrics.csv history).
+ROC_AUC_STD_WARN_THRESHOLD = 0.05
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def normalize_fold_metrics_df(metrics_df: pd.DataFrame) -> pd.DataFrame:
+    """Ensure fold metrics CSV schema (missing optional columns filled with NA)."""
+    if metrics_df is None or metrics_df.empty:
+        return pd.DataFrame(columns=list(FOLD_METRICS_COLUMNS))
+
+    frame = metrics_df.copy()
+    for column in FOLD_METRICS_COLUMNS:
+        if column not in frame.columns:
+            frame[column] = pd.NA
+
+    ordered = [c for c in FOLD_METRICS_COLUMNS if c in frame.columns]
+    extra = [c for c in frame.columns if c not in FOLD_METRICS_COLUMNS]
+    return frame[ordered + extra]
+
+
+def _roc_auc_summary(series: pd.Series) -> dict[str, Any]:
+    values = pd.to_numeric(series, errors="coerce").dropna()
+    if values.empty:
+        return {
+            "count": 0,
+            "mean": None,
+            "std": None,
+            "min": None,
+            "max": None,
+            "range": None,
+        }
+    mean = float(values.mean())
+    std = float(values.std(ddof=0)) if len(values) > 1 else 0.0
+    min_v = float(values.min())
+    max_v = float(values.max())
+    return {
+        "count": int(len(values)),
+        "mean": mean,
+        "std": std,
+        "min": min_v,
+        "max": max_v,
+        "range": max_v - min_v,
+        "coefficient_of_variation": (std / mean) if mean else None,
+    }
+
+
+def build_fold_stability_report(metrics_df: pd.DataFrame) -> dict[str, Any]:
+    """Summarize ROC-AUC dispersion across CV / walk-forward folds."""
+    frame = normalize_fold_metrics_df(metrics_df)
+    if frame.empty or "roc_auc" not in frame.columns:
+        return {
+            "generated_at": _utc_now_iso(),
+            "fold_count": 0,
+            "roc_auc": _roc_auc_summary(pd.Series(dtype=float)),
+            "by_regime": {},
+            "high_variance_warning": False,
+            "message": "no fold metrics available",
+        }
+
+    overall = _roc_auc_summary(frame["roc_auc"])
+    by_regime: dict[str, Any] = {}
+    if "regime" in frame.columns:
+        for regime, regime_df in frame.groupby("regime", dropna=False):
+            by_regime[str(regime)] = _roc_auc_summary(regime_df["roc_auc"])
+
+    std = overall.get("std")
+    high_var = std is not None and std >= ROC_AUC_STD_WARN_THRESHOLD
+
+    walk_forward_summary = None
+    if "walk_forward_fold" in frame.columns and frame["walk_forward_fold"].notna().any():
+        wf = frame.dropna(subset=["walk_forward_fold"])
+        walk_forward_summary = _roc_auc_summary(wf["roc_auc"])
+
+    return {
+        "generated_at": _utc_now_iso(),
+        "fold_count": int(len(frame)),
+        "roc_auc": overall,
+        "by_regime": by_regime,
+        "walk_forward_roc_auc": walk_forward_summary,
+        "high_variance_warning": high_var,
+        "roc_auc_std_warn_threshold": ROC_AUC_STD_WARN_THRESHOLD,
+    }
+
+
+def build_calibration_report(metrics_df: pd.DataFrame) -> tuple[dict[str, Any], pd.DataFrame]:
+    calibration_rows = metrics_df.attrs.get("calibration_rows", []) if metrics_df is not None else []
+    calibration_df = pd.DataFrame(calibration_rows)
+    if calibration_df.empty:
+        return {
+            "generated_at": _utc_now_iso(),
+            "overall_avg_brier_score": 0.0,
+            "regimes": {},
+            "bin_count": 0,
+        }, pd.DataFrame()
+
+    regime_brier: dict[str, Any] = {}
+    if "brier_score" in metrics_df.columns and "regime" in metrics_df.columns:
+        for regime, regime_df in metrics_df.groupby("regime"):
+            regime_brier[str(regime)] = {
+                "avg_brier_score": float(regime_df["brier_score"].mean()),
+                "folds": int(len(regime_df)),
+            }
+
+    calibration_df["prob_bin"] = pd.cut(
+        calibration_df["y_prob"],
+        bins=[i / 10 for i in range(11)],
+        include_lowest=True,
+        duplicates="drop",
+    )
+    bin_rows = (
+        calibration_df.groupby(["regime", "prob_bin"], observed=False)
+        .agg(
+            count=("y_true", "size"),
+            avg_pred=("y_prob", "mean"),
+            actual_rate=("y_true", "mean"),
+        )
+        .reset_index()
+    )
+    bin_rows["prob_bin"] = bin_rows["prob_bin"].astype(str)
+
+    report = {
+        "generated_at": _utc_now_iso(),
+        "overall_avg_brier_score": (
+            float(metrics_df["brier_score"].mean()) if "brier_score" in metrics_df.columns else 0.0
+        ),
+        "regimes": regime_brier,
+        "bin_count": int(len(bin_rows)),
+    }
+    return report, bin_rows
+
+
+def write_ml_quality_reports(
+    output_dir: str | Path,
+    metrics_df: pd.DataFrame,
+    *,
+    file_prefix: str = "",
+) -> dict[str, Path]:
+    """Write fold metrics, stability JSON, and calibration artifacts."""
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    prefix = f"{file_prefix}_" if file_prefix else ""
+    fold_metrics_path = output_dir / f"{prefix}{FOLD_METRICS_FILENAME}"
+    stability_path = output_dir / f"{prefix}{FOLD_STABILITY_REPORT_FILENAME}"
+    calibration_path = output_dir / f"{prefix}{CALIBRATION_REPORT_FILENAME}"
+    bins_path = output_dir / f"{prefix}{CALIBRATION_BINS_FILENAME}"
+
+    fold_df = normalize_fold_metrics_df(metrics_df)
+    fold_df.to_csv(fold_metrics_path, index=False)
+
+    stability = build_fold_stability_report(metrics_df)
+    stability_path.write_text(
+        json.dumps(stability, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    calibration_report, bins_df = build_calibration_report(metrics_df)
+    calibration_path.write_text(
+        json.dumps(calibration_report, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    if not bins_df.empty:
+        bins_df.to_csv(bins_path, index=False)
+    elif bins_path.exists():
+        bins_path.unlink()
+
+    return {
+        "fold_metrics": fold_metrics_path,
+        "fold_stability": stability_path,
+        "calibration_report": calibration_path,
+        "calibration_bins": bins_path,
+    }
+
+
+def load_fold_metrics_csv(path: str | Path) -> pd.DataFrame:
+    return normalize_fold_metrics_df(pd.read_csv(path))
+
+
+def regenerate_reports_from_fold_metrics_csv(
+    metrics_path: str | Path,
+    output_dir: str | Path | None = None,
+    *,
+    file_prefix: str = "",
+) -> dict[str, Path]:
+    """Rebuild stability (and empty calibration) from saved fold_metrics.csv only."""
+    metrics_path = Path(metrics_path)
+    output_dir = Path(output_dir or metrics_path.parent)
+    metrics_df = load_fold_metrics_csv(metrics_path)
+    return write_ml_quality_reports(output_dir, metrics_df, file_prefix=file_prefix)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Generate fold stability and calibration reports from fold metrics"
+    )
+    parser.add_argument(
+        "--metrics",
+        type=Path,
+        default=DEFAULT_ML_OUTPUT_DIR / "ai_model_metrics.csv",
+        help="Source metrics CSV (retrain legacy path) or fold_metrics.csv",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="Output directory (default: parent of --metrics)",
+    )
+"""Walk-Forward Validation: 슬라이딩 윈도우 기반 연속 OOS 성능 검증."""
+
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Dict, List
+
+import pandas as pd
+import numpy as np
+
+from src.settings import load_settings
+from src.data_loader import load_price_data_batch
+from src.ml_model import train_ai_score_model
+from src.ml_quality_report import write_ml_quality_reports
+from src.portfolio_backtester import run_portfolio_backtest, build_ai_score_frames
+from src.macro_loader import load_macro_data
+
+# 설정
+TRAIN_WINDOW_YEARS = 3
+TEST_WINDOW_MONTHS = 6  # 검증 속도를 위해 6개월 단위로 설정 (원하면 1~3개월로 단축 가능)
+TOTAL_YEARS = 5
+
+
+def _filter_by_date(df: pd.DataFrame, start, end=None) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+    d = df.copy()
+    d["date"] = pd.to_datetime(d["date"])
+    d = d[d["date"] >= pd.Timestamp(start)]
+    if end:
+        d = d[d["date"] < pd.Timestamp(end)]
+    return d.reset_index(drop=True)
+
+
+def main():
+    settings = load_settings()
+    output_dir = Path("logs/validation")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"=== Walk-Forward Validation Started ===")
+    print(f"Parameters: Train={TRAIN_WINDOW_YEARS}y, Test={TEST_WINDOW_MONTHS}m, Total={TOTAL_YEARS}y")
+
+    # 1. 데이터 로딩
+    print(f"Loading {len(settings.tickers)} tickers ({TOTAL_YEARS}y)...")
+    tickers_to_load = list(settings.tickers) + ["^VIX", "SPY"]
+    tickers_to_load = list(dict.fromkeys(tickers_to_load))
+    loaded = load_price_data_batch(tickers_to_load, period=f"{TOTAL_YEARS}y")
+    
+    all_ticker_data = {t: loaded[t] for t in settings.tickers if t in loaded}
+    vix_all = loaded.get("^VIX")
+    spy_all = loaded.get("SPY")
+    macro_all = load_macro_data(period=f"{TOTAL_YEARS}y")
+
+    # 2. 검증 기간 생성 (6개월 단위 슬라이딩)
+    end_date = pd.Timestamp(datetime.now(timezone.utc).date())
+    start_date = end_date - pd.DateOffset(years=TOTAL_YEARS)
+    
+    folds = []
+    current_test_start = start_date + pd.DateOffset(years=TRAIN_WINDOW_YEARS)
+    
+    while current_test_start + pd.DateOffset(months=TEST_WINDOW_MONTHS) <= end_date:
+        test_end = current_test_start + pd.DateOffset(months=TEST_WINDOW_MONTHS)
+        train_end = current_test_start
+        train_start = train_end - pd.DateOffset(years=TRAIN_WINDOW_YEARS)
+        
+        folds.append({
+            "train_start": train_start,
+            "train_end": train_end,
+            "test_start": current_test_start,
+            "test_end": test_end
+        })
+        current_test_start = test_end
+
+    print(f"Generated {len(folds)} validation folds.\n")
+
+    results = []
+    fold_metrics_frames: list[pd.DataFrame] = []
+
+    # 3. 각 Fold별 학습 및 검증
+    for i, fold in enumerate(folds, 1):
+        t_start, t_end = fold["test_start"], fold["test_end"]
+        print(f"Fold {i}/{len(folds)}: Test Period {t_start.date()} ~ {t_end.date()}")
+
+        # 데이터 필터링
+        train_data = {t: _filter_by_date(df, fold["train_start"], fold["train_end"]) 
+                      for t, df in all_ticker_data.items()}
+        # 최소 데이터(1y+) 보유 종목만 학습 사용
+        train_data = {t: df for t, df in train_data.items() if len(df) > 250}
+        
+        test_data = {t: _filter_by_date(df, fold["test_start"], fold["test_end"]) 
+                     for t, df in all_ticker_data.items()}
+        test_data = {t: df for t, df in test_data.items() if len(df) > 20}
+
+        vix_train = _filter_by_date(vix_all, fold["train_start"], fold["train_end"])
+        vix_test = _filter_by_date(vix_all, fold["test_start"], fold["test_end"])
+        spy_train = _filter_by_date(spy_all, fold["train_start"], fold["train_end"])
+        spy_test = _filter_by_date(spy_all, fold["test_start"], fold["test_end"])
+        macro_train = _filter_by_date(macro_all, fold["train_start"], fold["train_end"])
+        macro_test = _filter_by_date(macro_all, fold["test_start"], fold["test_end"])
+
+        # 모델 학습
+        print(f"  Training model...")
+        model, fold_metrics_df = train_ai_score_model(
+            training_data=train_data,
+            prediction_horizon=20,
+            vix_df=vix_train,
+            spy_df=spy_train,
+            macro_df=macro_train,
+        )
+        period_label = f"{fold['test_start'].date()} ~ {fold['test_end'].date()}"
+        fold_metrics_df = fold_metrics_df.copy()
+        fold_metrics_df["walk_forward_fold"] = i
+        fold_metrics_df["walk_forward_period"] = period_label
+        fold_metrics_frames.append(fold_metrics_df)
+
+        # AI 스코어 계산을 위한 데이터 준비 (피처 생성용 룩백 데이터 포함)
+        lookback_start = fold["test_start"] - pd.DateOffset(days=400) # 넉넉하게 400일
+        test_data_with_lookback = {t: _filter_by_date(df, lookback_start, fold["test_end"]) 
+                                   for t, df in all_ticker_data.items()}
+        test_data_with_lookback = {t: df for t, df in test_data_with_lookback.items() if len(df) > 272}
+
+        vix_with_lookback = _filter_by_date(vix_all, lookback_start, fold["test_end"])
+        spy_with_lookback = _filter_by_date(spy_all, lookback_start, fold["test_end"])
+        macro_with_lookback = _filter_by_date(macro_all, lookback_start, fold["test_end"])
+
+        # AI 스코어 계산
+        print(f"  Calculating AI scores...")
+        ai_score_frames_full = build_ai_score_frames(
+            test_data_with_lookback, ai_model_bundle=model,
+            vix_df=vix_with_lookback, spy_df=spy_with_lookback, macro_df=macro_with_lookback,
+        )
+        
+        # 실제 테스트 기간만 필터링
+        ai_score_frames = {t: _filter_by_date(df, fold["test_start"], fold["test_end"])
+                           for t, df in ai_score_frames_full.items()}
+
+        # 포트폴리오 백테스트
+        print(f"  Running backtest...")
+        result, _, _ = run_portfolio_backtest(
+            ticker_data=test_data,
+            initial_cash=10000.0,
+            max_positions=settings.max_total_positions,
+            target_position_pct=settings.max_position_pct,
+            transaction_cost_pct=0.001,
+            ma_fast=settings.ma_fast,
+            ma_slow=settings.ma_slow,
+            rsi_buy_limit=settings.rsi_buy_limit,
+            use_ai_score=True,
+            ai_score_buy_threshold=settings.ai_score_buy_threshold,
+            volume_filter_enabled=settings.volume_filter_enabled,
+            volume_lookback_days=settings.volume_lookback_days,
+            min_volume_ratio=settings.min_volume_ratio,
+            rank_trend_weight=settings.rank_trend_weight,
+            rank_ai_weight=settings.rank_ai_weight,
+            rank_momentum_weight=settings.rank_momentum_weight,
+            rank_volatility_weight=settings.rank_volatility_weight,
+            ai_exit_enabled=getattr(settings, "ai_exit_enabled", True),
+            ai_exit_threshold=getattr(settings, "ai_exit_threshold", 0.0),
+            ai_exit_dynamic_enabled=getattr(settings, "ai_exit_dynamic_enabled", True),
+            ai_exit_vix_low=getattr(settings, "ai_exit_vix_low", 0.0),
+            ai_exit_vix_high=getattr(settings, "ai_exit_vix_high", 30.0),
+            ai_exit_threshold_bull=getattr(settings, "ai_exit_threshold_bull", 0.0),
+            ai_exit_threshold_bear=getattr(settings, "ai_exit_threshold_bear", 0.45),
+            vix_df=vix_test,
+            macro_df=macro_test,
+            ai_score_frames=ai_score_frames,
+        )
+        
+        metrics = {
+            "period": f"{fold['test_start'].date()} ~ {fold['test_end'].date()}",
+            "total_return": result.total_return,
+            "max_drawdown": result.max_drawdown,
+            "sharpe_ratio": result.sharpe_ratio,
+            "trades": result.trades,
+            "win_rate": result.win_rate
+        }
+        results.append(metrics)
+        print(f"  Result: Return={metrics['total_return']*100:.2f}%, MDD={metrics['max_drawdown']*100:.2f}%, Sharpe={metrics['sharpe_ratio']:.3f}\n")
+
+    # 4. 종합 결과 출력 및 저장
+    res_df = pd.DataFrame(results)
+    res_df.to_csv(output_dir / "walk_forward_results.csv", index=False)
+
+    if fold_metrics_frames:
+        combined_metrics = pd.concat(fold_metrics_frames, ignore_index=True)
+        calibration_rows: list[dict] = []
+        for frame in fold_metrics_frames:
+            calibration_rows.extend(frame.attrs.get("calibration_rows", []))
+        combined_metrics.attrs["calibration_rows"] = calibration_rows
+        quality_paths = write_ml_quality_reports(
+            output_dir, combined_metrics, file_prefix="walk_forward"
+        )
+        print(f"Saved walk-forward fold metrics to {quality_paths['fold_metrics']}")
+        print(f"Saved walk-forward fold stability to {quality_paths['fold_stability']}")
+        print(f"Saved walk-forward calibration to {quality_paths['calibration_report']}")
+    
+    print("=" * 72)
+    print("Walk-Forward Validation Summary")
+    print("=" * 72)
+    print(res_df.to_string(index=False))
+    print("-" * 72)
+    print(f"Average Return per Fold: {res_df['total_return'].mean()*100:.2f}%")
+    print(f"Average MDD: {res_df['max_drawdown'].mean()*100:.2f}%")
+    print(f"Average Sharpe: {res_df['sharpe_ratio'].mean():.3f}")
+    print(f"Total Trades: {res_df['trades'].sum()}")
+    print("=" * 72)
+    print(f"\nFull results saved to {output_dir}/walk_forward_results.csv")
+
+
+if __name__ == "__main__":
+    main()
+
+exec
+/bin/bash -lc "sed -n '240,420p' src/ml_quality_report.py && rg \"def train_ai_score_model|calibration_rows|brier_score|regime\" -n src/ml_model.py src/train_ai_model.py tests/test_ml_quality_report.py" in /home/kimyo/trading-bot
+ succeeded in 197ms:
+    )
+    parser.add_argument(
+        "--file-prefix",
+        default="",
+        help="Optional filename prefix (e.g. walk_forward)",
+    )
+    args = parser.parse_args()
+
+    output_dir = args.output_dir or args.metrics.parent
+    paths = regenerate_reports_from_fold_metrics_csv(
+        args.metrics,
+        output_dir,
+        file_prefix=args.file_prefix,
+    )
+    stability = json.loads(paths["fold_stability"].read_text(encoding="utf-8"))
+    print(f"Wrote fold metrics: {paths['fold_metrics']}")
+    print(f"Wrote fold stability: {paths['fold_stability']}")
+    print(f"Wrote calibration report: {paths['calibration_report']}")
+    if paths["calibration_bins"].is_file():
+        print(f"Wrote calibration bins: {paths['calibration_bins']}")
+    if stability.get("high_variance_warning"):
+        print(
+            f"WARNING: ROC-AUC std {stability['roc_auc']['std']:.4f} "
+            f">= threshold {ROC_AUC_STD_WARN_THRESHOLD}"
+        )
+
+
+if __name__ == "__main__":
+    main()
+src/ml_model.py:14:from sklearn.metrics import accuracy_score, brier_score_loss, precision_score, recall_score, roc_auc_score
+src/ml_model.py:18:from src.market_regime import compute_daily_regime, get_current_regime
+src/ml_model.py:96:    def _get_model_for_regime(self, spy_df, vix_df):
+src/ml_model.py:97:        regime = get_current_regime(spy_df, vix_df)
+src/ml_model.py:98:        # Fallback to NEUTRAL if specific regime model missing
+src/ml_model.py:99:        return self.models.get(regime, self.models.get("NEUTRAL"))
+src/ml_model.py:109:        model = self._get_model_for_regime(spy_df, vix_df)
+src/ml_model.py:129:        model = self._get_model_for_regime(spy_df, vix_df)
+src/ml_model.py:143:        return {"avg_roc_auc": 0.0, "regimes": {}}
+src/ml_model.py:145:    summary = {"avg_roc_auc": float(metrics_df["roc_auc"].mean()) if "roc_auc" in metrics_df.columns else 0.0, "regimes": {}}
+src/ml_model.py:146:    if "regime" in metrics_df.columns:
+src/ml_model.py:147:        for regime, regime_df in metrics_df.groupby("regime"):
+src/ml_model.py:148:            summary["regimes"][str(regime)] = {
+src/ml_model.py:149:                "avg_roc_auc": float(regime_df["roc_auc"].mean()) if "roc_auc" in regime_df.columns else 0.0,
+src/ml_model.py:150:                "folds": int(len(regime_df)),
+src/ml_model.py:184:        "trained_regimes": sorted(trained_models.keys()),
+src/ml_model.py:421:def train_ai_score_model(
+src/ml_model.py:451:        regime_series = compute_daily_regime(spy_df, vix_df)
+src/ml_model.py:453:            regime_series.rename("regime"), left_on="date", right_index=True, how="left"
+src/ml_model.py:455:        dataset["regime"] = dataset["regime"].fillna("NEUTRAL")
+src/ml_model.py:457:        dataset["regime"] = "NEUTRAL"
+src/ml_model.py:459:    regimes = ["BULL", "BEAR", "NEUTRAL"]
+src/ml_model.py:462:    calibration_rows = []
+src/ml_model.py:464:    for regime in regimes:
+src/ml_model.py:465:        regime_data = dataset[dataset["regime"] == regime]
+src/ml_model.py:466:        if len(regime_data) < 100:  # 최소 데이터 요구량
+src/ml_model.py:467:            print(f"  WARNING: insufficient data for {regime} regime (rows={len(regime_data)}), skipping...")
+src/ml_model.py:470:        print(f"  Training {regime} ensemble model (LightGBM + XGBoost, rows={len(regime_data)})...")
+src/ml_model.py:471:        X_regime = regime_data[FEATURE_COLUMNS]
+src/ml_model.py:472:        y_regime = regime_data["target"]
+src/ml_model.py:483:            class_weight="balanced" if regime != "BEAR" else None,
+src/ml_model.py:501:        for fold, (train_idx, test_idx) in enumerate(tscv.split(X_regime), start=1):
+src/ml_model.py:502:            X_train, X_test = X_regime.iloc[train_idx], X_regime.iloc[test_idx]
+src/ml_model.py:503:            y_train, y_test = y_regime.iloc[train_idx], y_regime.iloc[test_idx]
+src/ml_model.py:518:            brier = brier_score_loss(y_test, proba)
+src/ml_model.py:521:                "regime": regime,
+src/ml_model.py:524:                "brier_score": brier,
+src/ml_model.py:527:            calibration_rows.extend(
+src/ml_model.py:529:                    "regime": regime,
+src/ml_model.py:537:        lgbm.fit(X_regime, y_regime)
+src/ml_model.py:538:        xgb.fit(X_regime, y_regime)
+src/ml_model.py:539:        trained_models[regime] = SoftVotingEnsemble(lgbm, xgb)
+src/ml_model.py:543:        raise ValueError("No models could be trained for any regime.")
+src/ml_model.py:546:    metrics_df.attrs["calibration_rows"] = calibration_rows
+src/train_ai_model.py:75:        # precision이 metrics_df에 없으면 0.0으로 유지 (regime별 CV에서 누락 가능)
+src/train_ai_model.py:83:            f"Average ROC-AUC across regimes: {avg_roc:.4f}\n"
+src/train_ai_model.py:327:        ticker_data.get(settings.market_regime_ticker)
+src/train_ai_model.py:328:        if settings.market_regime_filter_enabled
+src/train_ai_model.py:361:        market_regime_filter_enabled=settings.market_regime_filter_enabled,
+src/train_ai_model.py:362:        market_regime_ma_fast=settings.market_regime_ma_fast,
+src/train_ai_model.py:363:        market_regime_ma_slow=settings.market_regime_ma_slow,
+src/train_ai_model.py:417:        ticker_data.get(settings.market_regime_ticker)
+src/train_ai_model.py:418:        if settings.market_regime_filter_enabled
+src/train_ai_model.py:446:                market_regime_filter_enabled=settings.market_regime_filter_enabled,
+src/train_ai_model.py:447:                market_regime_ma_fast=settings.market_regime_ma_fast,
+src/train_ai_model.py:448:                market_regime_ma_slow=settings.market_regime_ma_slow,
+src/train_ai_model.py:600:    if calibration_report["overall_avg_brier_score"] > 0.25:
+src/train_ai_model.py:603:            f"Average Brier score: {calibration_report['overall_avg_brier_score']:.4f}\n"
+tests/test_ml_quality_report.py:22:            {"regime": "BULL", "fold": 1, "roc_auc": 0.52, "brier_score": 0.22, "test_size": 100},
+tests/test_ml_quality_report.py:23:            {"regime": "BULL", "fold": 2, "roc_auc": 0.53, "brier_score": 0.24, "test_size": 100},
+tests/test_ml_quality_report.py:24:            {"regime": "BEAR", "fold": 1, "roc_auc": 0.51, "brier_score": 0.28, "test_size": 80},
+tests/test_ml_quality_report.py:25:            {"regime": "BEAR", "fold": 2, "roc_auc": 0.52, "brier_score": 0.26, "test_size": 80},
+tests/test_ml_quality_report.py:28:    metrics_df.attrs["calibration_rows"] = [
+tests/test_ml_quality_report.py:29:        {"regime": "BULL", "fold": 1, "y_true": 1, "y_prob": 0.7},
+tests/test_ml_quality_report.py:30:        {"regime": "BULL", "fold": 1, "y_true": 0, "y_prob": 0.3},
+tests/test_ml_quality_report.py:31:        {"regime": "BEAR", "fold": 1, "y_true": 1, "y_prob": 0.6},
+tests/test_ml_quality_report.py:32:        {"regime": "BEAR", "fold": 1, "y_true": 0, "y_prob": 0.4},
+tests/test_ml_quality_report.py:38:    df = normalize_fold_metrics_df(pd.DataFrame([{"regime": "BULL", "fold": 1, "roc_auc": 0.5}]))
+tests/test_ml_quality_report.py:39:    for col in ("regime", "fold", "roc_auc", "brier_score", "test_size"):
+tests/test_ml_quality_report.py:48:    assert "BULL" in report["by_regime"]
+tests/test_ml_quality_report.py:55:            {"regime": "NEUTRAL", "fold": 1, "roc_auc": 0.40, "brier_score": 0.25, "test_size": 50},
+tests/test_ml_quality_report.py:56:            {"regime": "NEUTRAL", "fold": 2, "roc_auc": 0.55, "brier_score": 0.25, "test_size": 50},
+
+exec
+/bin/bash -lc "sed -n '421,555p' src/ml_model.py && sed -n '1,170p' tests/test_ml_quality_report.py && cat scripts/run_model_quality_report.sh" in /home/kimyo/trading-bot
+ succeeded in 156ms:
+def train_ai_score_model(
+    training_data: Dict[str, pd.DataFrame],
+    prediction_horizon: int = 5,
+    target_return_threshold: float = 0.0,
+    vix_df: pd.DataFrame | None = None,
+    spy_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
+) -> Tuple[BaseModel, pd.DataFrame]:
+    frames = []
+
+    for ticker, df in training_data.items():
+        try:
+            feature_df = build_features(
+                df,
+                prediction_horizon=prediction_horizon,
+                target_return_threshold=target_return_threshold,
+                vix_df=vix_df,
+                spy_df=spy_df,
+                macro_df=macro_df,
+            )
+        except ValueError:
+            continue
+        feature_df["ticker"] = ticker
+        frames.append(feature_df)
+
+    dataset = pd.concat(frames, ignore_index=True)
+    dataset = dataset.sort_values("date").reset_index(drop=True)
+
+    # 시장 레짐 계산 및 병합
+    if spy_df is not None and vix_df is not None:
+        regime_series = compute_daily_regime(spy_df, vix_df)
+        dataset = dataset.merge(
+            regime_series.rename("regime"), left_on="date", right_index=True, how="left"
+        )
+        dataset["regime"] = dataset["regime"].fillna("NEUTRAL")
+    else:
+        dataset["regime"] = "NEUTRAL"
+
+    regimes = ["BULL", "BEAR", "NEUTRAL"]
+    trained_models = {}
+    all_metrics = []
+    calibration_rows = []
+
+    for regime in regimes:
+        regime_data = dataset[dataset["regime"] == regime]
+        if len(regime_data) < 100:  # 최소 데이터 요구량
+            print(f"  WARNING: insufficient data for {regime} regime (rows={len(regime_data)}), skipping...")
+            continue
+            
+        print(f"  Training {regime} ensemble model (LightGBM + XGBoost, rows={len(regime_data)})...")
+        X_regime = regime_data[FEATURE_COLUMNS]
+        y_regime = regime_data["target"]
+
+        lgbm = LGBMClassifier(
+            n_estimators=500,
+            learning_rate=0.05,
+            max_depth=6,
+            num_leaves=31,
+            min_child_samples=20,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=42,
+            class_weight="balanced" if regime != "BEAR" else None,
+            n_jobs=-1,
+            verbose=-1,
+        )
+        
+        xgb = XGBClassifier(
+            n_estimators=500,
+            learning_rate=0.05,
+            max_depth=6,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=42,
+            n_jobs=-1,
+            verbosity=0,
+        )
+
+        # 교차 검증 (단순화: 앙상블 효과 확인)
+        tscv = TimeSeriesSplit(n_splits=3)
+        for fold, (train_idx, test_idx) in enumerate(tscv.split(X_regime), start=1):
+            X_train, X_test = X_regime.iloc[train_idx], X_regime.iloc[test_idx]
+            y_train, y_test = y_regime.iloc[train_idx], y_regime.iloc[test_idx]
+            
+            # 검증을 위한 앙상블 확률
+            f_lgbm = LGBMClassifier(n_estimators=100, random_state=42, verbose=-1)
+            f_xgb = XGBClassifier(n_estimators=100, random_state=42, n_jobs=-1, verbosity=0)
+            
+            f_lgbm.fit(X_train, y_train)
+            f_xgb.fit(X_train, y_train)
+            
+            proba = (f_lgbm.predict_proba(X_test)[:, 1] + f_xgb.predict_proba(X_test)[:, 1]) / 2.0
+            
+            try:
+                auc = roc_auc_score(y_test, proba)
+            except ValueError:
+                auc = 0.5
+            brier = brier_score_loss(y_test, proba)
+            
+            all_metrics.append({
+                "regime": regime,
+                "fold": fold,
+                "roc_auc": auc,
+                "brier_score": brier,
+                "test_size": len(test_idx)
+            })
+            calibration_rows.extend(
+                {
+                    "regime": regime,
+                    "fold": fold,
+                    "y_true": int(y_true),
+                    "y_prob": float(y_prob),
+                }
+                for y_true, y_prob in zip(y_test.tolist(), proba.tolist())
+            )
+
+        lgbm.fit(X_regime, y_regime)
+        xgb.fit(X_regime, y_regime)
+        trained_models[regime] = SoftVotingEnsemble(lgbm, xgb)
+
+    # 만약 특정 레짐 모델이 하나도 없으면 (에러 방지)
+    if not trained_models:
+        raise ValueError("No models could be trained for any regime.")
+
+    metrics_df = pd.DataFrame(all_metrics)
+    metrics_df.attrs["calibration_rows"] = calibration_rows
+    wrapper = RegimeAwareModelWrapper(trained_models, FEATURE_COLUMNS, prediction_horizon, target_return_threshold)
+    return wrapper, metrics_df
+
+
+def load_ai_score_model() -> BaseModel:
+    if not MODEL_PATH.exists():
+        raise FileNotFoundError(
+            f"Model not found: {MODEL_PATH}. Run python -m src.train_ai_model first."
+        )
+"""Unit tests for fold stability and calibration report generation."""
+
+import json
+from pathlib import Path
+
+import pandas as pd
+import pytest
+
+from src.ml_quality_report import (
+    FOLD_METRICS_COLUMNS,
+    build_calibration_report,
+    build_fold_stability_report,
+    normalize_fold_metrics_df,
+    regenerate_reports_from_fold_metrics_csv,
+    write_ml_quality_reports,
+)
+
+
+def _sample_metrics_df() -> pd.DataFrame:
+    metrics_df = pd.DataFrame(
+        [
+            {"regime": "BULL", "fold": 1, "roc_auc": 0.52, "brier_score": 0.22, "test_size": 100},
+            {"regime": "BULL", "fold": 2, "roc_auc": 0.53, "brier_score": 0.24, "test_size": 100},
+            {"regime": "BEAR", "fold": 1, "roc_auc": 0.51, "brier_score": 0.28, "test_size": 80},
+            {"regime": "BEAR", "fold": 2, "roc_auc": 0.52, "brier_score": 0.26, "test_size": 80},
+        ]
+    )
+    metrics_df.attrs["calibration_rows"] = [
+        {"regime": "BULL", "fold": 1, "y_true": 1, "y_prob": 0.7},
+        {"regime": "BULL", "fold": 1, "y_true": 0, "y_prob": 0.3},
+        {"regime": "BEAR", "fold": 1, "y_true": 1, "y_prob": 0.6},
+        {"regime": "BEAR", "fold": 1, "y_true": 0, "y_prob": 0.4},
+    ]
+    return metrics_df
+
+
+def test_normalize_fold_metrics_schema():
+    df = normalize_fold_metrics_df(pd.DataFrame([{"regime": "BULL", "fold": 1, "roc_auc": 0.5}]))
+    for col in ("regime", "fold", "roc_auc", "brier_score", "test_size"):
+        assert col in df.columns
+
+
+def test_fold_stability_report_flags_high_variance():
+    metrics_df = _sample_metrics_df()
+    report = build_fold_stability_report(metrics_df)
+    assert report["fold_count"] == 4
+    assert report["roc_auc"]["std"] is not None
+    assert "BULL" in report["by_regime"]
+    assert report["high_variance_warning"] is False
+
+
+def test_fold_stability_warns_on_wide_roc_auc_spread():
+    metrics_df = pd.DataFrame(
+        [
+            {"regime": "NEUTRAL", "fold": 1, "roc_auc": 0.40, "brier_score": 0.25, "test_size": 50},
+            {"regime": "NEUTRAL", "fold": 2, "roc_auc": 0.55, "brier_score": 0.25, "test_size": 50},
+        ]
+    )
+    report = build_fold_stability_report(metrics_df)
+    assert report["high_variance_warning"] is True
+
+
+def test_write_ml_quality_reports(tmp_path: Path):
+    paths = write_ml_quality_reports(tmp_path, _sample_metrics_df())
+    assert paths["fold_metrics"].is_file()
+    stability = json.loads(paths["fold_stability"].read_text(encoding="utf-8"))
+    assert stability["fold_count"] == 4
+    calibration = json.loads(paths["calibration_report"].read_text(encoding="utf-8"))
+    assert calibration["bin_count"] >= 1
+    written = pd.read_csv(paths["fold_metrics"])
+    assert list(written.columns[: len(FOLD_METRICS_COLUMNS)]) == list(FOLD_METRICS_COLUMNS)
+
+
+def test_regenerate_from_csv_round_trip(tmp_path: Path):
+    source = tmp_path / "fold_metrics.csv"
+    _sample_metrics_df().to_csv(source, index=False)
+    paths = regenerate_reports_from_fold_metrics_csv(source, tmp_path)
+    assert paths["fold_stability"].is_file()
+
+
+def test_calibration_report_empty_without_rows():
+    report, bins = build_calibration_report(pd.DataFrame())
+    assert report["bin_count"] == 0
+    assert bins.empty
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$PROJECT_DIR"
+
+METRICS_PATH="${1:-logs/ml/fold_metrics.csv}"
+if [[ ! -f "$METRICS_PATH" && -f logs/ml/ai_model_metrics.csv ]]; then
+  METRICS_PATH="logs/ml/ai_model_metrics.csv"
+fi
+
+PYTHONPATH=. "$PROJECT_DIR/.venv/bin/python" -m src.ml_quality_report \
+  --metrics "$METRICS_PATH" \
+  --output-dir logs/ml
+
+exec
+/bin/bash -lc 'head -5 logs/ml/ai_model_metrics.csv && rg "accuracy" -n src/ml_model.py src/train_ai_model.py' in /home/kimyo/trading-bot
+ succeeded in 173ms:
+fold,accuracy,precision,recall,roc_auc,test_positive_rate,prediction_positive_rate,train_size,test_size
+1,0.528979045920642,0.5457911357944027,0.5393306790057032,0.5316021297826623,0.5178889879625501,0.5117588051716451,17944,17944
+2,0.45692153366027644,0.6543549218347363,0.33001212961358517,0.5026369607790756,0.6432233615693268,0.32439812750780206,35888,17944
+3,0.5665960766830138,0.6093773110486614,0.7675826734979041,0.5460608256136901,0.5982501114578689,0.7535666518056174,53832,17944
+4,0.451627284886313,0.5284319356691557,0.44508950169327527,0.4455734853749122,0.5759585376727597,0.4851203744984396,71776,17944
+src/ml_model.py:14:from sklearn.metrics import accuracy_score, brier_score_loss, precision_score, recall_score, roc_auc_score
+
+exec
+/bin/bash -lc "sed -n '1,110p' src/train_ai_model.py && rg \"train_ai_score_model\" -n src/train_ai_model.py src/ml_model.py" in /home/kimyo/trading-bot
+ succeeded in 166ms:
+import csv
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pandas as pd
+
+from src.features import build_features
+from src.settings import load_settings, save_settings
+from src.data_loader import load_price_data_batch
+from src.ml_model import (
+    CHAMPION_ARCHIVE_DIR,
+    FEATURE_COLUMNS,
+    MODEL_METADATA_PATH,
+    MODEL_PATH,
+    archive_current_champion,
+    build_model_bundle,
+    build_promotion_report,
+    bundle_to_model_wrapper,
+    find_latest_archived_champion,
+    load_ai_score_model,
+    load_model_metadata,
+    restore_archived_champion,
+    save_challenger_bundle,
+    save_model_bundle,
+    train_ai_score_model,
+)
+from src.macro_loader import load_macro_data
+from src.ml_quality_report import (
+    CALIBRATION_BINS_FILENAME,
+    CALIBRATION_REPORT_FILENAME,
+    DEFAULT_ML_OUTPUT_DIR,
+    write_ml_quality_reports,
+)
+from src.retrain_holdout import (
+    exclude_holdout_from_ticker_data,
+    portfolio_holdout_window,
+    slice_ticker_data_to_holdout,
+)
+from src.notifier import notify_info
+from src.portfolio_backtester import (
+    PortfolioBacktestResult,
+    build_ai_score_frames,
+    run_portfolio_backtest,
+)
+
+VIX_TICKER = "^VIX"
+RETRAIN_LOG_PATH = Path("logs/retrain_history.csv")
+ROLLBACK_REPORT_PATH = Path("logs/ml/model_rollback_report.json")
+OOS_VALIDATION_PATH = Path("logs/validation/oos_validation.csv")
+BASELINE_SUMMARY_PATH = Path("logs/baselines/current_strategy/portfolio_summary.csv")
+FEATURE_STATS_PATH = Path("models/ai_feature_stats.json")
+DRIFT_REPORT_PATH = Path("logs/ml/feature_drift_report.json")
+CALIBRATION_REPORT_PATH = DEFAULT_ML_OUTPUT_DIR / CALIBRATION_REPORT_FILENAME
+CALIBRATION_BINS_PATH = DEFAULT_ML_OUTPUT_DIR / CALIBRATION_BINS_FILENAME
+THRESHOLD_RETUNE_REPORT_PATH = Path("logs/ml/threshold_retune_report.json")
+THRESHOLD_RETUNE_RESULTS_PATH = Path("logs/ml/threshold_retune_results.csv")
+ROLLBACK_MIN_TOTAL_RETURN = -0.05
+ROLLBACK_MIN_WIN_RATE = 0.35
+ROLLBACK_MAX_DRAWDOWN = -0.20
+DRIFT_ZSCORE_ALERT_THRESHOLD = 1.5
+BUY_THRESHOLD_GRID = [0.40, 0.45, 0.50, 0.55, 0.60]
+EXIT_THRESHOLD_GRID = [0.20, 0.25, 0.30, 0.35, 0.40, 0.45]
+
+
+def _append_retrain_log(status: str, metrics_df, elapsed_sec: float) -> None:
+    RETRAIN_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    write_header = not RETRAIN_LOG_PATH.exists()
+
+    avg_roc = 0.0
+    avg_precision = 0.0
+    if metrics_df is not None and not metrics_df.empty:
+        if "roc_auc" in metrics_df.columns:
+            avg_roc = float(metrics_df["roc_auc"].mean())
+        # precision이 metrics_df에 없으면 0.0으로 유지 (regime별 CV에서 누락 가능)
+        if "precision" in metrics_df.columns:
+            avg_precision = float(metrics_df["precision"].mean())
+
+    # ROC-AUC 성능 저하 알림 (평균치 기준)
+    if avg_roc < 0.51 and status == "success":
+        notify_info(
+            "⚠️ AI Model Performance Degradation (Regime-Aware)",
+            f"Average ROC-AUC across regimes: {avg_roc:.4f}\n"
+            f"Retraining completed, but overall model quality may be low."
+        )
+
+    row = {
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "status": status,
+        "avg_roc_auc": round(avg_roc, 4),
+        "avg_precision": round(avg_precision, 4),
+        "elapsed_sec": round(elapsed_sec, 1),
+    }
+
+    with RETRAIN_LOG_PATH.open("a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=row.keys())
+        if write_header:
+            writer.writeheader()
+        writer.writerow(row)
+
+
+def _load_recent_performance_snapshot() -> dict | None:
+    if OOS_VALIDATION_PATH.exists():
+        df = pd.read_csv(OOS_VALIDATION_PATH)
+        if not df.empty:
+            row = df.iloc[-1]
+            return {
+                "source": str(OOS_VALIDATION_PATH),
+                "total_return": float(row.get("total_return", 0.0)),
+                "max_drawdown": float(row.get("max_drawdown", 0.0)),
+src/ml_model.py:421:def train_ai_score_model(
+src/train_ai_model.py:26:    train_ai_score_model,
+src/train_ai_model.py:557:    model, metrics_df = train_ai_score_model(
+
+exec
+/bin/bash -lc "nl -ba src/ml_quality_report.py | sed -n '175,215p'; nl -ba src/walk_forward_validation.py | sed -n '98,112p'" in /home/kimyo/trading-bot
+ succeeded in 148ms:
+   175	    prefix = f"{file_prefix}_" if file_prefix else ""
+   176	    fold_metrics_path = output_dir / f"{prefix}{FOLD_METRICS_FILENAME}"
+   177	    stability_path = output_dir / f"{prefix}{FOLD_STABILITY_REPORT_FILENAME}"
+   178	    calibration_path = output_dir / f"{prefix}{CALIBRATION_REPORT_FILENAME}"
+   179	    bins_path = output_dir / f"{prefix}{CALIBRATION_BINS_FILENAME}"
+   180	
+   181	    fold_df = normalize_fold_metrics_df(metrics_df)
+   182	    fold_df.to_csv(fold_metrics_path, index=False)
+   183	
+   184	    stability = build_fold_stability_report(metrics_df)
+   185	    stability_path.write_text(
+   186	        json.dumps(stability, indent=2, sort_keys=True),
+   187	        encoding="utf-8",
+   188	    )
+   189	
+   190	    calibration_report, bins_df = build_calibration_report(metrics_df)
+   191	    calibration_path.write_text(
+   192	        json.dumps(calibration_report, indent=2, sort_keys=True),
+   193	        encoding="utf-8",
+   194	    )
+   195	    if not bins_df.empty:
+   196	        bins_df.to_csv(bins_path, index=False)
+   197	    elif bins_path.exists():
+   198	        bins_path.unlink()
+   199	
+   200	    return {
+   201	        "fold_metrics": fold_metrics_path,
+   202	        "fold_stability": stability_path,
+   203	        "calibration_report": calibration_path,
+   204	        "calibration_bins": bins_path,
+   205	    }
+   206	
+   207	
+   208	def load_fold_metrics_csv(path: str | Path) -> pd.DataFrame:
+   209	    return normalize_fold_metrics_df(pd.read_csv(path))
+   210	
+   211	
+   212	def regenerate_reports_from_fold_metrics_csv(
+   213	    metrics_path: str | Path,
+   214	    output_dir: str | Path | None = None,
+   215	    *,
+    98	        macro_train = _filter_by_date(macro_all, fold["train_start"], fold["train_end"])
+    99	        macro_test = _filter_by_date(macro_all, fold["test_start"], fold["test_end"])
+   100	
+   101	        # 모델 학습
+   102	        print(f"  Training model...")
+   103	        model, fold_metrics_df = train_ai_score_model(
+   104	            training_data=train_data,
+   105	            prediction_horizon=20,
+   106	            vix_df=vix_train,
+   107	            spy_df=spy_train,
+   108	            macro_df=macro_train,
+   109	        )
+   110	        period_label = f"{fold['test_start'].date()} ~ {fold['test_end'].date()}"
+   111	        fold_metrics_df = fold_metrics_df.copy()
+   112	        fold_metrics_df["walk_forward_fold"] = i
+
+codex
+The added report path exists, but the walk-forward ROC-AUC stability artifact is populated from inner training CV metrics instead of the outer validation folds it is meant to describe.
+
+Review comment:
+
+- [P2] Measure walk-forward ROC-AUC on validation folds — /home/kimyo/trading-bot/src/walk_forward_validation.py:103-109
+  In `walk_forward_validation`, `fold_metrics_df` comes from `train_ai_score_model(...)`, which is the model's internal time-series CV over the training window, then it is labeled with the outer walk-forward test period. For walk-forward runs this reports training-window CV ROC-AUC rather than ROC-AUC on the actual `t_start`–`t_end` validation fold, so the new stability report can look stable even when the out-of-sample fold predictions are not.

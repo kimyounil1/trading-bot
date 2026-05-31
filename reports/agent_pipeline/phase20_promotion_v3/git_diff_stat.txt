@@ -1,0 +1,9 @@
+ logs/ml/ai_model_metrics.csv          |  10 +-
+ logs/retrain_history.csv              |   1 +
+ models/ai_score_model.joblib          | Bin 1757990 -> 1758310 bytes
+ src/ml_model.py                       | 123 ++++++++++++++++++++++--
+ src/portfolio_backtest_validation.py  |  52 ++++++++---
+ src/train_ai_model.py                 | 170 +++++++++++++++++++++++++++++++++-
+ tests/test_model_governance.py        |  65 ++++++++++++-
+ tests/test_portfolio_backtest_gate.py |  12 +++
+ 8 files changed, 401 insertions(+), 32 deletions(-)
