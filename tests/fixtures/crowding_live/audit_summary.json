@@ -1,0 +1,8 @@
+{
+  "generated_at": "2026-05-30T00:00:00Z",
+  "skip_reason_counts": {
+    "factor_crowding": 2,
+    "stale_price_data": 1
+  },
+  "skip_by_event": {"SKIP_BUY": 5, "SKIP_EXIT": 1}
+}

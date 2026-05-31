@@ -2254,23 +2254,61 @@ def render_ops_dashboard() -> None:
         )
 
     st.divider()
-    st.subheader("기타 Ops latest_summary")
+    st.subheader("Ops latest_summary 뷰어")
 
-    report_paths = [
-        ("일별 audit", "logs/audit_daily/latest_summary.json"),
-        ("슬리피지", "logs/slippage_reports/latest_summary.json"),
-        ("crowding paper", "logs/crowding_paper/go_no_go_checklist.json"),
-        ("실행 정합", "logs/execution_alignment/latest_summary.json"),
-        ("LLM cache", "logs/llm_cache/latest_summary.json"),
-        ("guard impact", "logs/guard_impact/latest_summary.json"),
+    if st.button("Crowding live 리포트 생성", key="ops_crowding_live"):
+        with st.spinner("crowding live impact..."):
+            code, out, err = run_project_command(
+                [
+                    str(ROOT_DIR / ".venv/bin/python"),
+                    "-m",
+                    "src.crowding_live_impact_report",
+                    "--lookback-days",
+                    "7",
+                ],
+                timeout=60,
+            )
+        if code == 0:
+            st.success("logs/crowding_live/latest_summary.json 갱신됨")
+        else:
+            st.error("실패")
+        if out:
+            st.code(out[-3000:])
+        if err:
+            st.code(err[-1500:])
+
+    ops_report_catalog = [
+        ("모니터링", [
+            ("일별 audit", "logs/audit_daily/latest_summary.json"),
+            ("슬리피지", "logs/slippage_reports/latest_summary.json"),
+            ("LLM cache", "logs/llm_cache/latest_summary.json"),
+            ("실행 정합", "logs/execution_alignment/latest_summary.json"),
+        ]),
+        ("백테스트·가드", [
+            ("guard impact (백테스트)", "logs/guard_impact/latest_summary.json"),
+            ("crowding live (audit 대조)", "logs/crowding_live/latest_summary.json"),
+            ("crowding paper GO/NO-GO", "logs/crowding_paper/go_no_go_checklist.json"),
+            ("벤치마크 gap", "logs/benchmark_gap/latest_summary.json"),
+            ("guard/leverage stress", "logs/leverage_stress/latest_summary.json"),
+        ]),
+        ("모델·승격", [
+            ("fold variance", "logs/fold_variance/latest_summary.json"),
+            ("promotion summary", "logs/promotion_summary/latest_summary.json"),
+            ("model quality", "logs/model_quality/latest_summary.json"),
+        ]),
     ]
-    for label, rel in report_paths:
-        data = load_json_summary(rel)
-        with st.expander(label):
-            if data is None:
-                st.caption(f"없음: {rel}")
-            else:
-                st.json(data)
+    for section, entries in ops_report_catalog:
+        st.markdown(f"**{section}**")
+        for label, rel in entries:
+            data = load_json_summary(rel)
+            with st.expander(f"{label} — `{rel}`"):
+                if data is None:
+                    st.caption("산출물 없음 — runbook Quick commands 또는 위 버튼으로 생성")
+                else:
+                    st.json(data)
+                    if "alignment" in data and isinstance(data["alignment"], dict):
+                        for note in data["alignment"].get("notes") or []:
+                            st.info(note)
 
 
 def run_project_command(command: list[str], timeout: int = 600) -> tuple[int, str, str]:

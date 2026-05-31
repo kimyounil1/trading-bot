@@ -1,0 +1,7 @@
+{
+  "generated_at": "2026-05-30T00:00:00Z",
+  "baseline": {"trade_count": 42, "total_return_pct": 50.7},
+  "with_crowding_guard": {"trade_count": 38, "total_return_pct": 49.1},
+  "delta": {"trade_count": -4, "total_return_pct": -1.6},
+  "crowding_guard_enabled_in_config": false
+}

@@ -87,6 +87,8 @@ def _normalize_skip_reason(reason: str) -> str:
         return "dry_run_only"
     if "cooldown" in lower:
         return "cooldown"
+    if "crowding" in lower:
+        return "factor_crowding"
     if "max orders" in lower:
         return "max_orders"
     if "regime" in lower or "bear" in lower:

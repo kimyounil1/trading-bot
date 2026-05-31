@@ -120,6 +120,7 @@ print(len(s.tickers), 'tickers cached')
 - **Paper crowding guard (수동)**:
   ```bash
   bash scripts/run_guard_impact_report.sh
+  bash scripts/run_crowding_live_impact_report.sh   # logs/crowding_live/latest_summary.json
   bash scripts/run_crowding_paper_gate.sh   # logs/crowding_paper/go_no_go_checklist.json
   ```
   GO 시 설정안: `config/crowding_paper_proposal.json` (paper only)

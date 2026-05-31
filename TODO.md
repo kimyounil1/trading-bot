@@ -62,10 +62,11 @@ RUN_ID=<phase>_final bash scripts/run_pass_complete.sh "Phase N complete"
 
 ---
 
-## Backlog (우선순위 낮음 · live 미사용 시 보류 가능) ← **다음**
-- [ ] `[AGY]` Factor/crowding guard **라이브** 영향도 (백테스트 리포트 vs audit 스킵 로그 대조)
-- [ ] `[Cursor]` Transformer / RL — `docs/RESEARCH_MODELS.md` 실험 브랜치만 (프로덕션 연동 없음)
-- [ ] `[Cursor]` Streamlit CMS에 ops 리포트 latest_summary 뷰어
+## Backlog
+
+- [x] `[AGY]` Factor/crowding guard **라이브** 영향도 — `src/crowding_live_impact_report.py`, `bash scripts/run_crowding_live_impact_report.sh`
+- [x] `[Cursor]` Transformer / RL — `experiments/README.md`, `bash scripts/run_research_smoke.sh`
+- [x] `[Cursor]` Streamlit CMS ops `latest_summary` 뷰어 확장 (`app/streamlit_app.py` Ops / 게이트)
 
 ---
 
@@ -86,6 +87,8 @@ bash scripts/run_fold_variance_report.sh
 bash scripts/run_promotion_summary.sh
 bash scripts/run_benchmark_gap_report.sh
 bash scripts/run_guard_impact_report.sh    # 무거움 — 주간 권장
+bash scripts/run_crowding_live_impact_report.sh
+bash scripts/run_research_smoke.sh         # research-only, non-production
 bash scripts/run_leverage_stress_report.sh --leverage 2.0
 bash scripts/run_margin_leverage_paper_gate.sh --leverage-factor 1.25
 

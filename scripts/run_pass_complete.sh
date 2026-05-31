@@ -39,6 +39,7 @@ else
     tests/test_reappraise_regime.py \
     tests/test_portfolio_backtest_golden.py \
     tests/test_portfolio_backtest_gate.py \
+    tests/test_crowding_live_impact_report.py \
     tests/test_daily_audit_summary.py \
     tests/test_daily_audit_summary_schema.py \
     tests/test_retrain_notifications.py \

@@ -56,6 +56,8 @@ fi
 if [[ "$RUN_HEAVY" -eq 1 ]]; then
   echo "--- guard impact (backtest comparison) ---"
   "$PYTHON" -m src.guard_impact_report
+  echo "--- crowding live vs backtest ---"
+  bash "${ROOT}/scripts/run_crowding_live_impact_report.sh"
   echo "--- crowding paper go/no-go ---"
   bash "${ROOT}/scripts/run_crowding_paper_gate.sh"
   echo "--- leverage stress ---"

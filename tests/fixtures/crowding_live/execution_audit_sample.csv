@@ -1,0 +1,4 @@
+timestamp,event_type,ticker,reason
+2026-05-29T10:00:00Z,SKIP_BUY,AAA,momentum crowding limit reached (peers=2)
+2026-05-29T11:00:00Z,SKIP_BUY,BBB,trend crowding limit reached (peers=3)
+2026-05-29T12:00:00Z,SKIP_BUY,CCC,stale price data
