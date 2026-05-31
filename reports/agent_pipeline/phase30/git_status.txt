@@ -1,0 +1,24 @@
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .gitignore
+	modified:   TODO.md
+	modified:   config/strategy_config.json
+	modified:   docs/TODO_ARCHIVE.md
+	modified:   docs/runbook.md
+	modified:   logs/portfolio_backtest/portfolio_summary.csv
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	logs/benchmark_gap/
+	logs/crowding_paper/
+	logs/guard_impact/
+	logs/llm_advisory/
+	logs/llm_cache_warmup/
+	logs/operational_alpha/
+	scripts/run_paper_ops_bootstrap.sh
+
+no changes added to commit (use "git add" and/or "git commit -a")

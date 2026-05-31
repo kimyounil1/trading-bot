@@ -1,0 +1,16 @@
+{
+  "generated_at": "2026-05-31T14:15:36Z",
+  "audit_path": "logs/execution_audit.csv",
+  "lookback_days": 90,
+  "rows": 117,
+  "advisory_would_reject": 0,
+  "buy_submitted": 0,
+  "buy_submitted_despite_llm_reject": 0,
+  "buy_blocked_by_llm": 0,
+  "sample_would_reject": [],
+  "sample_ignored_reject_buys": [],
+  "notes": [
+    "llm_advisory_only=true: orders proceed; LLM_ADVISORY + BUY_SUBMITTED with REJECT verdict = ignored advice.",
+    "PnL diff (followed vs ignored) needs fill prices — join orders/status logs in a later pass."
+  ]
+}

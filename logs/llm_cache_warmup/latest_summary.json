@@ -1,0 +1,17 @@
+{
+  "generated_at": "2026-05-31T14:05:00Z",
+  "status": "complete",
+  "backtest_entry_keys": 141,
+  "cache_covered": 141,
+  "llm_rejects_in_cache": 6,
+  "reject_keys": [
+    "UNH_2025-09-18",
+    "GM_2025-11-17",
+    "LULU_2025-12-02",
+    "GM_2026-01-02",
+    "UNH_2026-04-10",
+    "INTC_2025-08-28"
+  ],
+  "operational_delta_pp": -7.63,
+  "note": "Resumed after power loss; warm_llm_cache skips existing keys on rerun."
+}

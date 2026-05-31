@@ -1,0 +1,171 @@
+{
+  "beats_benchmark": true,
+  "by_entry_month": [
+    {
+      "entry_month": "2025-06",
+      "pnl": 1581.8146991811464
+    },
+    {
+      "entry_month": "2025-07",
+      "pnl": 589.7350377029438
+    },
+    {
+      "entry_month": "2025-08",
+      "pnl": 546.5308008791142
+    },
+    {
+      "entry_month": "2025-09",
+      "pnl": 418.5074038140092
+    },
+    {
+      "entry_month": "2025-10",
+      "pnl": 646.0909739146289
+    },
+    {
+      "entry_month": "2025-11",
+      "pnl": 756.7175269078036
+    },
+    {
+      "entry_month": "2025-12",
+      "pnl": 836.8943752613361
+    },
+    {
+      "entry_month": "2026-01",
+      "pnl": 1274.3055360033613
+    },
+    {
+      "entry_month": "2026-02",
+      "pnl": 692.605490730698
+    },
+    {
+      "entry_month": "2026-03",
+      "pnl": 214.29113010114884
+    },
+    {
+      "entry_month": "2026-04",
+      "pnl": 2123.816070702863
+    }
+  ],
+  "by_sector": [
+    {
+      "pnl": 6.344043071120495,
+      "sector": "tech"
+    },
+    {
+      "pnl": 18.741445912651443,
+      "sector": "auto"
+    },
+    {
+      "pnl": 65.9963833710301,
+      "sector": "consumer_tech"
+    },
+    {
+      "pnl": 161.62982192442632,
+      "sector": "defense"
+    },
+    {
+      "pnl": 167.0857988203445,
+      "sector": "media"
+    },
+    {
+      "pnl": 182.943196855442,
+      "sector": "consumer"
+    },
+    {
+      "pnl": 201.47969593199036,
+      "sector": "realestate"
+    },
+    {
+      "pnl": 336.4691159787012,
+      "sector": "utilities"
+    },
+    {
+      "pnl": 345.6399784018238,
+      "sector": "etf"
+    },
+    {
+      "pnl": 487.7678869981121,
+      "sector": "financials"
+    },
+    {
+      "pnl": 545.20459429107,
+      "sector": "energy"
+    },
+    {
+      "pnl": 687.8890830504058,
+      "sector": "materials"
+    },
+    {
+      "pnl": 788.1981779590517,
+      "sector": "industrial"
+    },
+    {
+      "pnl": 792.3047186216495,
+      "sector": "software"
+    },
+    {
+      "pnl": 1547.9735393345784,
+      "sector": "healthcare"
+    },
+    {
+      "pnl": 3345.6415646766554,
+      "sector": "semis"
+    }
+  ],
+  "by_ticker": [
+    {
+      "pnl": -419.7112611594189,
+      "ticker": "COIN"
+    },
+    {
+      "pnl": -199.78341737958021,
+      "ticker": "META"
+    },
+    {
+      "pnl": -163.06867838741118,
+      "ticker": "ANET"
+    },
+    {
+      "pnl": -113.36760225018156,
+      "ticker": "ASML"
+    },
+    {
+      "pnl": -91.25115546546863,
+      "ticker": "AMZN"
+    },
+    {
+      "pnl": -85.68574446988987,
+      "ticker": "TSLA"
+    },
+    {
+      "pnl": -71.03410602437407,
+      "ticker": "BLK"
+    },
+    {
+      "pnl": -68.07840649298055,
+      "ticker": "F"
+    },
+    {
+      "pnl": -67.85038593295985,
+      "ticker": "SNPS"
+    },
+    {
+      "pnl": -56.22136274918557,
+      "ticker": "ABNB"
+    }
+  ],
+  "gap_pct": 31.7646,
+  "generated_at": "2026-05-31T12:56:38Z",
+  "recommendations": [],
+  "slippage_context": {},
+  "summary": {
+    "benchmark_return": 0.6504853238288733,
+    "final_equity": 19681.309045199054,
+    "initial_cash": 10000.0,
+    "max_drawdown": -0.0731374832818028,
+    "sharpe_ratio": 3.1519064349744568,
+    "total_return": 0.9681309045199054,
+    "trades": 141,
+    "win_rate": 0.6028368794326241
+  }
+}

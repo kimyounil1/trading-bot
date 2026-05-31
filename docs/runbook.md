@@ -83,6 +83,21 @@ LIVE_LLM=1 bash scripts/run_operational_alpha_validation.sh   # cache miss 시 G
 산출물: `data/llm_cache.json`, `logs/llm_cache_warmup/latest_summary.json`, `logs/operational_alpha/latest_summary.json`  
 워밍업은 진입일 키(`{티커}_{YYYY-MM-DD}`)로 저장. 당일 yfinance에 기사가 없으면 **현재 헤드라인 fallback**으로 Gemini 호출(완전한 과거 뉴스 아카이브는 아님). paper `main.py` 실행 시 같은 키로 캐시가 계속 쌓임.
 
+```bash
+bash scripts/run_paper_ops_bootstrap.sh   # dry-run + advisory + alpha + operational summaries
+```
+
+### 2.3.2 Crowding guard (paper)
+
+`strategy_config.json` 기본: **`crowding_guard_enabled: false`**. Paper 실험 값은 `config/crowding_paper_proposal.json`만.
+
+```bash
+bash scripts/run_guard_impact_report.sh
+bash scripts/run_crowding_paper_gate.sh   # writes logs/crowding_paper/go_no_go_checklist.json
+```
+
+2026-05-31 gate 결과: **NO_GO** (Sharpe delta below floor). **GO** 전까지 prod config에 crowding 켜지 않음.
+
 ### 2.4 유니버스 프로필 (`UNIVERSE_PROFILE`)
 
 | 프로필 | 스캔 풀 | 용도 |

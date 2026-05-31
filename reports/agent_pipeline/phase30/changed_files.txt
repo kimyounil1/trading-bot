@@ -1,0 +1,6 @@
+.gitignore
+TODO.md
+config/strategy_config.json
+docs/TODO_ARCHIVE.md
+docs/runbook.md
+logs/portfolio_backtest/portfolio_summary.csv

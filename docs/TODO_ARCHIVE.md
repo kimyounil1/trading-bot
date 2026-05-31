@@ -27,6 +27,7 @@
 | 26 | Live alignment (paper) | Crowding go/no-go, execution vs slippage diff, leverage/LLM cache alerts |
 | 27 | Universe + instrument meta | Master CSV, UNIVERSE_PROFILE, leveraged ETF registry and buy gates |
 | 28 | Margin leverage paper | Stress go/no-go gate, proposal caps, main buy block |
+| 29 | Beat benchmark (alpha) | Promotion ≥ bench, EW benchmark fix, alpha/operational pipelines, LLM advisory-only, cache warmup |
 
 **Milestones**
 - **2026-05-27:** Phase 0–19 closed (code + pytest + runbook).
@@ -36,3 +37,4 @@
 - **2026-05-30:** Phase 26 closed; paper crowding gate, execution alignment, stress/cache Telegram alerts.
 - **2026-05-30:** Phase 27 closed; universe master/smoke/research profiles, instrument registry, leverage ETF gates.
 - **2026-05-30:** Phase 28 closed; margin leverage paper gate wired to leverage stress + main.
+- **2026-05-31:** Phase 29 closed; +96.8% vs B&H +65%, LLM advisory (no block), crowding paper gate NO_GO.

@@ -1,4 +1,5 @@
 .env
+.antigravitycli/
 .venv/
 __pycache__/
 *.pyc
@@ -29,6 +30,21 @@ logs/*
 !logs/allocation_compare/*/*summary*.csv
 !logs/portfolio_backtest/
 !logs/portfolio_backtest/*summary*.csv
+!logs/benchmark_gap/
+!logs/benchmark_gap/latest_summary.json
+!logs/operational_alpha/
+!logs/operational_alpha/latest_summary.json
+!logs/llm_cache_warmup/
+!logs/llm_cache_warmup/latest_summary.json
+!logs/llm_advisory/
+!logs/llm_advisory/latest_summary.json
+!logs/guard_impact/
+!logs/guard_impact/latest_summary.json
+!logs/crowding_paper/
+!logs/crowding_paper/go_no_go_checklist.json
+
+# Pytest regenerates these from golden_execution_audit.csv
+tests/fixtures/audit_daily/golden_output/
 
 # Champion model binaries are local-only (retrain + promotion); never commit ad-hoc retrains.
 models/*

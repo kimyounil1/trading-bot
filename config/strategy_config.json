@@ -168,5 +168,6 @@
   "margin_leverage_stress_gate_required": true,
   "trailing_stop_pct": 0.05,
   "rebalance_threshold_pct": 0.20,
-  "sector_rotation_enabled": true
+  "sector_rotation_enabled": true,
+  "crowding_guard_enabled": false
 }

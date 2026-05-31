@@ -1,0 +1,53 @@
+{
+  "checklist": [
+    {
+      "detail": "blocked_trades=4 (min 1)",
+      "id": "guard_active",
+      "pass": true
+    },
+    {
+      "detail": "sharpe_delta=-0.4089 (floor -0.15)",
+      "id": "sharpe_not_too_worse",
+      "pass": false
+    },
+    {
+      "detail": "max_dd_delta_pp=1.8503 (floor -1.0)",
+      "id": "drawdown_acceptable",
+      "pass": true
+    },
+    {
+      "detail": "trade_count_delta=-4 (floor -20)",
+      "id": "trade_count_acceptable",
+      "pass": true
+    }
+  ],
+  "decision": "NO_GO",
+  "generated_at": "2026-05-31T14:15:57Z",
+  "guard_impact_path": "logs/guard_impact/latest_summary.json",
+  "metrics": {
+    "baseline": {
+      "max_drawdown_pct": -11.8399,
+      "sharpe_ratio": 1.8213,
+      "total_return_pct": 87.4945,
+      "trade_count": 35,
+      "win_rate_pct": 74.2857
+    },
+    "blocked_trades": 4,
+    "delta": {
+      "max_drawdown_pct": 1.8503,
+      "sharpe_ratio": -0.4089,
+      "total_return_pct": -52.389,
+      "trade_count": -4,
+      "win_rate_pct": -6.5438
+    },
+    "guarded": {
+      "estimated_crowding_blocked_trades": 4,
+      "max_drawdown_pct": -9.9896,
+      "sharpe_ratio": 1.4124,
+      "total_return_pct": 35.1055,
+      "trade_count": 31,
+      "win_rate_pct": 67.7419
+    }
+  },
+  "paper_proposal_path": "config/crowding_paper_proposal.json"
+}
