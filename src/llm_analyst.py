@@ -22,12 +22,27 @@ DEFAULT_LLM_MODEL = os.getenv("LLM_MODEL", "gemini-2.5-flash")
 _genai_client: GenaiClient | None = None
 
 
+def _resolve_api_key() -> str | None:
+    if GEMINI_API_KEY:
+        return GEMINI_API_KEY
+    return os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+
+
+def llm_cache_only_for_run(*, execute_orders: bool) -> bool:
+    """Paper execute uses live LLM on cache miss; dry-run uses cache unless LLM_LIVE_IN_DRY_RUN=1."""
+    if execute_orders:
+        return False
+    live = os.getenv("LLM_LIVE_IN_DRY_RUN", "").strip().lower() in {"1", "true", "yes"}
+    return not live
+
+
 def _get_genai_client() -> GenaiClient:
     global _genai_client
+    api_key = _resolve_api_key()
     if _genai_client is None:
-        if not GEMINI_API_KEY:
+        if not api_key:
             raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY is required for LLM calls")
-        _genai_client = genai.Client(api_key=GEMINI_API_KEY)
+        _genai_client = genai.Client(api_key=api_key)
     return _genai_client
 
 
@@ -106,7 +121,7 @@ def evaluate_ticker_consensus(
         status = "Auto-Approved" if is_ok else "Auto-Rejected"
         return is_ok, f"LLM cache miss ({status} per policy)"
 
-    if not GEMINI_API_KEY:
+    if not _resolve_api_key():
         return True, "GEMINI_API_KEY not found, skipping qualitative analysis (Auto-Approved)"
 
     try:

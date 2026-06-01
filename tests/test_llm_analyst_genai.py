@@ -2,11 +2,14 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import os
+
 from src import llm_analyst
 from src.llm_analyst import (
     _generate_llm_text,
     _response_text,
     evaluate_ticker_consensus,
+    llm_cache_only_for_run,
     reset_genai_client,
 )
 
@@ -14,6 +17,12 @@ from src.llm_analyst import (
 class TestLlmAnalystGenai(unittest.TestCase):
     def tearDown(self) -> None:
         reset_genai_client()
+
+    def test_llm_cache_only_for_run(self) -> None:
+        self.assertTrue(llm_cache_only_for_run(execute_orders=False))
+        self.assertFalse(llm_cache_only_for_run(execute_orders=True))
+        with patch.dict("os.environ", {"LLM_LIVE_IN_DRY_RUN": "1"}):
+            self.assertFalse(llm_cache_only_for_run(execute_orders=False))
 
     def test_response_text_from_text_attr(self) -> None:
         response = SimpleNamespace(text="  hello  ")

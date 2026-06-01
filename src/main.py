@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import src.config  # noqa: F401  # load .env (GEMINI_API_KEY) before LLM
+
 import argparse
 import json
 import os
@@ -41,6 +43,7 @@ from src.margin_leverage_paper_gate import (
 )
 from src.market_regime import get_current_regime
 from src.buy_guards import apply_sector_score_bonus, apply_shared_buy_guards
+from src.llm_analyst import llm_cache_only_for_run
 from src.macro_events import get_macro_event_risk
 from src.candidate_cache import get_dynamic_universe
 from src.sector_rotation import get_sector_leadership
@@ -539,6 +542,7 @@ def main() -> None:
     print("Account loaded from Alpaca paper.")
     print(f"cash={cash:.2f}, positions_count={positions_count}")
     print(f"execute_orders={execute_orders}")
+    print(f"llm_cache_only={llm_cache_only_for_run(execute_orders=execute_orders)}")
     if getattr(settings, "market_regime_filter_enabled", False):
         print(
             f"market_regime_ticker={settings.market_regime_ticker}, "
@@ -1072,7 +1076,7 @@ def main() -> None:
                 macro_risk_reason=macro_risk_reason,
                 margin_leverage_block_active=margin_leverage_block_active,
                 margin_leverage_block_reason=margin_leverage_block_reason,
-                llm_cache_only=not execute_orders,
+                llm_cache_only=llm_cache_only_for_run(execute_orders=execute_orders),
             )
             risk_allowed = guard.risk_allowed
             risk_reason = guard.risk_reason

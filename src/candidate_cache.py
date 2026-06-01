@@ -2,6 +2,8 @@ from __future__ import annotations
 
 """실시간 인기 종목 수집 및 후보 종목 캐시 관리."""
 
+import src.config  # noqa: F401  # load .env before LLM
+
 import json
 import time
 from datetime import datetime, timezone
@@ -23,6 +25,7 @@ from src.buy_guards import (
     apply_shared_buy_guards,
     execution_label_for_cache,
 )
+from src.llm_analyst import llm_cache_only_for_run
 from src.macro_events import get_macro_event_risk
 from src.margin_leverage_paper_gate import evaluate_margin_leverage_buy_block
 from src.risk_manager import (
@@ -512,7 +515,7 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
                 macro_risk_reason=macro_risk_reason,
                 margin_leverage_block_active=margin_leverage_block_active,
                 margin_leverage_block_reason=margin_leverage_block_reason,
-                llm_cache_only=True,
+                llm_cache_only=llm_cache_only_for_run(execute_orders=False),
             )
             risk_allowed = guard.risk_allowed
             reason = guard.risk_reason
