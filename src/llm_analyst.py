@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 CACHE_PATH = Path("data/llm_cache.json")
-DEFAULT_LLM_MODEL = os.getenv("LLM_MODEL", "gemma-4-26b-a4b-it")
+DEFAULT_LLM_MODEL = os.getenv("LLM_MODEL", "gemini-2.5-flash")
 
 _genai_client: GenaiClient | None = None
 
