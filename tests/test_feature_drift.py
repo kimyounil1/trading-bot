@@ -2,7 +2,8 @@ import unittest
 
 import pandas as pd
 
-from src.train_ai_model import _build_calibration_report, _compare_feature_stats
+from src.train_ai_model import _compare_feature_stats
+from src.ml_quality_report import build_calibration_report
 
 
 class FeatureDriftTest(unittest.TestCase):
@@ -61,7 +62,7 @@ class FeatureDriftTest(unittest.TestCase):
             {"regime": "BEAR", "fold": 1, "y_true": 1, "y_prob": 0.6},
         ]
 
-        report, bins_df = _build_calibration_report(metrics_df)
+        report, bins_df = build_calibration_report(metrics_df)
 
         self.assertAlmostEqual(report["overall_avg_brier_score"], 0.20, places=2)
         self.assertIn("BULL", report["regimes"])

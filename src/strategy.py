@@ -15,6 +15,13 @@ def add_indicators(
     ma_slow: int | None = None,
 ) -> pd.DataFrame:
     df = df.copy()
+    # Some data providers return holiday placeholders with NaN OHLC values.
+    # Drop invalid bars so rolling indicators don't become NaN at the latest row.
+    required_cols = [col for col in ("close", "high", "low") if col in df.columns]
+    if required_cols:
+        df = df.dropna(subset=required_cols).copy()
+    if df.empty:
+        return df
 
     if profile is not None:
         ma_fast = profile.ma_fast

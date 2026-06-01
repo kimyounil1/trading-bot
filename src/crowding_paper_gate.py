@@ -9,9 +9,27 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from dataclasses import asdict, fields
+
+from src.settings import (
+    DEFAULT_SETTINGS,
+    StrategySettings,
+    _validate_strategy_settings_payload,
+    validate_settings,
+)
+
 DEFAULT_GUARD_IMPACT_PATH = Path("logs/guard_impact/latest_summary.json")
 DEFAULT_OUTPUT_DIR = Path("logs/crowding_paper")
 PROPOSAL_PATH = Path("config/crowding_paper_proposal.json")
+DEFAULT_STRATEGY_CONFIG_PATH = Path("config/strategy_config.json")
+
+CROWDING_PROPOSAL_KEYS = (
+    "crowding_guard_enabled",
+    "crowding_lookback_days",
+    "crowding_max_positions",
+    "crowding_momentum_threshold",
+    "crowding_trend_gap_threshold",
+)
 
 CROWDING_GATE_REPORT_KEYS = (
     "generated_at",
@@ -125,13 +143,84 @@ def write_crowding_gate_artifacts(
     return path
 
 
+def load_crowding_paper_proposal(path: Path = PROPOSAL_PATH) -> dict[str, Any]:
+    if not path.is_file():
+        raise FileNotFoundError(f"Crowding paper proposal missing: {path}")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"{path} must contain a top-level JSON object")
+    return payload
+
+
+def apply_crowding_paper_proposal_if_go(
+    gate_report: dict[str, Any],
+    *,
+    config_path: Path = DEFAULT_STRATEGY_CONFIG_PATH,
+    proposal_path: Path = PROPOSAL_PATH,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Merge proposal crowding keys into strategy_config only when gate decision is GO_PAPER."""
+    decision = str(gate_report.get("decision", ""))
+    if decision != "GO_PAPER":
+        return {
+            "applied": False,
+            "decision": decision,
+            "config_path": str(config_path),
+            "reason": "gate not GO_PAPER — strategy_config unchanged",
+        }
+
+    proposal = load_crowding_paper_proposal(proposal_path)
+    overrides = {
+        key: proposal[key]
+        for key in CROWDING_PROPOSAL_KEYS
+        if key in proposal
+    }
+    if not overrides:
+        raise ValueError(f"No crowding keys found in proposal: {proposal_path}")
+
+    raw = json.loads(config_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError(f"{config_path} must contain a top-level JSON object")
+    raw.update(overrides)
+    _validate_strategy_settings_payload(raw, config_path)
+    field_names = {item.name for item in fields(StrategySettings)}
+    payload = {**asdict(DEFAULT_SETTINGS), **raw}
+    payload["tickers"] = list(raw.get("tickers", payload["tickers"]))
+    validate_settings(
+        StrategySettings(**{key: payload[key] for key in field_names if key in payload})
+    )
+    if not dry_run:
+        config_path.write_text(json.dumps(raw, indent=2) + "\n", encoding="utf-8")
+
+    return {
+        "applied": True,
+        "decision": decision,
+        "config_path": str(config_path),
+        "proposal_path": str(proposal_path),
+        "overrides": overrides,
+        "dry_run": dry_run,
+    }
+
+
 def run_crowding_paper_gate(
     guard_impact_path: Path = DEFAULT_GUARD_IMPACT_PATH,
     output_dir: Path = DEFAULT_OUTPUT_DIR,
+    *,
+    apply_config: bool = False,
+    config_path: Path = DEFAULT_STRATEGY_CONFIG_PATH,
+    proposal_path: Path = PROPOSAL_PATH,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     guard_report = load_guard_impact_summary(guard_impact_path)
     report = validate_crowding_gate_report(evaluate_crowding_paper_gate(guard_report))
     report["guard_impact_path"] = str(guard_impact_path)
+    if apply_config:
+        report["config_apply"] = apply_crowding_paper_proposal_if_go(
+            report,
+            config_path=config_path,
+            proposal_path=proposal_path,
+            dry_run=dry_run,
+        )
     write_crowding_gate_artifacts(report, output_dir)
     return report
 
@@ -140,9 +229,31 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Crowding guard paper go/no-go checklist")
     parser.add_argument("--guard-impact", default=str(DEFAULT_GUARD_IMPACT_PATH))
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
+    parser.add_argument(
+        "--apply-config",
+        action="store_true",
+        help="When decision is GO_PAPER, merge config/crowding_paper_proposal.json into strategy_config",
+    )
+    parser.add_argument("--config-path", default=str(DEFAULT_STRATEGY_CONFIG_PATH))
+    parser.add_argument("--proposal-path", default=str(PROPOSAL_PATH))
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="With --apply-config, report overrides without writing strategy_config",
+    )
     args = parser.parse_args()
-    report = run_crowding_paper_gate(Path(args.guard_impact), Path(args.output_dir))
+    report = run_crowding_paper_gate(
+        Path(args.guard_impact),
+        Path(args.output_dir),
+        apply_config=args.apply_config,
+        config_path=Path(args.config_path),
+        proposal_path=Path(args.proposal_path),
+        dry_run=args.dry_run,
+    )
     print(format_crowding_gate_report(report))
+    apply_result = report.get("config_apply")
+    if apply_result:
+        print(f"Config apply: applied={apply_result['applied']} ({apply_result.get('reason', apply_result.get('overrides'))})")
 
 
 if __name__ == "__main__":

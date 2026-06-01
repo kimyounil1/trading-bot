@@ -29,10 +29,9 @@ from src.alpaca_client import (
     get_open_symbols,
     get_positions_summary,
     get_position_entry_date,
-    submit_market_buy_notional_order,
-    close_position_by_symbol,
     wait_for_order_status,
 )
+from src.broker_adapter import get_broker_adapter
 from src.market_clock import get_market_clock
 from src.notifier import notify_order, notify_error, notify_run_summary, notify_info
 from src.ml_model import load_ai_score_model, predict_ai_score_from_bundle
@@ -274,6 +273,52 @@ def get_signal_for_ticker(
     return signal, latest, ai_score
 
 
+def _execution_reference_price(
+    indicators: dict | None,
+    *,
+    fallback: float | None = None,
+) -> float:
+    if indicators:
+        for key in ("close", "adj_close"):
+            value = indicators.get(key)
+            if value is not None and float(value) > 0:
+                return float(value)
+    if fallback is not None and float(fallback) > 0:
+        return float(fallback)
+    raise ValueError("missing reference price for extended-hours limit order")
+
+
+def _execution_block_label(execute_orders: bool, market_clock) -> str:
+    if not execute_orders:
+        return "DRY_RUN_ONLY"
+    if market_clock.session.value == "closed":
+        return "TRADING_SESSION_CLOSED"
+    if not market_clock.orders_allowed:
+        return "TRADING_SESSION_DISABLED"
+    return "EXECUTION_BLOCKED"
+
+
+def _order_is_filled(status: str) -> bool:
+    normalized = str(status).upper()
+    return "FILLED" in normalized and "PARTIALLY" not in normalized
+
+
+def _filled_notional(checked_order: dict, fallback: float) -> float:
+    filled_qty = checked_order.get("filled_qty")
+    filled_avg_price = checked_order.get("filled_avg_price")
+    if (
+        filled_qty in (None, "", "0", "0.0", "None")
+        or filled_avg_price in (None, "", "None")
+        or str(filled_qty).lower() == "none"
+        or str(filled_avg_price).lower() == "none"
+    ):
+        return 0.0
+    try:
+        return float(filled_qty) * float(filled_avg_price)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def main() -> None:
     args = parse_args()
     execute_orders = args.execute
@@ -286,7 +331,6 @@ def main() -> None:
         except Exception:
             ai_model_bundle = None
 
-    market_clock = get_market_clock()
     try:
         account = get_account_summary()
         open_symbols = get_open_symbols()
@@ -430,6 +474,12 @@ def main() -> None:
     print(f"  - Position Pct: {settings.max_position_pct:.1%}")
     print(f"  - Buy Threshold: {settings.ai_score_buy_threshold:.2f}")
 
+    market_clock = get_market_clock(settings)
+    broker_adapter = get_broker_adapter(settings.broker_provider)
+    extended_slippage = float(
+        getattr(settings, "extended_hours_limit_slippage_pct", 0.005)
+    )
+
     # VIX Panic Mode 알림
     if vix_df is not None and not vix_df.empty:
         close_col = "adj_close" if "adj_close" in vix_df.columns else "close"
@@ -500,16 +550,24 @@ def main() -> None:
             f"market_regime_bullish={market_regime_bullish}"
         )
     print(
+        f"broker_provider={market_clock.broker_provider}, "
+        f"trading_session={market_clock.session.value}, "
         f"market_is_open={market_clock.is_open}, "
+        f"orders_allowed={market_clock.orders_allowed}, "
         f"market_time={market_clock.timestamp}"
     )
-    if not market_clock.is_open:
+    if not market_clock.orders_allowed:
         print(f"next_open={market_clock.next_open}")
 
-    if execute_orders and not market_clock.is_open:
-        print("EXECUTION_BLOCKED: market is closed. Dry-run checks will continue.")
+    if execute_orders and not market_clock.orders_allowed:
+        print(
+            "EXECUTION_BLOCKED: current trading session is not enabled. "
+            "Dry-run checks will continue."
+        )
 
-    can_submit_orders = execute_orders and market_clock.is_open and not circuit_breaker_active
+    can_submit_orders = (
+        execute_orders and market_clock.orders_allowed and not circuit_breaker_active
+    )
 
     # 트레일링 스탑용 최고가 정보 로드
     peaks = _load_peaks()
@@ -664,25 +722,31 @@ def main() -> None:
                         print(f"  PARTIAL_EXIT_TRIGGERED: {ticker} pnl={unrealized_plpc*100:.2f}% >= {partial_tp_thr*100:.2f}%. Selling {sell_qty}")
                         if can_submit_orders:
                             try:
-                                partial_order = close_position_by_symbol(
-                                    ticker, 
-                                    qty=sell_qty, 
-                                    client_order_id=f"part_{run_id}_{ticker}"
+                                partial_submission = broker_adapter.submit_sell_qty(
+                                    ticker,
+                                    sell_qty,
+                                    limit_price=_execution_reference_price(
+                                        None,
+                                        fallback=current_price,
+                                    ),
+                                    market_clock=market_clock,
+                                    slippage_pct=extended_slippage,
+                                    client_order_id=f"part_{run_id}_{ticker}",
                                 )
                                 live_order_count += 1
                                 log_execution_audit(
                                     event_type="PARTIAL_EXIT",
                                     ticker=ticker,
                                     action="SELL",
-                                    status=str(partial_order.status),
+                                    status=partial_submission.status,
                                     reason=f"partial take profit ({unrealized_plpc*100:.2f}%)",
                                     profile_name=profile_name,
                                     regime=current_regime,
                                     signal=signal,
                                     ai_score=ai_score,
-                                    order_id=str(partial_order.id),
-                                    order_type=str(partial_order.type),
-                                    side=str(partial_order.side),
+                                    order_id=partial_submission.order_id,
+                                    order_type=partial_submission.order_type,
+                                    side=partial_submission.side,
                                     quantity=sell_qty,
                                 )
                                 notify_info("💰 Partial Profit Taken", f"{ticker}: Sold {sell_qty} shares at +{unrealized_plpc*100:.2f}% profit.")
@@ -719,25 +783,31 @@ def main() -> None:
                         print(f"  REBALANCE_TRIM: {ticker} weight {current_weight*100:.1f}% > target {target_weight*100:.1f}%. Trimming {trim_qty}")
                         if can_submit_orders:
                             try:
-                                trim_order = close_position_by_symbol(
-                                    ticker, 
-                                    qty=trim_qty, 
-                                    client_order_id=f"trim_{run_id}_{ticker}"
+                                trim_submission = broker_adapter.submit_sell_qty(
+                                    ticker,
+                                    trim_qty,
+                                    limit_price=_execution_reference_price(
+                                        None,
+                                        fallback=current_price,
+                                    ),
+                                    market_clock=market_clock,
+                                    slippage_pct=extended_slippage,
+                                    client_order_id=f"trim_{run_id}_{ticker}",
                                 )
                                 live_order_count += 1
                                 log_execution_audit(
                                     event_type="REBALANCE_TRIM",
                                     ticker=ticker,
                                     action="SELL",
-                                    status=str(trim_order.status),
+                                    status=trim_submission.status,
                                     reason=f"rebalance trim (weight={current_weight:.4f})",
                                     profile_name=profile_name,
                                     regime=current_regime,
                                     signal=signal,
                                     ai_score=ai_score,
-                                    order_id=str(trim_order.id),
-                                    order_type=str(trim_order.type),
-                                    side=str(trim_order.side),
+                                    order_id=trim_submission.order_id,
+                                    order_type=trim_submission.order_type,
+                                    side=trim_submission.side,
                                     quantity=trim_qty,
                                 )
                             except Exception as e:
@@ -763,7 +833,7 @@ def main() -> None:
                     continue
 
                 if not can_submit_orders:
-                    label = "DRY_RUN_ONLY" if not execute_orders else "MARKET_CLOSED"
+                    label = _execution_block_label(execute_orders, market_clock)
                     print(
                         f"  {label}: would CLOSE {ticker} "
                         f"reason='{exit_decision.reason}'"
@@ -782,39 +852,50 @@ def main() -> None:
                     )
                     continue
 
-                order = close_position_by_symbol(ticker, client_order_id=f"exit_{run_id}_{ticker}")
+                exit_qty = float(position["qty"])
+                exit_submission = broker_adapter.submit_sell_qty(
+                    ticker,
+                    exit_qty,
+                    limit_price=_execution_reference_price(
+                        None,
+                        fallback=current_price,
+                    ),
+                    market_clock=market_clock,
+                    slippage_pct=extended_slippage,
+                    client_order_id=f"exit_{run_id}_{ticker}",
+                )
                 live_order_count += 1
 
                 log_order(
                     ticker=ticker,
                     notional=0.0,
-                    order_id=str(order.id),
-                    status=str(order.status),
-                    side=str(order.side),
-                    order_type=str(order.type),
+                    order_id=exit_submission.order_id,
+                    status=exit_submission.status,
+                    side=exit_submission.side,
+                    order_type=exit_submission.order_type,
                     reason=exit_decision.reason,
                 )
 
                 print(
                     f"  PAPER_CLOSE_SUBMITTED: {ticker}, "
-                    f"order_id={order.id}, status={order.status}"
+                    f"order_id={exit_submission.order_id}, status={exit_submission.status}"
                 )
                 log_execution_audit(
                     event_type="FULL_EXIT",
                     ticker=ticker,
                     action="SELL",
-                    status=str(order.status),
+                    status=exit_submission.status,
                     reason=exit_decision.reason,
                     profile_name=profile_name,
                     regime=current_regime,
                     signal=signal,
                     ai_score=ai_score,
-                    order_id=str(order.id),
-                    order_type=str(order.type),
-                    side=str(order.side),
+                    order_id=exit_submission.order_id,
+                    order_type=exit_submission.order_type,
+                    side=exit_submission.side,
                 )
 
-                checked_order = wait_for_order_status(str(order.id))
+                checked_order = wait_for_order_status(exit_submission.order_id)
                 log_order_status(
                     ticker=ticker,
                     order_id=checked_order["id"],
@@ -866,6 +947,7 @@ def main() -> None:
                 if isinstance(exc, ConnectionError) and execute_orders:
                     notify_error("CRITICAL: Network error during exit loop", exc)
                     raise
+                print(f"{ticker}: EXIT_CHECK_ERROR - {exc}")
                 exit_summary_rows.append(f"{ticker}: EXIT_CHECK_ERROR - {exc}")
                 api_error_count += 1
                 log_execution_audit(
@@ -1076,7 +1158,12 @@ def main() -> None:
 
             # LLM Consensus: advisory (log only) or blocking filter
             if risk_allowed and position is None:
-                llm_is_ok, llm_reason = evaluate_ticker_consensus(ticker, settings=settings)
+                # Dry-run: never call Gemini live; use cache/degraded policy only.
+                llm_is_ok, llm_reason = evaluate_ticker_consensus(
+                    ticker,
+                    settings=settings,
+                    cache_only=not execute_orders,
+                )
                 llm_advisory_only = bool(getattr(settings, "llm_advisory_only", True))
                 if not llm_is_ok and llm_advisory_only:
                     log_execution_audit(
@@ -1185,6 +1272,7 @@ def main() -> None:
                     "risk_reason": risk_reason,
                     "signal": signal,
                     "llm_verdict": _format_llm_verdict(llm_is_ok, llm_reason),
+                    "limit_price": float(latest["close"]),
                 })
 
         except Exception as exc:
@@ -1262,7 +1350,7 @@ def main() -> None:
             continue
 
         if not can_submit_orders:
-            label = "DRY_RUN_ONLY" if not execute_orders else "MARKET_CLOSED"
+            label = _execution_block_label(execute_orders, market_clock)
             print(
                 f"  {label}: would BUY {ticker} "
                 f"notional=${order_amount:.2f}"
@@ -1290,10 +1378,13 @@ def main() -> None:
             continue
 
         try:
-            order = submit_market_buy_notional_order(
+            buy_submission = broker_adapter.submit_buy_notional(
                 ticker=ticker,
                 notional=order_amount,
-                client_order_id=f"buy_{run_id}_{ticker}"
+                limit_price=float(candidate["limit_price"]),
+                market_clock=market_clock,
+                slippage_pct=extended_slippage,
+                client_order_id=f"buy_{run_id}_{ticker}",
             )
             live_order_count += 1
             orders_submitted += 1
@@ -1302,36 +1393,37 @@ def main() -> None:
             log_order(
                 ticker=ticker,
                 notional=order_amount,
-                order_id=str(order.id),
-                status=str(order.status),
-                side=str(order.side),
-                order_type=str(order.type),
+                order_id=buy_submission.order_id,
+                status=buy_submission.status,
+                side=buy_submission.side,
+                order_type=buy_submission.order_type,
                 reason=risk_reason,
             )
 
             print(
                 f"  PAPER_ORDER_SUBMITTED: BUY {ticker} "
                 f"notional=${order_amount:.2f}, "
-                f"order_id={order.id}, status={order.status}"
+                f"session={market_clock.session.value}, "
+                f"order_id={buy_submission.order_id}, status={buy_submission.status}"
             )
             log_execution_audit(
                 event_type="BUY_SUBMITTED",
                 ticker=ticker,
                 action="BUY",
-                status=str(order.status),
+                status=buy_submission.status,
                 reason=risk_reason,
                 profile_name=profile_name,
                 regime=current_regime,
                 signal=signal,
                 ai_score=ai_score,
                 llm_verdict=llm_verdict,
-                order_id=str(order.id),
-                order_type=str(order.type),
-                side=str(order.side),
+                order_id=buy_submission.order_id,
+                order_type=buy_submission.order_type,
+                side=buy_submission.side,
                 notional=order_amount,
             )
 
-            checked_order = wait_for_order_status(str(order.id))
+            checked_order = wait_for_order_status(buy_submission.order_id)
             log_order_status(
                 ticker=ticker,
                 order_id=checked_order["id"],
@@ -1366,15 +1458,21 @@ def main() -> None:
                 filled_avg_price=checked_order["filled_avg_price"],
             )
 
-            notify_order(
-                action="BUY",
-                ticker=ticker,
-                status=checked_order["status"],
-                order_id=checked_order["id"],
-                reason=risk_reason,
-                filled_qty=checked_order["filled_qty"],
-                filled_avg_price=checked_order["filled_avg_price"],
-            )
+            if _order_is_filled(checked_order["status"]):
+                notify_order(
+                    action="BUY",
+                    ticker=ticker,
+                    status=checked_order["status"],
+                    order_id=checked_order["id"],
+                    reason=risk_reason,
+                    filled_qty=checked_order["filled_qty"],
+                    filled_avg_price=checked_order["filled_avg_price"],
+                )
+            else:
+                print(
+                    f"  BUY_PENDING: {ticker} limit order remains "
+                    f"{checked_order['status']} (overnight/extended hours)"
+                )
 
             buy_summary_rows.append(
                 f"{ticker}: BUY_SUBMITTED status={checked_order['status']}, "
@@ -1383,11 +1481,13 @@ def main() -> None:
                 f"ai_score={ai_score}"
             )
 
-            if ticker not in open_symbols:
-                open_symbols.add(ticker)
-                positions_count += 1
-            cash -= order_amount
-            current_gross_exposure += order_amount
+            filled_notional = _filled_notional(checked_order, order_amount)
+            if filled_notional > 0:
+                if ticker not in open_symbols:
+                    open_symbols.add(ticker)
+                    positions_count += 1
+                cash -= filled_notional
+                current_gross_exposure += filled_notional
         except Exception as exc:
             if isinstance(exc, ConnectionError) and execute_orders:
                 notify_error(f"CRITICAL: Network error during buy execution for {ticker}", exc)
@@ -1421,7 +1521,7 @@ def main() -> None:
 
     try:
         notify_run_summary(
-            market_is_open=market_clock.is_open,
+            market_is_open=market_clock.orders_allowed,
             execute_orders=execute_orders,
             cash=account["cash"],
             portfolio_value=account["portfolio_value"],

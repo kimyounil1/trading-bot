@@ -61,7 +61,8 @@ else
     tests/test_champion_promotion_governance.py \
     tests/test_equal_weight_benchmark.py \
     tests/test_promotion_beat_benchmark.py \
-    tests/test_llm_backtest_impact.py
+    tests/test_llm_backtest_impact.py \
+    tests/test_paper_ops_summary.py
 fi
 
 echo "=== [2/3] post-workflow / Codex ==="

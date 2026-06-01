@@ -16,12 +16,13 @@ from src.alpaca_client import (
     get_account_summary,
     get_positions_summary,
     get_order_summary,
+    get_open_orders,
+    get_recent_closed_orders,
     get_open_symbols,
-    submit_market_buy_notional_order,
-    close_position_by_symbol,
     wait_for_order_status,
 )
-from src.market_clock import get_market_clock
+from src.broker_adapter import get_broker_adapter
+from src.market_clock import get_market_clock, MarketClock
 from src.settings import load_settings, CONFIG_PATH
 from src.execution_lock import (
     load_execution_lock,
@@ -38,6 +39,114 @@ from src.notification_settings import (
 from src.logger import log_order, log_order_status
 from src.data_loader import load_price_data_batch
 from src.candidate_cache import load_latest_candidate_cache_full
+from src.cms_helpers import (
+    cache_age_minutes as _cache_age_minutes,
+    classify_buy_candidates,
+    count_filled_today as _count_filled_today,
+    is_executable_buy_row as _is_executable_buy_row,
+    money,
+    order_display_columns as _order_display_columns,
+    order_is_filled as _order_is_filled,
+    orders_to_frame as _orders_to_frame,
+    partition_alpaca_orders,
+    pct,
+    sort_buy_candidates,
+)
+
+
+def load_trading_clock(settings=None):
+    if settings is None:
+        settings = load_settings()
+    return get_market_clock(settings)
+
+
+def render_trading_clock_banner(clock: MarketClock) -> None:
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("정규장(RTH)", str(clock.is_open))
+    col2.metric("주문 가능", str(clock.orders_allowed))
+    col3.metric("거래 세션", clock.session.value)
+    col4.metric("브로커", clock.broker_provider)
+    st.caption(
+        f"시장 시간: {clock.timestamp} | "
+        f"extended_hours={clock.extended_hours_enabled} | "
+        f"다음 개장: {clock.next_open} | "
+        f"다음 폐장: {clock.next_close}"
+    )
+
+
+def render_alpaca_order_board(*, closed_limit: int = 50) -> None:
+    st.subheader("Alpaca 주문 현황")
+
+    col_refresh, col_limit = st.columns([1, 3])
+    col_refresh.button("Alpaca 주문 새로고침", type="primary", key="refresh_alpaca_orders")
+    closed_limit = col_limit.number_input(
+        "최근 종료 주문 조회 수",
+        min_value=10,
+        max_value=200,
+        value=int(closed_limit),
+        step=10,
+        key="alpaca_closed_order_limit",
+    )
+
+    try:
+        open_orders = get_open_orders()
+        closed_orders = get_recent_closed_orders(limit=int(closed_limit))
+    except Exception as exc:
+        st.error(f"Alpaca 주문 조회 실패: {exc}")
+        return
+
+    filled_orders, closed_other, partial_open = partition_alpaca_orders(
+        open_orders, closed_orders
+    )
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("미체결/대기", len(open_orders))
+    m2.metric("부분 체결(미완료)", len(partial_open))
+    m3.metric("최근 체결 완료", len(filled_orders))
+    m4.metric("오늘 체결", _count_filled_today(closed_orders))
+
+    st.caption(
+        "미체결은 Alpaca OPEN 주문입니다. extended/overnight 지정가는 시장가 도달 전까지 "
+        "대기 상태로 남을 수 있습니다."
+    )
+
+    columns = _order_display_columns()
+    tab_open, tab_filled, tab_other = st.tabs(
+        ["미체결 / 대기", "체결 완료", "취소·만료·거절"]
+    )
+
+    with tab_open:
+        open_df = _orders_to_frame(open_orders, columns["open"])
+        if open_df.empty:
+            st.info("현재 미체결 주문이 없습니다.")
+        else:
+            st.dataframe(open_df, width="stretch")
+
+    with tab_filled:
+        filled_df = _orders_to_frame(filled_orders, columns["filled"])
+        if filled_df.empty:
+            st.info("최근 체결 완료 주문이 없습니다.")
+        else:
+            st.dataframe(filled_df, width="stretch")
+
+    with tab_other:
+        other_df = _orders_to_frame(closed_other, columns["closed_other"])
+        if other_df.empty:
+            st.info("최근 취소·만료·거절 주문이 없습니다.")
+        else:
+            st.dataframe(other_df, width="stretch")
+
+    with st.expander("로컬 주문 로그와 비교"):
+        log_df = read_csv_if_exists(ORDER_LOG_PATH)
+        if log_df.empty:
+            st.info("로컬 주문 로그가 없습니다.")
+        else:
+            recent_log = log_df.tail(30)
+            st.write("최근 로컬 로그 30건")
+            st.dataframe(recent_log, width="stretch")
+            st.caption(
+                "로컬 로그는 봇/CMS가 기록한 제출 이력이고, 위 탭은 Alpaca 실시간 상태입니다."
+            )
 
 
 def _portfolio_backtest_api():
@@ -55,14 +164,6 @@ st.set_page_config(
     page_icon="📈",
     layout="wide",
 )
-
-
-def money(value: float) -> str:
-    return f"${value:,.2f}"
-
-
-def pct(value: float) -> str:
-    return f"{value * 100:.2f}%"
 
 
 def read_csv_if_exists(path: str) -> pd.DataFrame:
@@ -404,23 +505,17 @@ def sidebar_settings_editor() -> None:
 def render_overview() -> None:
     st.title("트레이딩 봇 CMS")
 
-    clock = get_market_clock()
+    settings = load_settings()
+    clock = load_trading_clock(settings)
     account = get_account_summary()
     positions = get_positions_summary()
-    settings = load_settings()
 
-    col1, col2, col3, col4 = st.columns(4)
+    render_trading_clock_banner(clock)
 
-    col1.metric("시장 개장", str(clock.is_open))
-    col2.metric("현금", money(account["cash"]))
-    col3.metric("포트폴리오 가치", money(account["portfolio_value"]))
-    col4.metric("보유 포지션", account["positions_count"])
-
-    st.caption(
-        f"시장 시간: {clock.timestamp} | "
-        f"다음 개장: {clock.next_open} | "
-        f"다음 폐장: {clock.next_close}"
-    )
+    col1, col2, col3 = st.columns(3)
+    col1.metric("현금", money(account["cash"]))
+    col2.metric("포트폴리오 가치", money(account["portfolio_value"]))
+    col3.metric("보유 포지션", account["positions_count"])
 
     st.divider()
 
@@ -448,9 +543,13 @@ def render_overview() -> None:
 
     st.divider()
 
+    render_alpaca_order_board()
+
+    st.divider()
+
     st.subheader("보유 포지션")
     if positions:
-        st.dataframe(pd.DataFrame(positions), use_container_width=True)
+        st.dataframe(pd.DataFrame(positions), width="stretch")
     else:
         st.info("현재 보유 포지션이 없습니다.")
 
@@ -594,7 +693,7 @@ def render_backtest_compare() -> None:
     available_cols = [col for col in metric_cols if col in selected_df.columns]
 
     st.subheader("비교 테이블")
-    st.dataframe(selected_df[available_cols], use_container_width=True)
+    st.dataframe(selected_df[available_cols], width="stretch")
 
     st.subheader("수익률 / 리스크 지표")
 
@@ -677,7 +776,7 @@ def render_backtest_history() -> None:
     available_cols = [col for col in display_cols if col in history_df.columns]
 
     st.subheader("실행 목록")
-    st.dataframe(history_df[available_cols], use_container_width=True)
+    st.dataframe(history_df[available_cols], width="stretch")
 
     selected_run = st.selectbox(
         "실행 이력 선택",
@@ -694,7 +793,7 @@ def render_backtest_history() -> None:
 
     st.subheader("선택한 실행 요약")
     summary_df = pd.read_csv(summary_path)
-    st.dataframe(summary_df, use_container_width=True)
+    st.dataframe(summary_df, width="stretch")
 
     if equity_path.exists():
         equity_df = pd.read_csv(equity_path)
@@ -705,7 +804,7 @@ def render_backtest_history() -> None:
             st.line_chart(chart_df)
 
             st.subheader("최근 자산 데이터")
-            st.dataframe(equity_df.tail(50), use_container_width=True)
+            st.dataframe(equity_df.tail(50), width="stretch")
 
     if trades_path.exists():
         trades_df = pd.read_csv(trades_path)
@@ -714,7 +813,7 @@ def render_backtest_history() -> None:
         if trades_df.empty:
             st.info("종료된 거래가 없습니다.")
         else:
-            st.dataframe(trades_df, use_container_width=True)
+            st.dataframe(trades_df, width="stretch")
 
     if config_path.exists():
         st.subheader("실행 설정")
@@ -761,7 +860,7 @@ def render_config_history() -> None:
                 }
             )
 
-        st.dataframe(pd.DataFrame(rows), use_container_width=True)
+        st.dataframe(pd.DataFrame(rows), width="stretch")
 
     with st.expander("이전 설정"):
         st.json(payload.get("old_config", {}))
@@ -779,9 +878,13 @@ def render_logs() -> None:
     if signals_df.empty:
         st.info("신호 로그가 없습니다.")
     else:
-        st.dataframe(signals_df.tail(50), use_container_width=True)
+        st.dataframe(signals_df.tail(50), width="stretch")
 
     st.subheader("최근 주문")
+
+    render_alpaca_order_board(closed_limit=40)
+
+    st.divider()
 
     col1, col2 = st.columns([1, 3])
     refresh_clicked = col1.button("최근 주문 상태 갱신", type="primary")
@@ -800,14 +903,14 @@ def render_logs() -> None:
             st.warning("갱신할 주문 ID가 없습니다.")
         else:
             st.success("주문 상태를 갱신했습니다.")
-            st.dataframe(refreshed_df, use_container_width=True)
+            st.dataframe(refreshed_df, width="stretch")
 
     orders_df = read_csv_if_exists(ORDER_LOG_PATH)
 
     if orders_df.empty:
         st.info("주문 로그가 없습니다.")
     else:
-        st.dataframe(orders_df.tail(50), use_container_width=True)
+        st.dataframe(orders_df.tail(50), width="stretch")
 
 def render_backtest_outputs() -> None:
     st.header("백테스트 결과")
@@ -826,19 +929,19 @@ def render_backtest_outputs() -> None:
     if selected_summary.empty:
         st.info("선택 전략 요약이 없습니다.")
     else:
-        st.dataframe(selected_summary, use_container_width=True)
+        st.dataframe(selected_summary, width="stretch")
 
     st.subheader("포트폴리오 백테스트 요약")
     if portfolio_summary.empty:
         st.info("포트폴리오 백테스트 요약이 없습니다.")
     else:
-        st.dataframe(portfolio_summary, use_container_width=True)
+        st.dataframe(portfolio_summary, width="stretch")
 
     st.subheader("최적화 상위 20개")
     if optimization.empty:
         st.info("최적화 결과가 없습니다.")
     else:
-        st.dataframe(optimization.head(20), use_container_width=True)
+        st.dataframe(optimization.head(20), width="stretch")
 
 
 
@@ -1072,10 +1175,10 @@ rank_volatility_weight={settings.rank_volatility_weight}
             if trades_df.empty:
                 st.info("종료된 거래가 없습니다.")
             else:
-                st.dataframe(trades_df, use_container_width=True)
+                st.dataframe(trades_df, width="stretch")
 
             st.subheader("자산 테이블")
-            st.dataframe(equity_df.tail(50), use_container_width=True)
+            st.dataframe(equity_df.tail(50), width="stretch")
 
         except Exception as exc:
             st.error(f"백테스트 실패: {exc}")
@@ -1110,25 +1213,15 @@ def save_dry_run_snapshot(exit_df: pd.DataFrame, buy_df: pd.DataFrame) -> Path:
     return output_path
 
 
-def render_buy_candidate_tabs(buy_df: pd.DataFrame) -> None:
+def render_buy_candidate_tabs(buy_df: pd.DataFrame, clock: MarketClock | None = None) -> None:
     if buy_df.empty:
         st.info("매수 후보가 없습니다.")
         return
 
-    error_mask = (
-        buy_df["error"].notna()
-        if "error" in buy_df.columns
-        else pd.Series(False, index=buy_df.index)
-    )
-    executable_mask = (
-        buy_df["execution_label"].astype(str).eq("WOULD_SUBMIT_IF_EXECUTED")
-        if "execution_label" in buy_df.columns
-        else pd.Series(False, index=buy_df.index)
-    )
+    if clock is None:
+        clock = load_trading_clock()
 
-    executable_df = buy_df[executable_mask & ~error_mask].copy()
-    error_df = buy_df[error_mask].copy()
-    blocked_df = buy_df[~executable_mask & ~error_mask].copy()
+    executable_df, blocked_df, error_df = classify_buy_candidates(buy_df, clock)
 
     tabs = st.tabs(
         [
@@ -1139,24 +1232,11 @@ def render_buy_candidate_tabs(buy_df: pd.DataFrame) -> None:
         ]
     )
 
-    sort_cols = [
-        col
-        for col in ["would_submit_if_execute", "risk_allowed", "ai_score"]
-        if col in buy_df.columns
-    ]
-
     def display(df: pd.DataFrame) -> None:
         if df.empty:
             st.info("표시할 항목이 없습니다.")
             return
-
-        if sort_cols:
-            df = df.sort_values(
-                sort_cols,
-                ascending=[False for _ in sort_cols],
-            )
-
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(sort_buy_candidates(df), width="stretch")
 
     with tabs[0]:
         display(executable_df)
@@ -1193,7 +1273,7 @@ def render_cache_quality(quality_df: pd.DataFrame, errors_df: pd.DataFrame) -> N
         if errors_df.empty:
             st.success("데이터 품질 경고나 오류가 없습니다.")
         else:
-            st.dataframe(errors_df, use_container_width=True)
+            st.dataframe(errors_df, width="stretch")
 
     with tabs[1]:
         display_df = quality_df.copy()
@@ -1205,7 +1285,7 @@ def render_cache_quality(quality_df: pd.DataFrame, errors_df: pd.DataFrame) -> N
             display_df = display_df.sort_values(["_status_order", "ticker"])
             display_df = display_df.drop(columns=["_status_order"])
 
-        st.dataframe(display_df, use_container_width=True)
+        st.dataframe(display_df, width="stretch")
 
 
 def render_dry_run() -> None:
@@ -1239,12 +1319,14 @@ def render_dry_run() -> None:
         return
 
     generated_at = str(meta.get("generated_at"))
-    generated_dt = pd.to_datetime(generated_at)
-    cache_age_minutes = (pd.Timestamp.now() - generated_dt).total_seconds() / 60
+    cache_age_minutes = _cache_age_minutes(generated_at)
 
     st.subheader("실행 안전 점검")
+    live_clock = load_trading_clock()
+    render_trading_clock_banner(live_clock)
+
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("캐시 기준 시장 개장", str(meta.get("market_is_open")))
+    c1.metric("캐시 기준 주문 가능", str(meta.get("orders_allowed", meta.get("market_is_open"))))
     c2.metric("현금", money(float(meta.get("cash", 0.0))))
     c3.metric("포지션", meta.get("positions_count"))
     c4.metric("실행당 최대 주문", meta.get("max_orders_per_run"))
@@ -1283,7 +1365,7 @@ def render_dry_run() -> None:
     st.subheader("보유 포지션 청산 점검")
 
     if not exit_df.empty:
-        st.dataframe(exit_df, use_container_width=True)
+        st.dataframe(exit_df, width="stretch")
     else:
         st.info("현재 보유 포지션이 없습니다.")
 
@@ -1291,11 +1373,12 @@ def render_dry_run() -> None:
 
     st.subheader("매수 후보 점검")
 
-    render_buy_candidate_tabs(buy_df)
+    render_buy_candidate_tabs(buy_df, live_clock)
 
     st.caption(
-        "MARKET_CLOSED는 --execute를 눌러도 현재 장이 닫혀 실제 주문이 차단된다는 뜻입니다. "
-        "WOULD_SUBMIT_IF_EXECUTED는 장이 열려 있고 CLI에서 --execute 실행 시 주문 후보라는 뜻입니다."
+        "SESSION_CLOSED는 execute 시 주문이 차단된다는 뜻입니다. "
+        "WOULD_SUBMIT_IF_EXECUTED는 Alpaca 허용 세션(정규장·프리·애프터·오버나잇)에서 "
+        "execute 시 주문 후보라는 뜻입니다. 장외·오버나잇은 지정가로 제출됩니다."
     )
 
     st.divider()
@@ -1313,7 +1396,7 @@ def build_cms_dry_run_rows():
     meta, exit_df, buy_df, _, _ = load_latest_candidate_cache_full()
     settings = load_settings()
     account = get_account_summary()
-    clock = get_market_clock()
+    clock = load_trading_clock(settings)
     return account, clock, settings, exit_df, buy_df
 
 
@@ -1343,6 +1426,10 @@ def save_execution_run_history(
     context = {
         "timestamp": timestamp,
         "market_is_open": clock.is_open,
+        "orders_allowed": clock.orders_allowed,
+        "trading_session": clock.session.value,
+        "broker_provider": clock.broker_provider,
+        "extended_hours_enabled": clock.extended_hours_enabled,
         "market_timestamp": clock.timestamp,
         "next_open": clock.next_open,
         "next_close": clock.next_close,
@@ -1369,32 +1456,67 @@ def save_execution_run_history(
 
     return output_dir
 
-def execute_cms_paper_actions(exit_df: pd.DataFrame, buy_df: pd.DataFrame, settings) -> pd.DataFrame:
+def execute_cms_paper_actions(
+    exit_df: pd.DataFrame,
+    buy_df: pd.DataFrame,
+    settings,
+    clock: MarketClock,
+) -> pd.DataFrame:
+    if not clock.orders_allowed:
+        raise RuntimeError(
+            f"현재 거래 세션({clock.session.value})에서는 주문이 허용되지 않습니다."
+        )
+
+    broker = get_broker_adapter(settings.broker_provider)
+    extended_slippage = float(
+        getattr(settings, "extended_hours_limit_slippage_pct", 0.005)
+    )
+    positions_by_symbol = {
+        str(item["symbol"]).upper(): item for item in get_positions_summary()
+    }
     rows = []
 
-    # 1) 청산 후보 먼저 실행
     if not exit_df.empty:
         for _, row in exit_df.iterrows():
             if not bool(row.get("should_exit", False)):
                 continue
 
-            ticker = str(row["ticker"])
+            ticker = str(row["ticker"]).upper()
             reason = str(row.get("exit_reason", ""))
+            position = positions_by_symbol.get(ticker)
+            if position is None:
+                rows.append(
+                    {
+                        "action": "CLOSE",
+                        "ticker": ticker,
+                        "status": "SKIPPED",
+                        "reason": reason,
+                        "error": "position not found",
+                    }
+                )
+                continue
 
             try:
-                order = close_position_by_symbol(ticker)
+                submission = broker.submit_sell_qty(
+                    ticker,
+                    float(position["qty"]),
+                    limit_price=float(position["current_price"]),
+                    market_clock=clock,
+                    slippage_pct=extended_slippage,
+                    client_order_id=f"cms_exit_{datetime.now().strftime('%Y%m%dT%H%M%S')}_{ticker}",
+                )
 
                 log_order(
                     ticker=ticker,
                     notional=0.0,
-                    order_id=str(order.id),
-                    status=str(order.status),
-                    side=str(order.side),
-                    order_type=str(order.type),
+                    order_id=submission.order_id,
+                    status=submission.status,
+                    side=submission.side,
+                    order_type=submission.order_type,
                     reason=reason,
                 )
 
-                checked_order = wait_for_order_status(str(order.id))
+                checked_order = wait_for_order_status(submission.order_id)
 
                 log_order_status(
                     ticker=ticker,
@@ -1413,6 +1535,7 @@ def execute_cms_paper_actions(exit_df: pd.DataFrame, buy_df: pd.DataFrame, setti
                         "ticker": ticker,
                         "order_id": checked_order["id"],
                         "status": checked_order["status"],
+                        "session": clock.session.value,
                         "filled_qty": checked_order["filled_qty"],
                         "filled_avg_price": checked_order["filled_avg_price"],
                         "reason": reason,
@@ -1430,7 +1553,6 @@ def execute_cms_paper_actions(exit_df: pd.DataFrame, buy_df: pd.DataFrame, setti
                     }
                 )
 
-    # 2) 신규 매수 후보 실행
     orders_submitted = 0
 
     if not buy_df.empty:
@@ -1438,34 +1560,39 @@ def execute_cms_paper_actions(exit_df: pd.DataFrame, buy_df: pd.DataFrame, setti
             if orders_submitted >= settings.max_orders_per_run:
                 break
 
-            if str(row.get("execution_label")) != "WOULD_SUBMIT_IF_EXECUTED":
+            if not _is_executable_buy_row(row, clock):
                 continue
 
-            ticker = str(row["ticker"])
+            ticker = str(row["ticker"]).upper()
             order_amount = float(row["order_amount"])
             reason = str(row.get("reason", ""))
+            limit_price = float(row.get("close") or 0)
 
-            if order_amount <= 0:
+            if order_amount <= 0 or limit_price <= 0:
                 continue
 
             try:
-                order = submit_market_buy_notional_order(
+                submission = broker.submit_buy_notional(
                     ticker=ticker,
                     notional=order_amount,
+                    limit_price=limit_price,
+                    market_clock=clock,
+                    slippage_pct=extended_slippage,
+                    client_order_id=f"cms_buy_{datetime.now().strftime('%Y%m%dT%H%M%S')}_{ticker}",
                 )
                 orders_submitted += 1
 
                 log_order(
                     ticker=ticker,
                     notional=order_amount,
-                    order_id=str(order.id),
-                    status=str(order.status),
-                    side=str(order.side),
-                    order_type=str(order.type),
+                    order_id=submission.order_id,
+                    status=submission.status,
+                    side=submission.side,
+                    order_type=submission.order_type,
                     reason=reason,
                 )
 
-                checked_order = wait_for_order_status(str(order.id))
+                checked_order = wait_for_order_status(submission.order_id)
 
                 log_order_status(
                     ticker=ticker,
@@ -1478,18 +1605,20 @@ def execute_cms_paper_actions(exit_df: pd.DataFrame, buy_df: pd.DataFrame, setti
                     reason=f"cms buy: {reason}",
                 )
 
-                rows.append(
-                    {
-                        "action": "BUY",
-                        "ticker": ticker,
-                        "notional": order_amount,
-                        "order_id": checked_order["id"],
-                        "status": checked_order["status"],
-                        "filled_qty": checked_order["filled_qty"],
-                        "filled_avg_price": checked_order["filled_avg_price"],
-                        "reason": reason,
-                    }
-                )
+                row_payload = {
+                    "action": "BUY",
+                    "ticker": ticker,
+                    "notional": order_amount,
+                    "order_id": checked_order["id"],
+                    "status": checked_order["status"],
+                    "session": clock.session.value,
+                    "filled_qty": checked_order["filled_qty"],
+                    "filled_avg_price": checked_order["filled_avg_price"],
+                    "reason": reason,
+                }
+                if not _order_is_filled(checked_order["status"]):
+                    row_payload["note"] = "limit order pending (extended/overnight)"
+                rows.append(row_payload)
 
             except Exception as exc:
                 rows.append(
@@ -1516,23 +1645,23 @@ def render_paper_execution() -> None:
 
     lock_enabled = is_cms_execution_enabled()
     required_phrase = get_required_phrase()
-    clock = get_market_clock()
-    account = get_account_summary()
     settings = load_settings()
+    clock = load_trading_clock(settings)
+    account = get_account_summary()
 
     st.subheader("안전 점검")
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("실행 잠금", "ENABLED" if lock_enabled else "LOCKED")
-    c2.metric("시장 개장", str(clock.is_open))
+    c2.metric("주문 가능", str(clock.orders_allowed))
     c3.metric("Alpaca Paper", str(ALPACA_PAPER))
     c4.metric("주문 금액 상한", money(settings.max_test_order_amount))
 
-    st.caption(
-        f"시장 시간: {clock.timestamp} | "
-        f"다음 개장: {clock.next_open} | "
-        f"다음 폐장: {clock.next_close}"
-    )
+    render_trading_clock_banner(clock)
+
+    st.divider()
+
+    render_alpaca_order_board(closed_limit=80)
 
     st.divider()
 
@@ -1546,14 +1675,13 @@ def render_paper_execution() -> None:
         return
 
     generated_at = str(meta.get("generated_at"))
-    generated_dt = pd.to_datetime(generated_at)
-    cache_age_minutes = (pd.Timestamp.now() - generated_dt).total_seconds() / 60
+    cache_age_minutes = _cache_age_minutes(generated_at)
 
     c5, c6, c7, c8 = st.columns(4)
     c5.metric("캐시 생성 시각", generated_at)
     c6.metric("캐시 경과", f"{cache_age_minutes:.1f}분")
     c7.metric("감시 종목 수", meta.get("watchlist_size"))
-    c8.metric("캐시 기준 시장 개장", str(meta.get("market_is_open")))
+    c8.metric("캐시 기준 주문 가능", str(meta.get("orders_allowed", meta.get("market_is_open"))))
 
     c9, c10, c11 = st.columns(3)
     c9.metric("오늘 매수 금액", money(float(meta.get("today_buy_notional") or 0.0)))
@@ -1596,11 +1724,11 @@ def render_paper_execution() -> None:
     if exit_df.empty:
         st.info("점검할 보유 포지션이 없습니다.")
     else:
-        st.dataframe(exit_df, use_container_width=True)
+        st.dataframe(exit_df, width="stretch")
 
     st.subheader("매수 후보")
 
-    render_buy_candidate_tabs(buy_df)
+    render_buy_candidate_tabs(buy_df, clock)
 
     st.divider()
     render_cache_quality(quality_df, errors_df)
@@ -1609,13 +1737,16 @@ def render_paper_execution() -> None:
 
     st.subheader("최종 확인")
 
-    allowed = lock_enabled and clock.is_open and ALPACA_PAPER and cache_fresh
+    allowed = lock_enabled and clock.orders_allowed and ALPACA_PAPER and cache_fresh
 
     if not lock_enabled:
         st.error("CMS 실행 잠금이 해제되어 있지 않습니다.")
 
-    if not clock.is_open:
-        st.error("시장이 닫혀 있습니다. CMS paper 실행이 차단됩니다.")
+    if not clock.orders_allowed:
+        st.error(
+            f"현재 거래 세션({clock.session.value})에서는 주문이 허용되지 않습니다. "
+            "Alpaca extended/overnight 설정을 확인하세요."
+        )
 
     if not ALPACA_PAPER:
         st.error("ALPACA_PAPER가 False입니다. CMS 실행이 차단됩니다.")
@@ -1642,7 +1773,7 @@ def render_paper_execution() -> None:
     )
 
     if execute_clicked:
-        result_df = execute_cms_paper_actions(exit_df, buy_df, settings)
+        result_df = execute_cms_paper_actions(exit_df, buy_df, settings, clock)
 
         history_dir = save_execution_run_history(
             result_df=result_df,
@@ -1660,7 +1791,7 @@ def render_paper_execution() -> None:
                 f"Paper 액션을 제출하고 상태를 확인했습니다. "
                 f"이력: {history_dir.relative_to(ROOT_DIR)}"
             )
-            st.dataframe(result_df, use_container_width=True)
+            st.dataframe(result_df, width="stretch")
 
 def render_execution_runs() -> None:
     st.header("실행 이력")
@@ -1710,21 +1841,21 @@ def render_execution_runs() -> None:
         if result_df.empty:
             st.info("실행된 액션이 없습니다.")
         else:
-            st.dataframe(result_df, use_container_width=True)
+            st.dataframe(result_df, width="stretch")
     else:
         st.info("execution_result.csv 파일이 없습니다.")
 
     st.subheader("청산 후보")
     if exit_path.exists():
         exit_df = pd.read_csv(exit_path)
-        st.dataframe(exit_df, use_container_width=True)
+        st.dataframe(exit_df, width="stretch")
     else:
         st.info("exit_candidates.csv 파일이 없습니다.")
 
     st.subheader("매수 후보")
     if buy_path.exists():
         buy_df = pd.read_csv(buy_path)
-        st.dataframe(buy_df, use_container_width=True)
+        st.dataframe(buy_df, width="stretch")
     else:
         st.info("buy_candidates.csv 파일이 없습니다.")
 
@@ -1870,7 +2001,8 @@ def render_scheduler() -> None:
     st.info(
         "주의: systemd timer는 서버/PC의 로컬 타임존 기준으로 실행됩니다. "
         "미국 동부 시간 기준으로 정확히 돌리고 싶으면 서버 타임존을 확인하거나 "
-        "실행 시 봇의 market_clock guard에 의존하세요. 지금 봇은 시장이 닫혀 있으면 execute도 차단합니다."
+        "실행 시 봇의 trading_session guard에 의존하세요. "
+        "extended_hours_enabled=true이면 프리·애프터·오버나잇에도 지정가 주문이 가능합니다."
     )
 
     if st.button("스케줄러 설정 저장"):
@@ -2422,7 +2554,7 @@ def render_ai_model() -> None:
         st.info("AI 모델 학습 지표가 없습니다. `python -m src.train_ai_model`을 실행하세요.")
     else:
         metrics_df = pd.read_csv(metrics_path)
-        st.dataframe(metrics_df, use_container_width=True)
+        st.dataframe(metrics_df, width="stretch")
 
         metric_cols = [
             col for col in ["accuracy", "precision", "recall", "roc_auc"]
@@ -2441,7 +2573,7 @@ def render_ai_model() -> None:
         st.info("기준값 최적화 결과가 없습니다. `python -m src.optimize_ai_threshold`를 실행하세요.")
     else:
         threshold_df = pd.read_csv(threshold_path)
-        st.dataframe(threshold_df, use_container_width=True)
+        st.dataframe(threshold_df, width="stretch")
 
         ai_only = threshold_df[threshold_df["mode"] == "ai_filtered"].copy()
 
@@ -2551,7 +2683,7 @@ def render_ai_model() -> None:
                         )
 
                         st.subheader("검증 결과")
-                        st.dataframe(comparison_df, use_container_width=True)
+                        st.dataframe(comparison_df, width="stretch")
 
                         chart_df = pd.DataFrame(
                             {

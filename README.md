@@ -1,5 +1,7 @@
 # AI-Driven Quant Trading Bot (2026 Edition)
 
+[![CI](https://github.com/kimyounil1/trading-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/kimyounil1/trading-bot/actions/workflows/ci.yml)
+
 본 프로젝트는 AI(LightGBM + XGBoost 앙상블)와 정성적 분석(LLM Consensus)을 결합한 지능형 Alpaca Paper Trading 봇입니다. 시장 레짐(BULL/BEAR/NEUTRAL)을 자동으로 감지하고, 이에 최적화된 동적 전략 프로필을 적용하여 안정적인 수익을 추구합니다.
 
 ## 🚀 주요 혁신 기능

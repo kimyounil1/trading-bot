@@ -84,7 +84,8 @@ LIVE_LLM=1 bash scripts/run_operational_alpha_validation.sh   # cache miss 시 G
 워밍업은 진입일 키(`{티커}_{YYYY-MM-DD}`)로 저장. 당일 yfinance에 기사가 없으면 **현재 헤드라인 fallback**으로 Gemini 호출(완전한 과거 뉴스 아카이브는 아님). paper `main.py` 실행 시 같은 키로 캐시가 계속 쌓임.
 
 ```bash
-bash scripts/run_paper_ops_bootstrap.sh   # dry-run + advisory + alpha + operational summaries
+bash scripts/run_paper_ops_bootstrap.sh   # dry-run + advisory + alpha + operational + crowding gate
+SKIP_ALPHA=1 bash scripts/run_paper_ops_bootstrap.sh   # model/alpha 없을 때 paper audit·crowding만
 ```
 
 ### 2.3.2 Crowding guard (paper)
@@ -94,6 +95,8 @@ bash scripts/run_paper_ops_bootstrap.sh   # dry-run + advisory + alpha + operati
 ```bash
 bash scripts/run_guard_impact_report.sh
 bash scripts/run_crowding_paper_gate.sh   # writes logs/crowding_paper/go_no_go_checklist.json
+# strategy_config 반영은 guard impact **갱신 직후** 또는 APPLY_CROWDING_CONFIG=1 일 때만:
+bash scripts/run_crowding_paper_gate.sh --apply-config
 ```
 
 2026-05-31 gate 결과: **NO_GO** (Sharpe delta below floor). **GO** 전까지 prod config에 crowding 켜지 않음.

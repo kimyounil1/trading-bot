@@ -126,6 +126,19 @@ class StrategySettings(StrategyProfile):
     llm_degraded_mode: str = "PASS"  # "PASS" or "FAIL"
     llm_cache_enabled: bool = True
     llm_advisory_only: bool = True  # True: log LLM verdict, do not block orders
+    broker_provider: str = "alpaca"  # alpaca | toss (future)
+    extended_hours_enabled: bool = True
+    enabled_trading_sessions: List[str] = field(
+        default_factory=lambda: [
+            "regular",
+            "pre_market",
+            "after_hours",
+            "overnight",
+        ]
+    )
+    extended_hours_limit_slippage_pct: float = 0.005
+    day_market_start_kst: str = "10:00"
+    day_market_end_kst: str = "18:00"
 
 
 _STRATEGY_SETTINGS_FIELD_NAMES = {item.name for item in fields(StrategySettings)}
@@ -286,6 +299,38 @@ def validate_settings(settings: StrategySettings) -> StrategySettings:
         raise ValueError("block_leveraged_etfs_vix_above must be non-negative")
     if settings.rebalance_threshold_pct < 0:
         raise ValueError("rebalance_threshold_pct must be non-negative")
+    settings.broker_provider = str(settings.broker_provider).strip().lower()
+    if settings.broker_provider not in {"alpaca", "toss"}:
+        raise ValueError("broker_provider must be 'alpaca' or 'toss'")
+    if not settings.enabled_trading_sessions:
+        raise ValueError("enabled_trading_sessions must not be empty")
+    normalized_sessions = {
+        str(session).strip().lower() for session in settings.enabled_trading_sessions
+    }
+    allowed_sessions = {
+        "regular",
+        "pre_market",
+        "after_hours",
+        "overnight",
+        "day_market",
+    }
+    unknown = normalized_sessions - allowed_sessions
+    if unknown:
+        raise ValueError(f"unknown enabled_trading_sessions: {sorted(unknown)}")
+    settings.enabled_trading_sessions = sorted(normalized_sessions)
+    if not 0 <= settings.extended_hours_limit_slippage_pct < 1:
+        raise ValueError("extended_hours_limit_slippage_pct must be between 0 and 1")
+    for field_name, value in (
+        ("day_market_start_kst", settings.day_market_start_kst),
+        ("day_market_end_kst", settings.day_market_end_kst),
+    ):
+        parts = str(value).strip().split(":")
+        if len(parts) != 2:
+            raise ValueError(f"{field_name} must use HH:MM format")
+        hour, minute = int(parts[0]), int(parts[1])
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            raise ValueError(f"{field_name} must use a valid 24h clock time")
+        setattr(settings, field_name, f"{hour:02d}:{minute:02d}")
     return settings
 
 

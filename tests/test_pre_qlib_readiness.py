@@ -1,7 +1,7 @@
 import unittest
 from argparse import Namespace
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
@@ -116,10 +116,17 @@ class PreQlibReadinessTest(unittest.TestCase):
             "src.main.get_market_clock",
             return_value=SimpleNamespace(
                 is_open=False,
+                orders_allowed=False,
+                session=SimpleNamespace(value="closed"),
                 timestamp="2026-05-21T09:30:00Z",
                 next_open="2026-05-22T09:30:00Z",
+                next_close="2026-05-21T16:00:00Z",
+                broker_provider="alpaca",
+                extended_hours_enabled=False,
             ),
         ), patch(
+            "src.main.get_broker_adapter"
+        ) as broker_adapter_mock, patch(
             "src.main.get_account_summary",
             return_value={"cash": 1000.0, "positions_count": 0, "portfolio_value": 1000.0},
         ), patch(
@@ -135,16 +142,15 @@ class PreQlibReadinessTest(unittest.TestCase):
         ), patch(
             "src.main.log_signal"
         ) as log_signal_mock, patch(
-            "src.main.submit_market_buy_notional_order"
-        ) as submit_buy_mock, patch(
             "src.main.notify_error"
         ) as notify_error_mock, patch(
             "src.main.notify_run_summary"
         ) as notify_summary_mock:
+            broker_adapter_mock.return_value.submit_buy_notional = MagicMock()
             main()
 
         log_signal_mock.assert_called_once()
-        submit_buy_mock.assert_not_called()
+        broker_adapter_mock.return_value.submit_buy_notional.assert_not_called()
         notify_error_mock.assert_not_called()
         notify_summary_mock.assert_called_once()
 

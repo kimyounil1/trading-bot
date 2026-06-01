@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import time
 from typing import Optional
 from requests.exceptions import RequestException
@@ -10,6 +11,14 @@ from alpaca.trading.requests import LimitOrderRequest, MarketOrderRequest, Close
 from alpaca.trading.enums import OrderSide, TimeInForce, QueryOrderStatus
 
 from src.config import ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_PAPER
+
+
+def _safe_order_qty(qty: float) -> float:
+    """Truncate qty down to 6 decimals so sell orders never exceed holdings."""
+    scaled = math.floor(float(qty) * 1_000_000)
+    if scaled <= 0:
+        raise ValueError("qty must be positive after truncation")
+    return scaled / 1_000_000
 
 
 def get_trading_client() -> TradingClient:
@@ -87,6 +96,7 @@ def get_positions_summary() -> list[dict]:
         {
             "symbol": position.symbol,
             "qty": float(position.qty),
+            "current_price": float(position.current_price),
             "market_value": float(position.market_value),
             "cost_basis": float(position.cost_basis),
             "unrealized_pl": float(position.unrealized_pl),
@@ -96,11 +106,99 @@ def get_positions_summary() -> list[dict]:
     ]
 
 
+def _optional_str(value) -> str:
+    if value is None:
+        return ""
+    return str(value)
+
+
+def _normalize_order_status(status: str) -> str:
+    return str(status).replace("OrderStatus.", "").upper()
+
+
+def order_is_open(status: str) -> bool:
+    return _normalize_order_status(status) in {
+        "NEW",
+        "ACCEPTED",
+        "PENDING_NEW",
+        "PARTIALLY_FILLED",
+        "PENDING_CANCEL",
+        "PENDING_REPLACE",
+        "SUSPENDED",
+    }
+
+
+def order_is_filled(status: str) -> bool:
+    return _normalize_order_status(status) == "FILLED"
+
+
+def serialize_alpaca_order(order) -> dict:
+    limit_price = getattr(order, "limit_price", None)
+    qty = getattr(order, "qty", None)
+    filled_qty = getattr(order, "filled_qty", None)
+    filled_avg_price = getattr(order, "filled_avg_price", None)
+
+    qty_num = float(qty) if qty not in (None, "") else 0.0
+    filled_qty_num = float(filled_qty) if filled_qty not in (None, "") else 0.0
+    fill_pct = (filled_qty_num / qty_num * 100.0) if qty_num > 0 else 0.0
+
+    return {
+        "id": str(order.id),
+        "symbol": str(order.symbol),
+        "status": str(order.status),
+        "status_simple": _normalize_order_status(order.status),
+        "side": str(order.side).replace("OrderSide.", ""),
+        "type": str(order.type).replace("OrderType.", ""),
+        "qty": _optional_str(qty),
+        "filled_qty": _optional_str(filled_qty),
+        "filled_avg_price": _optional_str(filled_avg_price),
+        "limit_price": _optional_str(limit_price),
+        "notional": _optional_str(getattr(order, "notional", None)),
+        "extended_hours": bool(getattr(order, "extended_hours", False)),
+        "submitted_at": _optional_str(order.submitted_at),
+        "filled_at": _optional_str(order.filled_at),
+        "updated_at": _optional_str(getattr(order, "updated_at", None)),
+        "fill_pct": round(fill_pct, 2),
+    }
+
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
     retry=retry_if_exception_type((RequestException, ConnectionError)),
-    reraise=True
+    reraise=True,
+)
+def get_open_orders(limit: int = 100) -> list[dict]:
+    client = get_trading_client()
+    try:
+        request_params = GetOrdersRequest(status=QueryOrderStatus.OPEN, limit=limit)
+        orders = client.get_orders(request_params)
+    except RequestException as exc:
+        raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
+    return [serialize_alpaca_order(order) for order in orders]
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RequestException, ConnectionError)),
+    reraise=True,
+)
+def get_recent_closed_orders(limit: int = 50) -> list[dict]:
+    client = get_trading_client()
+    try:
+        request_params = GetOrdersRequest(status=QueryOrderStatus.CLOSED, limit=limit)
+        orders = client.get_orders(request_params)
+    except RequestException as exc:
+        raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
+    return [serialize_alpaca_order(order) for order in orders]
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RequestException, ConnectionError)),
+    reraise=True,
 )
 def get_order_summary(order_id: str) -> dict:
     client = get_trading_client()
@@ -109,18 +207,21 @@ def get_order_summary(order_id: str) -> dict:
     except RequestException as exc:
         raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
 
+    summary = serialize_alpaca_order(order)
     return {
-        "id": str(order.id),
-        "symbol": order.symbol,
-        "status": str(order.status),
-        "side": str(order.side),
-        "type": str(order.type),
-        "notional": str(order.notional),
-        "qty": str(order.qty),
-        "filled_qty": str(order.filled_qty),
-        "filled_avg_price": str(order.filled_avg_price),
-        "submitted_at": str(order.submitted_at),
-        "filled_at": str(order.filled_at),
+        "id": summary["id"],
+        "symbol": summary["symbol"],
+        "status": summary["status"],
+        "side": summary["side"],
+        "type": summary["type"],
+        "notional": summary["notional"],
+        "qty": summary["qty"],
+        "filled_qty": summary["filled_qty"],
+        "filled_avg_price": summary["filled_avg_price"],
+        "limit_price": summary["limit_price"],
+        "extended_hours": summary["extended_hours"],
+        "submitted_at": summary["submitted_at"],
+        "filled_at": summary["filled_at"],
     }
 
 
@@ -166,6 +267,7 @@ def submit_limit_buy_notional_order(
     limit_price: float,
     slippage_pct: float = 0.005,
     client_order_id: Optional[str] = None,
+    extended_hours: bool = False,
 ):
     """지정가 매수 주문. limit_price 기준으로 수량을 계산해 제출한다.
 
@@ -178,10 +280,7 @@ def submit_limit_buy_notional_order(
         raise ValueError("limit_price must be positive")
 
     effective_limit = round(limit_price * (1 + slippage_pct), 2)
-    qty = round(notional / effective_limit, 6)
-
-    if qty <= 0:
-        raise ValueError("calculated qty is zero or negative")
+    qty = _safe_order_qty(notional / effective_limit)
 
     client = get_trading_client()
     order_request = LimitOrderRequest(
@@ -191,6 +290,47 @@ def submit_limit_buy_notional_order(
         side=OrderSide.BUY,
         time_in_force=TimeInForce.DAY,
         client_order_id=client_order_id,
+        extended_hours=extended_hours,
+    )
+
+    try:
+        return client.submit_order(order_data=order_request)
+    except RequestException as exc:
+        raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RequestException, ConnectionError)),
+    reraise=True
+)
+def submit_limit_sell_qty_order(
+    ticker: str,
+    qty: float,
+    limit_price: float,
+    slippage_pct: float = 0.005,
+    client_order_id: Optional[str] = None,
+    extended_hours: bool = False,
+):
+    if qty <= 0:
+        raise ValueError("qty must be positive")
+    if limit_price <= 0:
+        raise ValueError("limit_price must be positive")
+
+    effective_limit = round(limit_price * (1 - slippage_pct), 2)
+    if effective_limit <= 0:
+        raise ValueError("effective limit price must be positive")
+
+    client = get_trading_client()
+    order_request = LimitOrderRequest(
+        symbol=ticker,
+        qty=_safe_order_qty(qty),
+        limit_price=effective_limit,
+        side=OrderSide.SELL,
+        time_in_force=TimeInForce.DAY,
+        client_order_id=client_order_id,
+        extended_hours=extended_hours,
     )
 
     try:
@@ -228,7 +368,7 @@ def close_position_by_symbol(
 
             order_request = MarketOrderRequest(
                 symbol=ticker,
-                qty=round(float(qty), 6),
+                qty=_safe_order_qty(qty),
                 side=OrderSide.SELL,
                 time_in_force=TimeInForce.DAY,
                 client_order_id=client_order_id,

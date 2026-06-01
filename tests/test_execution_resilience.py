@@ -76,16 +76,28 @@ class TestExecutionResilience(unittest.TestCase):
         mock_model.return_value.generate_content.assert_called_once()
 
     @patch("src.llm_analyst.genai.GenerativeModel")
-    @patch("yfinance.Ticker")
-    def test_llm_degraded_mode_fail(self, mock_yf, mock_model):
-        # Force exception
-        mock_yf.side_effect = Exception("API Down")
-        
+    @patch("src.llm_analyst._headlines_before_date")
+    def test_llm_degraded_mode_fail(self, mock_headlines, mock_model):
+        mock_headlines.return_value = ["Breaking: market halt"]
+        mock_model.return_value.generate_content.side_effect = Exception("API Down")
+
         settings = SimpleNamespace(llm_degraded_mode="FAIL", llm_cache_enabled=False)
-        
+
         ok, reason = evaluate_ticker_consensus("AAPL", settings=settings)
         self.assertFalse(ok)
         self.assertIn("Auto-Rejected", reason)
+
+    @patch("src.llm_analyst.genai.GenerativeModel")
+    @patch("src.llm_analyst._headlines_before_date")
+    def test_llm_degraded_mode_pass(self, mock_headlines, mock_model):
+        mock_headlines.return_value = ["Breaking: API timeout"]
+        mock_model.return_value.generate_content.side_effect = Exception("Gemini/YFinance Timeout")
+
+        settings = SimpleNamespace(llm_degraded_mode="PASS", llm_cache_enabled=False)
+
+        ok, reason = evaluate_ticker_consensus("AAPL", settings=settings)
+        self.assertTrue(ok)
+        self.assertIn("Auto-Approved", reason)
 
     def test_corrupted_peaks_json(self):
         import tempfile
@@ -169,21 +181,6 @@ class TestExecutionResilience(unittest.TestCase):
             # Should raise ConnectionError
             with self.assertRaises(ConnectionError):
                 main()
-
-    @patch("src.llm_analyst.genai.GenerativeModel")
-    @patch("yfinance.Ticker")
-    def test_llm_degraded_mode_pass(self, mock_yf, mock_model):
-        from src.llm_analyst import evaluate_ticker_consensus
-        
-        # Mock API timeout/exception on ticker loading
-        mock_yf.side_effect = Exception("Gemini/YFinance Timeout")
-        
-        settings = SimpleNamespace(llm_degraded_mode="PASS", llm_cache_enabled=False)
-        
-        # Should auto-approve on degraded PASS policy
-        ok, reason = evaluate_ticker_consensus("AAPL", settings=settings)
-        self.assertTrue(ok)
-        self.assertIn("Auto-Approved", reason)
 
 if __name__ == "__main__":
     unittest.main()

@@ -27,7 +27,7 @@ def is_correlation_allowed(
 
     # 대상 종목의 수익률 계산
     target_close = target_df["adj_close"] if "adj_close" in target_df.columns else target_df["close"]
-    target_returns = target_close.pct_change().iloc[-lookback_days:]
+    target_returns = target_close.pct_change(fill_method=None).iloc[-lookback_days:]
 
     correlations = []
 
@@ -37,7 +37,7 @@ def is_correlation_allowed(
             continue
 
         symbol_close = symbol_df["adj_close"] if "adj_close" in symbol_df.columns else symbol_df["close"]
-        symbol_returns = symbol_close.pct_change().iloc[-lookback_days:]
+        symbol_returns = symbol_close.pct_change(fill_method=None).iloc[-lookback_days:]
 
         # 날짜 인덱스 정렬 후 상관계수 계산
         combined = pd.concat([target_returns, symbol_returns], axis=1).dropna()

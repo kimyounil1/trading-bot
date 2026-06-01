@@ -121,7 +121,7 @@ def log_execution_audit(
     log_file.parent.mkdir(parents=True, exist_ok=True)
 
     def _round_or_none(value, digits: int):
-        if value is None or value == "":
+        if value is None or value == "" or str(value).lower() in {"none", "null"}:
             return None
         return round(float(value), digits)
 

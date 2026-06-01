@@ -10,10 +10,13 @@ mkdir -p "$LOG_DIR"
 
 MODE="${1:-dry-run}"
 
+# Non-TTY log redirection uses block buffering; -u keeps dry-run progress visible.
+export PYTHONUNBUFFERED=1
+
 if [[ "$MODE" == "execute" ]]; then
-  CMD=("$PROJECT_DIR/.venv/bin/python" -m src.main --execute)
+  CMD=("$PROJECT_DIR/.venv/bin/python" -u -m src.main --execute)
 else
-  CMD=("$PROJECT_DIR/.venv/bin/python" -m src.main)
+  CMD=("$PROJECT_DIR/.venv/bin/python" -u -m src.main)
 fi
 
 {
