@@ -42,39 +42,35 @@ class TestExecutionResilience(unittest.TestCase):
         self.assertEqual(float(request.qty), 10.5)
         self.assertEqual(request.side.value, "sell")
 
+    @patch("src.llm_analyst.GEMINI_API_KEY", "test-key")
     @patch("src.llm_analyst._load_cache")
     @patch("src.llm_analyst._save_cache")
-    @patch("yfinance.Ticker")
-    @patch("google.generativeai.GenerativeModel")
-    def test_llm_caching(self, mock_model, mock_yf, mock_save, mock_load):
-        # Mock cache empty
+    @patch("src.llm_analyst._headlines_before_date")
+    @patch("src.llm_analyst.genai.GenerativeModel")
+    def test_llm_caching(self, mock_model, mock_headlines, mock_save, mock_load):
         mock_load.return_value = {}
-        
-        # Mock news and LLM
-        mock_yf.return_value.news = [{"title": "Good News"}]
+        mock_headlines.return_value = ["Good News"]
         mock_resp = MagicMock()
         mock_resp.text = "DECISION: APPROVE\nCATEGORY: None\nREASON: All good"
         mock_model.return_value.generate_content.return_value = mock_resp
-        
+
         ticker = "AAPL"
-        
-        # First call: should call LLM
-        ok1, reason1 = evaluate_ticker_consensus(ticker)
+        as_of = "2026-06-01"
+
+        ok1, reason1 = evaluate_ticker_consensus(ticker, as_of_date=as_of)
         self.assertTrue(ok1)
         mock_model.return_value.generate_content.assert_called_once()
         mock_save.assert_called_once()
-        
-        # Update mock_load to simulate saved cache
+
         cache_data = mock_save.call_args[0][0]
         mock_load.return_value = cache_data
-        
-        # Second call: should use cache
-        ok2, reason2 = evaluate_ticker_consensus(ticker)
+
+        ok2, reason2 = evaluate_ticker_consensus(ticker, as_of_date=as_of)
         self.assertTrue(ok2)
         self.assertEqual(reason1, reason2)
-        # Should NOT call LLM again
         mock_model.return_value.generate_content.assert_called_once()
 
+    @patch("src.llm_analyst.GEMINI_API_KEY", "test-key")
     @patch("src.llm_analyst.genai.GenerativeModel")
     @patch("src.llm_analyst._headlines_before_date")
     def test_llm_degraded_mode_fail(self, mock_headlines, mock_model):
@@ -87,6 +83,7 @@ class TestExecutionResilience(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("Auto-Rejected", reason)
 
+    @patch("src.llm_analyst.GEMINI_API_KEY", "test-key")
     @patch("src.llm_analyst.genai.GenerativeModel")
     @patch("src.llm_analyst._headlines_before_date")
     def test_llm_degraded_mode_pass(self, mock_headlines, mock_model):
