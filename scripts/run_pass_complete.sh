@@ -62,7 +62,14 @@ else
     tests/test_equal_weight_benchmark.py \
     tests/test_promotion_beat_benchmark.py \
     tests/test_llm_backtest_impact.py \
-    tests/test_paper_ops_summary.py
+    tests/test_paper_ops_summary.py \
+    tests/test_buy_guards.py \
+    tests/test_cms_reconcile.py \
+    tests/test_extended_hours_fill_report.py \
+    tests/test_cms_dashboard.py \
+    tests/test_broker_adapter.py \
+    tests/test_trading_session.py \
+    tests/test_execution_resilience.py
 fi
 
 echo "=== [2/3] post-workflow / Codex ==="

@@ -84,8 +84,9 @@ LIVE_LLM=1 bash scripts/run_operational_alpha_validation.sh   # cache miss 시 G
 워밍업은 진입일 키(`{티커}_{YYYY-MM-DD}`)로 저장. 당일 yfinance에 기사가 없으면 **현재 헤드라인 fallback**으로 Gemini 호출(완전한 과거 뉴스 아카이브는 아님). paper `main.py` 실행 시 같은 키로 캐시가 계속 쌓임.
 
 ```bash
-bash scripts/run_paper_ops_bootstrap.sh   # dry-run + advisory + alpha + operational + crowding gate
+bash scripts/run_paper_ops_bootstrap.sh   # dry-run + advisory + alpha + crowding gate (report only)
 SKIP_ALPHA=1 bash scripts/run_paper_ops_bootstrap.sh   # model/alpha 없을 때 paper audit·crowding만
+APPLY_CROWDING_CONFIG=1 bash scripts/run_paper_ops_bootstrap.sh   # GO일 때만 proposal merge
 ```
 
 ### 2.3.2 Crowding guard (paper)

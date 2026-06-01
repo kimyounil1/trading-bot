@@ -29,7 +29,7 @@
 | 28 | Margin leverage paper | Stress go/no-go gate, proposal caps, main buy block |
 | 29 | Beat benchmark (alpha) | Promotion ≥ bench, EW benchmark fix, alpha/operational pipelines, LLM advisory-only, cache warmup |
 | 30 | Paper ops maintenance | Bootstrap script, LLM advisory report wiring, crowding `--apply-config` (GO only), paper_ops summary |
-| 31 (in progress) | Extended hours & CMS parity | `broker_adapter`, `trading_session`, candidate_cache 2y+macro, CMS Alpaca order board, `cms_helpers`, GitHub Actions CI |
+| 31 | Extended hours & CMS parity | `buy_guards`, extended fill report, CMS reconcile, CI, `RUN_ID=phase31` Codex pass |
 
 **Milestones**
 - **2026-05-27:** Phase 0–19 closed (code + pytest + runbook).
@@ -41,4 +41,4 @@
 - **2026-05-30:** Phase 28 closed; margin leverage paper gate wired to leverage stress + main.
 - **2026-05-31:** Phase 29 closed; +96.8% vs B&H +65%, LLM advisory (no block), crowding paper gate NO_GO.
 - **2026-06-01:** Phase 30 closed; paper ops bootstrap, advisory impact report, crowding apply-on-GO guard, `logs/paper_ops/latest_summary.json`.
-- **2026-06-01:** Phase 31 started; extended-hours execution, CMS order board, CI on `main` (248 pytest green); dry-run parity & fill-rate reports remain in `TODO.md`.
+- **2026-06-01:** Phase 31 closed; `buy_guards` main/cache parity, extended-hours fill report, CMS Alpaca reconcile, GitHub Actions CI (257 pytest), Codex phase31; crowding config stays off unless `APPLY_CROWDING_CONFIG=1`.

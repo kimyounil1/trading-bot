@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-shot paper ops bootstrap: dry-run bot, advisory report, alpha + operational summaries,
-# crowding gate refresh, and optional proposal apply (GO only).
+# crowding gate refresh (report only). Proposal merge requires APPLY_CROWDING_CONFIG=1.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -44,7 +44,7 @@ else
 fi
 
 if [[ "$SKIP_CROWDING_GATE" != "1" ]]; then
-  if [[ "$GUARD_REFRESHED" == "1" ]] || [[ "${APPLY_CROWDING_CONFIG:-}" == "1" ]]; then
+  if [[ "${APPLY_CROWDING_CONFIG:-}" == "1" ]]; then
     bash scripts/run_crowding_paper_gate.sh --apply-config
   else
     bash scripts/run_crowding_paper_gate.sh

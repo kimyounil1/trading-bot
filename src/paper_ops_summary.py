@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from src.settings import load_settings
+
 DEFAULT_OUTPUT_DIR = Path("logs/paper_ops")
 DEFAULT_AUDIT_PATH = Path("logs/execution_audit.csv")
 DEFAULT_LLM_CACHE_PATH = Path("data/llm_cache.json")
@@ -50,6 +52,8 @@ def build_paper_ops_summary(
         audit_rows = max(0, sum(1 for _ in audit_path.open(encoding="utf-8")) - 1)
 
     config_apply = crowding_gate.get("config_apply") or {}
+    settings = load_settings()
+    crowding_enabled_in_config = bool(getattr(settings, "crowding_guard_enabled", False))
     return {
         "generated_at": _utc_now_iso(),
         "execution_audit_path": str(audit_path),
@@ -67,7 +71,9 @@ def build_paper_ops_summary(
         },
         "crowding_gate_path": str(crowding_gate_path),
         "crowding_decision": crowding_gate.get("decision"),
-        "crowding_config_applied": bool(config_apply.get("applied", False)),
+        "crowding_guard_enabled_in_config": crowding_enabled_in_config,
+        "crowding_gate_last_apply_attempted": bool(config_apply.get("applied", False)),
+        "crowding_config_applied": crowding_enabled_in_config,
         "extended_hours_fill_path": str(extended_fill_path),
         "extended_hours_fill": {
             "extended_limit_orders": extended_fill.get("extended_limit_orders", 0),
@@ -78,7 +84,8 @@ def build_paper_ops_summary(
         },
         "notes": [
             "Run via: bash scripts/run_paper_ops_bootstrap.sh",
-            "Crowding proposal applies to strategy_config only when gate decision is GO_PAPER.",
+            "Crowding proposal merges only with: APPLY_CROWDING_CONFIG=1 bash scripts/run_paper_ops_bootstrap.sh",
+            "crowding_config_applied reflects strategy_config.json (not stale gate config_apply).",
         ],
     }
 
