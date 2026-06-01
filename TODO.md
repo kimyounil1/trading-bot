@@ -28,10 +28,11 @@
 | **Paper ops** | `logs/paper_ops/latest_summary.json` (bootstrap 2026-06-01 01:32 UTC) |
 | **Extended hours** | Alpaca pre/after/overnight limit orders wired; CMS 주문 현황 패널 |
 | **CMS** | `trading-bot-cms.service` @8502, candidate-cache timer 10m |
-| **CI/CD** | GitHub Actions **green** on `main` (`03ef071`) — pytest 248, cms-import, deploy-gate |
+| **CI/CD** | GitHub Actions on `main` (`d2d119b`) — **257** pytest, cms-import, deploy-gate |
+| **Extended fill** | `logs/paper_ops/extended_hours_fill_report.json` (10 ext limit / 5 filled / 5 open) |
 
 **Phase 30 완료** → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)  
-**Phase 31 진행 중** — 아래 체크리스트 (커밋·CI 완료, dry-run parity·리포트·AGY 테스트 남음)
+**Phase 31** — Codex `run_pass_complete`만 남음 (아래 31-D)
 
 ---
 
