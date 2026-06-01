@@ -46,11 +46,14 @@ class TestExecutionResilience(unittest.TestCase):
     @patch("src.llm_analyst._load_cache")
     @patch("src.llm_analyst._save_cache")
     @patch("src.llm_analyst._headlines_before_date")
-    @patch("src.llm_analyst._generate_llm_text")
+    @patch("src.llm_analyst._generate_llm_text_with_provider")
     def test_llm_caching(self, mock_generate, mock_headlines, mock_save, mock_load):
         mock_load.return_value = {}
         mock_headlines.return_value = ["Good News"]
-        mock_generate.return_value = "DECISION: APPROVE\nCATEGORY: None\nREASON: All good"
+        mock_generate.return_value = (
+            "DECISION: APPROVE\nCATEGORY: None\nREASON: All good",
+            "gemini",
+        )
 
         ticker = "AAPL"
         as_of = "2026-06-01"
@@ -69,7 +72,7 @@ class TestExecutionResilience(unittest.TestCase):
         mock_generate.assert_called_once()
 
     @patch("src.llm_analyst.GEMINI_API_KEY", "test-key")
-    @patch("src.llm_analyst._generate_llm_text")
+    @patch("src.llm_analyst._generate_llm_text_with_provider")
     @patch("src.llm_analyst._headlines_before_date")
     def test_llm_degraded_mode_fail(self, mock_headlines, mock_generate):
         mock_headlines.return_value = ["Breaking: market halt"]
@@ -82,7 +85,7 @@ class TestExecutionResilience(unittest.TestCase):
         self.assertIn("Auto-Rejected", reason)
 
     @patch("src.llm_analyst.GEMINI_API_KEY", "test-key")
-    @patch("src.llm_analyst._generate_llm_text")
+    @patch("src.llm_analyst._generate_llm_text_with_provider")
     @patch("src.llm_analyst._headlines_before_date")
     def test_llm_degraded_mode_pass(self, mock_headlines, mock_generate):
         mock_headlines.return_value = ["Breaking: API timeout"]

@@ -6,7 +6,7 @@ import os
 
 from src import llm_analyst
 from src.llm_analyst import (
-    _generate_llm_text,
+    _generate_llm_text_with_provider,
     _response_text,
     evaluate_ticker_consensus,
     llm_cache_only_for_run,
@@ -35,26 +35,23 @@ class TestLlmAnalystGenai(unittest.TestCase):
         response = SimpleNamespace(text=None, candidates=[candidate])
         self.assertEqual(_response_text(response), "from parts")
 
-    @patch("src.llm_analyst._get_genai_client")
-    def test_generate_llm_text_calls_client(self, mock_get_client) -> None:
-        mock_client = MagicMock()
-        mock_client.models.generate_content.return_value = SimpleNamespace(
-            text="DECISION: APPROVE"
-        )
-        mock_get_client.return_value = mock_client
-
-        text = _generate_llm_text("prompt", model="gemini-2.0-flash")
+    @patch("src.llm_analyst._generate_gemini_text", return_value="DECISION: APPROVE")
+    def test_generate_llm_text_calls_client(self, mock_gemini) -> None:
+        with patch("src.llm_analyst._resolve_api_key", return_value="test-key"):
+            text, provider = _generate_llm_text_with_provider(
+                "prompt",
+                model="gemini-2.0-flash",
+            )
         self.assertEqual(text, "DECISION: APPROVE")
-        mock_client.models.generate_content.assert_called_once_with(
-            model="gemini-2.0-flash",
-            contents="prompt",
-        )
+        self.assertEqual(provider, "gemini")
+        mock_gemini.assert_called_once()
 
-    @patch("src.llm_analyst._generate_llm_text")
+    @patch("src.llm_analyst._generate_llm_text_with_provider")
     @patch("src.llm_analyst._headlines_before_date", return_value=["Headline"])
     def test_evaluate_parses_reject(self, _headlines, mock_generate) -> None:
         mock_generate.return_value = (
-            "DECISION: REJECT\nCATEGORY: Fraud\nREASON: 회계 이슈"
+            "DECISION: REJECT\nCATEGORY: Fraud\nREASON: 회계 이슈",
+            "gemini",
         )
         with patch.object(llm_analyst, "GEMINI_API_KEY", "test-key"):
             ok, reason = evaluate_ticker_consensus(

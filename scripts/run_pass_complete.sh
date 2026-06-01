@@ -70,7 +70,8 @@ else
     tests/test_broker_adapter.py \
     tests/test_trading_session.py \
     tests/test_execution_resilience.py \
-    tests/test_llm_analyst_genai.py
+    tests/test_llm_analyst_genai.py \
+    tests/test_llm_vllm_fallback.py
 fi
 
 echo "=== [2/3] post-workflow / Codex ==="

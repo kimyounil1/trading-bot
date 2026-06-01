@@ -83,6 +83,12 @@ LIVE_LLM=1 bash scripts/run_operational_alpha_validation.sh   # cache miss 시 G
 산출물: `data/llm_cache.json`, `logs/llm_cache_warmup/latest_summary.json`, `logs/operational_alpha/latest_summary.json`  
 워밍업은 진입일 키(`{티커}_{YYYY-MM-DD}`)로 저장. 당일 yfinance에 기사가 없으면 **현재 헤드라인 fallback**으로 Gemini 호출(완전한 과거 뉴스 아카이브는 아님). paper `main.py` 실행 시 같은 키로 캐시가 계속 쌓임.
 
+**로컬 vLLM 서브모델 (Gemini quota/5xx 시)** — `src/llm_vllm.py` + `src/llm_analyst.py`:
+- 기본: `http://192.168.219.116:11434/v1`, 모델 `gemma4-26B` (`.env`의 `LLM_VLLM_*`로 변경)
+- Gemini 429/500/quota 등 → 자동으로 로컬 vLLM 호출; 캐시 `llm_provider: vllm`, 사유 접두사 `[local-vLLM]`
+- 점검: `PYTHONPATH=. .venv/bin/python -c "from src.llm_vllm import probe_vllm_models; print(probe_vllm_models())"`
+- 비활성: `LLM_VLLM_ENABLED=0`
+
 ```bash
 bash scripts/run_paper_ops_bootstrap.sh   # dry-run + advisory + alpha + crowding gate (report only)
 SKIP_ALPHA=1 bash scripts/run_paper_ops_bootstrap.sh   # model/alpha 없을 때 paper audit·crowding만

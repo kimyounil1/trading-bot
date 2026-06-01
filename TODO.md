@@ -41,6 +41,7 @@
 
 ### 32-B LLM SDK
 - [x] `google.generativeai` → `google.genai` (`llm_analyst.py`, `google-genai` in requirements, tests)
+- [x] 로컬 vLLM 서브모델 폴백 (`192.168.219.116:11434`, `gemma4-26B`) — Gemini quota/5xx 시
 
 ### 32-C Ops
 - [ ] Crowding **GO** 재평가 후 `APPLY_CROWDING_CONFIG=1` bootstrap으로 proposal 반영 여부 결정

@@ -10,6 +10,11 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 from google import genai
 
+from src.llm_vllm import (
+    generate_vllm_text,
+    should_fallback_to_vllm,
+    vllm_fallback_enabled,
+)
 from src.news_sentiment import _headlines_before_date, _headlines_current
 
 if TYPE_CHECKING:
@@ -26,6 +31,10 @@ def _resolve_api_key() -> str | None:
     if GEMINI_API_KEY:
         return GEMINI_API_KEY
     return os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+
+
+def llm_backend_available() -> bool:
+    return bool(_resolve_api_key()) or vllm_fallback_enabled()
 
 
 def llm_cache_only_for_run(*, execute_orders: bool) -> bool:
@@ -67,13 +76,47 @@ def _response_text(response: Any) -> str:
     raise ValueError("empty LLM response")
 
 
-def _generate_llm_text(prompt: str, *, model: str | None = None) -> str:
+def _generate_gemini_text(prompt: str, *, model: str | None = None) -> str:
     client = _get_genai_client()
     response = client.models.generate_content(
         model=model or DEFAULT_LLM_MODEL,
         contents=prompt,
     )
     return _response_text(response)
+
+
+def _generate_llm_text_with_provider(prompt: str, *, model: str | None = None) -> Tuple[str, str]:
+    """Return (text, provider) where provider is 'gemini' or 'vllm'."""
+    gemini_error: BaseException | None = None
+    if _resolve_api_key():
+        try:
+            return _generate_gemini_text(prompt, model=model), "gemini"
+        except Exception as exc:
+            if not should_fallback_to_vllm(exc):
+                raise
+            gemini_error = exc
+            print(f"Gemini LLM failed, trying local vLLM fallback: {exc}")
+
+    if vllm_fallback_enabled():
+        try:
+            return generate_vllm_text(prompt), "vllm"
+        except Exception as vllm_exc:
+            if gemini_error is not None:
+                raise RuntimeError(
+                    f"Gemini failed ({gemini_error}); local vLLM failed ({vllm_exc})"
+                ) from vllm_exc
+            raise
+
+    if gemini_error is not None:
+        raise gemini_error
+    raise ValueError(
+        "No LLM backend available (set GEMINI_API_KEY or configure LLM_VLLM_BASE_URL)"
+    )
+
+
+def _generate_llm_text(prompt: str, *, model: str | None = None) -> str:
+    text, _provider = _generate_llm_text_with_provider(prompt, model=model)
+    return text
 
 
 def _load_cache() -> Dict[str, dict]:
@@ -121,7 +164,7 @@ def evaluate_ticker_consensus(
         status = "Auto-Approved" if is_ok else "Auto-Rejected"
         return is_ok, f"LLM cache miss ({status} per policy)"
 
-    if not _resolve_api_key():
+    if not llm_backend_available():
         return True, "GEMINI_API_KEY not found, skipping qualitative analysis (Auto-Approved)"
 
     try:
@@ -140,12 +183,12 @@ News Headlines:
 {news_context}
 
 Based on these headlines, should we proceed with buying this stock?
-Provide your decision in the following structured format:
+Provide your decision in the following structured format only (no extra commentary):
 DECISION: [APPROVE or REJECT]
 CATEGORY: [None, Lawsuit, Fraud, Guidance, Financials, Other]
 REASON: [One sentence explanation in Korean]
 """
-        text = _generate_llm_text(prompt)
+        text, provider = _generate_llm_text_with_provider(prompt)
         upper_text = text.upper()
 
         is_approved = "DECISION: APPROVE" in upper_text or "DECISION: [APPROVE]" in upper_text
@@ -164,6 +207,8 @@ REASON: [One sentence explanation in Korean]
             reason = "정성적 리스크 감지됨"
 
         category_reason = f"[{category}] {reason}" if category != "None" else reason
+        if provider == "vllm":
+            category_reason = f"[local-vLLM] {category_reason}"
 
         if cache_enabled:
             cache[cache_key] = {
@@ -171,6 +216,7 @@ REASON: [One sentence explanation in Korean]
                 "category": category,
                 "reason": reason,
                 "category_reason": category_reason,
+                "llm_provider": provider,
                 "timestamp": datetime.now().isoformat(),
             }
             _save_cache(cache)
