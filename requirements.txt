@@ -8,7 +8,7 @@ matplotlib
 scikit-learn
 lightgbm
 xgboost
-google-generativeai
+google-genai
 streamlit
 requests
 nltk

@@ -46,20 +46,18 @@ class TestExecutionResilience(unittest.TestCase):
     @patch("src.llm_analyst._load_cache")
     @patch("src.llm_analyst._save_cache")
     @patch("src.llm_analyst._headlines_before_date")
-    @patch("src.llm_analyst.genai.GenerativeModel")
-    def test_llm_caching(self, mock_model, mock_headlines, mock_save, mock_load):
+    @patch("src.llm_analyst._generate_llm_text")
+    def test_llm_caching(self, mock_generate, mock_headlines, mock_save, mock_load):
         mock_load.return_value = {}
         mock_headlines.return_value = ["Good News"]
-        mock_resp = MagicMock()
-        mock_resp.text = "DECISION: APPROVE\nCATEGORY: None\nREASON: All good"
-        mock_model.return_value.generate_content.return_value = mock_resp
+        mock_generate.return_value = "DECISION: APPROVE\nCATEGORY: None\nREASON: All good"
 
         ticker = "AAPL"
         as_of = "2026-06-01"
 
         ok1, reason1 = evaluate_ticker_consensus(ticker, as_of_date=as_of)
         self.assertTrue(ok1)
-        mock_model.return_value.generate_content.assert_called_once()
+        mock_generate.assert_called_once()
         mock_save.assert_called_once()
 
         cache_data = mock_save.call_args[0][0]
@@ -68,14 +66,14 @@ class TestExecutionResilience(unittest.TestCase):
         ok2, reason2 = evaluate_ticker_consensus(ticker, as_of_date=as_of)
         self.assertTrue(ok2)
         self.assertEqual(reason1, reason2)
-        mock_model.return_value.generate_content.assert_called_once()
+        mock_generate.assert_called_once()
 
     @patch("src.llm_analyst.GEMINI_API_KEY", "test-key")
-    @patch("src.llm_analyst.genai.GenerativeModel")
+    @patch("src.llm_analyst._generate_llm_text")
     @patch("src.llm_analyst._headlines_before_date")
-    def test_llm_degraded_mode_fail(self, mock_headlines, mock_model):
+    def test_llm_degraded_mode_fail(self, mock_headlines, mock_generate):
         mock_headlines.return_value = ["Breaking: market halt"]
-        mock_model.return_value.generate_content.side_effect = Exception("API Down")
+        mock_generate.side_effect = Exception("API Down")
 
         settings = SimpleNamespace(llm_degraded_mode="FAIL", llm_cache_enabled=False)
 
@@ -84,11 +82,11 @@ class TestExecutionResilience(unittest.TestCase):
         self.assertIn("Auto-Rejected", reason)
 
     @patch("src.llm_analyst.GEMINI_API_KEY", "test-key")
-    @patch("src.llm_analyst.genai.GenerativeModel")
+    @patch("src.llm_analyst._generate_llm_text")
     @patch("src.llm_analyst._headlines_before_date")
-    def test_llm_degraded_mode_pass(self, mock_headlines, mock_model):
+    def test_llm_degraded_mode_pass(self, mock_headlines, mock_generate):
         mock_headlines.return_value = ["Breaking: API timeout"]
-        mock_model.return_value.generate_content.side_effect = Exception("Gemini/YFinance Timeout")
+        mock_generate.side_effect = Exception("Gemini/YFinance Timeout")
 
         settings = SimpleNamespace(llm_degraded_mode="PASS", llm_cache_enabled=False)
 

@@ -8,7 +8,7 @@
 
 ### 1. 하이브리드 의사결정 엔진
 - **정량 모델 (Ensemble AI)**: LightGBM과 XGBoost를 결합한 앙상블 모델이 24개 이상의 피처(기술적 지표, 옵션 시장 tail risk, 매크로 지표)를 기반으로 매수 확률 점수를 산출합니다.
-- **정성 모델 (LLM Consensus)**: Gemini 1.5 Flash API를 활용하여 최신 뉴스를 실시간 분석합니다. 소송, 부정회계, 가이던스 하향 등 정량 모델이 놓치기 쉬운 펀더멘털 리스크를 감지하여 최종 승인을 결정합니다. (결과는 비용 절감을 위해 로컬 캐싱됩니다.)
+- **정성 모델 (LLM Consensus)**: Google **Gen AI SDK** (`google-genai`) + Gemini API로 최신 뉴스를 분석합니다. `GEMINI_API_KEY` 또는 `GOOGLE_API_KEY` 필요. 소송, 부정회계, 가이던스 하향 등 정량 모델이 놓치기 쉬운 펀더멘털 리스크를 감지하여 최종 승인을 결정합니다. (결과는 비용 절감을 위해 로컬 캐싱됩니다.)
 
 ### 2. 시장 레짐 인지형 전략 (Regime-Aware)
 - VIX 지수와 지수 추세를 조합하여 시장 상태를 **BULL / BEAR / NEUTRAL**로 분류합니다.

@@ -27,6 +27,7 @@
 | **CI/CD** | GitHub Actions green — **257** pytest (`main`) |
 | **Crowding** | gate **GO_PAPER** (리포트) · config **`crowding_guard_enabled: false`** (운영 정책) |
 | **Paper ops** | `logs/paper_ops/latest_summary.json` + extended fill report |
+| **LLM SDK** | `google-genai` (`src/llm_analyst.py`) — legacy `google-generativeai` 제거 |
 
 **Phase 31 완료** → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md) · Codex `RUN_ID=phase31`
 
@@ -39,7 +40,7 @@
 - [ ] CMS/bot execute path for Toss paper
 
 ### 32-B LLM SDK
-- [ ] `google.generativeai` → `google.genai` migration (`llm_analyst.py`, requirements, tests)
+- [x] `google.generativeai` → `google.genai` (`llm_analyst.py`, `google-genai` in requirements, tests)
 
 ### 32-C Ops
 - [ ] Crowding **GO** 재평가 후 `APPLY_CROWDING_CONFIG=1` bootstrap으로 proposal 반영 여부 결정

@@ -1,22 +1,64 @@
 """LLM(Gemini) 기반 뉴스 및 정성적 분석 에이전트."""
 
+from __future__ import annotations
+
 import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Tuple, Optional, Dict, Any
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
-import google.generativeai as genai
+from google import genai
 
 from src.news_sentiment import _headlines_before_date, _headlines_current
 
-# Gemini API 설정 (환경 변수 필요)
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+if TYPE_CHECKING:
+    from google.genai import Client as GenaiClient
 
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 CACHE_PATH = Path("data/llm_cache.json")
 DEFAULT_LLM_MODEL = os.getenv("LLM_MODEL", "gemma-4-26b-a4b-it")
+
+_genai_client: GenaiClient | None = None
+
+
+def _get_genai_client() -> GenaiClient:
+    global _genai_client
+    if _genai_client is None:
+        if not GEMINI_API_KEY:
+            raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY is required for LLM calls")
+        _genai_client = genai.Client(api_key=GEMINI_API_KEY)
+    return _genai_client
+
+
+def reset_genai_client() -> None:
+    """Clear cached client (tests)."""
+    global _genai_client
+    _genai_client = None
+
+
+def _response_text(response: Any) -> str:
+    text = getattr(response, "text", None)
+    if text:
+        return str(text).strip()
+    candidates = getattr(response, "candidates", None) or []
+    if candidates:
+        content = getattr(candidates[0], "content", None)
+        parts = getattr(content, "parts", None) if content else None
+        if parts:
+            chunk = getattr(parts[0], "text", None)
+            if chunk:
+                return str(chunk).strip()
+    raise ValueError("empty LLM response")
+
+
+def _generate_llm_text(prompt: str, *, model: str | None = None) -> str:
+    client = _get_genai_client()
+    response = client.models.generate_content(
+        model=model or DEFAULT_LLM_MODEL,
+        contents=prompt,
+    )
+    return _response_text(response)
 
 
 def _load_cache() -> Dict[str, dict]:
@@ -75,9 +117,6 @@ def evaluate_ticker_consensus(
             return True, "No recent news found for qualitative analysis"
 
         news_context = "\n".join([f"- {h}" for h in headlines])
-
-        # 2. LLM에게 분석 요청
-        model = genai.GenerativeModel(DEFAULT_LLM_MODEL)
         prompt = f"""
 Analyze the following recent news headlines for the stock ticker '{ticker}'.
 Your goal is to identify critical fundamental risks that a purely quantitative model might miss (e.g., fraud, major lawsuits, catastrophic product failure, or terrible forward guidance).
@@ -91,36 +130,33 @@ DECISION: [APPROVE or REJECT]
 CATEGORY: [None, Lawsuit, Fraud, Guidance, Financials, Other]
 REASON: [One sentence explanation in Korean]
 """
-        response = model.generate_content(prompt)
-        text = response.text.strip()
+        text = _generate_llm_text(prompt)
         upper_text = text.upper()
 
         is_approved = "DECISION: APPROVE" in upper_text or "DECISION: [APPROVE]" in upper_text
-        
+
         category = "None"
         if "CATEGORY:" in upper_text:
             idx = upper_text.find("CATEGORY:")
-            # Find next newline or end of string
-            line = text[idx + 9:].split("\n")[0].strip()
+            line = text[idx + 9 :].split("\n")[0].strip()
             category = line.strip("[]")
 
         reason = "LLM Approved"
         if "REASON:" in upper_text:
             idx = upper_text.find("REASON:")
-            reason = text[idx + 7:].strip()
+            reason = text[idx + 7 :].strip()
         elif not is_approved:
             reason = "정성적 리스크 감지됨"
 
         category_reason = f"[{category}] {reason}" if category != "None" else reason
 
-        # 캐시 저장
         if cache_enabled:
             cache[cache_key] = {
                 "is_approved": is_approved,
                 "category": category,
                 "reason": reason,
                 "category_reason": category_reason,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
             _save_cache(cache)
 
@@ -128,7 +164,6 @@ REASON: [One sentence explanation in Korean]
 
     except Exception as e:
         print(f"Error in LLM analysis for {ticker}: {e}")
-        # Default policy: Auto-approve on failure but log it
-        is_ok = (degraded_mode == "PASS")
+        is_ok = degraded_mode == "PASS"
         status = "Auto-Approved" if is_ok else "Auto-Rejected"
         return is_ok, f"LLM Analysis failed: {e} ({status} per policy)"
