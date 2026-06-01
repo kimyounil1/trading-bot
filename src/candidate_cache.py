@@ -18,9 +18,15 @@ from src.features import MAX_FEATURE_LOOKBACK
 from src.macro_loader import load_macro_data
 from src.market_clock import get_market_clock
 from src.ml_model import load_ai_score_model, predict_ai_score_from_bundle
+from src.buy_guards import (
+    apply_sector_score_bonus,
+    apply_shared_buy_guards,
+    execution_label_for_cache,
+)
+from src.macro_events import get_macro_event_risk
+from src.margin_leverage_paper_gate import evaluate_margin_leverage_buy_block
 from src.risk_manager import (
     apply_buy_safety_limits,
-    apply_factor_crowding_limits,
     apply_portfolio_exposure_limits,
     check_additional_buy_allowed,
     check_buy_allowed,
@@ -28,6 +34,7 @@ from src.risk_manager import (
     get_recent_buy_symbols,
     get_today_buy_notional,
 )
+from src.sector_rotation import get_sector_leadership
 from src.settings import load_settings
 from src.strategy import add_indicators, generate_signal
 
@@ -409,6 +416,31 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
         int(getattr(settings, "buy_cooldown_days", 0))
     )
 
+    top_sectors: list[str] = []
+    if getattr(settings, "sector_rotation_enabled", False):
+        try:
+            top_sectors = get_sector_leadership()
+        except Exception as exc:
+            print(f"Warning: sector leadership lookup failed: {exc}")
+
+    macro_risk_active = False
+    macro_risk_reason = ""
+    if getattr(settings, "macro_event_risk_enabled", False):
+        macro_risk_active, macro_risk_reason = get_macro_event_risk(
+            lookforward_days=int(getattr(settings, "macro_event_lookahead_days", 2)),
+            lookback_days=int(getattr(settings, "macro_event_lookback_days", 1)),
+        )
+
+    margin_leverage_block_active, margin_leverage_block_reason = evaluate_margin_leverage_buy_block(
+        float(getattr(settings, "leverage_factor", 1.0)),
+        margin_leverage_paper_enabled=bool(
+            getattr(settings, "margin_leverage_paper_enabled", False)
+        ),
+        margin_leverage_stress_gate_required=bool(
+            getattr(settings, "margin_leverage_stress_gate_required", True)
+        ),
+    )
+
     for ticker in watchlist:
         frame = ticker_data.get(ticker)
         if frame is None or frame.empty:
@@ -448,6 +480,8 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
                 reason = risk.reason
                 target_amount = risk.target_amount
 
+            ai_score = apply_sector_score_bonus(ticker, ai_score, top_sectors)
+
             if (
                 risk_allowed
                 and getattr(settings, "use_ai_score", False)
@@ -463,20 +497,26 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
                 )
                 target_amount = 0.0
 
-            if (
-                risk_allowed
-                and position is None
-                and getattr(settings, "crowding_guard_enabled", False)
-            ):
-                crowding = apply_factor_crowding_limits(
-                    ticker=ticker,
-                    open_symbols=open_symbols,
-                    ticker_data=ticker_data,
-                )
-                if not crowding.allowed:
-                    risk_allowed = False
-                    reason = crowding.reason
-                    target_amount = 0.0
+            guard = apply_shared_buy_guards(
+                ticker=ticker,
+                position=position,
+                settings=settings,
+                risk_allowed=risk_allowed,
+                risk_reason=reason,
+                target_amount=target_amount,
+                ai_score=ai_score,
+                open_symbols=open_symbols,
+                ticker_data=ticker_data,
+                vix_df=vix_df,
+                macro_risk_active=macro_risk_active,
+                macro_risk_reason=macro_risk_reason,
+                margin_leverage_block_active=margin_leverage_block_active,
+                margin_leverage_block_reason=margin_leverage_block_reason,
+                llm_cache_only=True,
+            )
+            risk_allowed = guard.risk_allowed
+            reason = guard.risk_reason
+            target_amount = guard.target_amount
 
             order_amount = min(target_amount, settings.max_test_order_amount)
 
@@ -508,19 +548,16 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
                 reason = exposure.reason if not exposure.allowed else reason
                 order_amount = exposure.target_amount
 
-            would_submit = False
-            execution_label = "NOT_ALLOWED"
-
-            if risk_allowed:
-                if dry_run_orders_count >= settings.max_orders_per_run:
-                    execution_label = "SKIP_MAX_ORDERS"
-                elif not clock.orders_allowed:
-                    execution_label = "SESSION_CLOSED"
-                else:
-                    execution_label = "WOULD_SUBMIT_IF_EXECUTED"
-                    would_submit = True
-                    dry_run_orders_count += 1
-                    simulated_daily_notional += order_amount
+            execution_label, would_submit = execution_label_for_cache(
+                risk_allowed=risk_allowed,
+                reason=reason,
+                dry_run_orders_count=dry_run_orders_count,
+                max_orders_per_run=int(settings.max_orders_per_run),
+                orders_allowed=bool(clock.orders_allowed),
+            )
+            if would_submit:
+                dry_run_orders_count += 1
+                simulated_daily_notional += order_amount
 
             buy_rows.append(
                 {

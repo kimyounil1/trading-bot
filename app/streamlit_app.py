@@ -50,6 +50,7 @@ from src.cms_helpers import (
     orders_to_frame as _orders_to_frame,
     partition_alpaca_orders,
     pct,
+    reconcile_cms_execute_with_alpaca,
     sort_buy_candidates,
 )
 
@@ -1792,6 +1793,17 @@ def render_paper_execution() -> None:
                 f"이력: {history_dir.relative_to(ROOT_DIR)}"
             )
             st.dataframe(result_df, width="stretch")
+
+            try:
+                reconcile_alerts = reconcile_cms_execute_with_alpaca(
+                    result_df,
+                    get_open_orders(),
+                    get_recent_closed_orders(limit=100),
+                )
+                for alert in reconcile_alerts:
+                    st.warning(alert["message"])
+            except ConnectionError as exc:
+                st.info(f"Alpaca 대조 알림 생략 (연결 불가): {exc}")
 
 def render_execution_runs() -> None:
     st.header("실행 이력")

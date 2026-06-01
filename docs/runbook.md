@@ -154,7 +154,18 @@ print(len(s.tickers), 'tickers cached')
   bash scripts/run_daily_audit_summary.sh
   ```
   산출물: `logs/audit_daily/latest_summary.json` (`logs/execution_audit.csv` 기준)  
-  CI smoke: `PYTHONPATH=. .venv/bin/python scripts/check_audit_daily_summary.py`
+  CI smoke: `PYTHONPATH=. .venv/bin/python scripts/check_audit_daily_summary.py`  
+  GitHub Actions: push/PR to `main` → `.github/workflows/ci.yml` (pytest 248+, cms-import, deploy-gate).
+- **Extended-hours limit 체결률** (paper):
+  ```bash
+  PYTHONPATH=. .venv/bin/python -m src.extended_hours_fill_report
+  ```
+  산출물: `logs/paper_ops/extended_hours_fill_report.json` (bootstrap 6/7단계에 포함).
+- **Run frequency 비교** (캐시 주기 what-if):
+  ```bash
+  bash scripts/compare_run_frequency.sh
+  ```
+  산출물: `logs/run_frequency/run_frequency_comparison.json` — 일 1회 vs 10분 캐시 시뮬레이션 요약.
 - **주간**: paper 체결 vs 시그널 슬리피지 자동 리포트
   ```bash
   bash scripts/run_weekly_slippage_report.sh

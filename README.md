@@ -90,11 +90,14 @@ PYTHONPATH=. .venv/bin/python src/main.py
 PYTHONPATH=. .venv/bin/python src/main.py --execute
 ```
 
-### 테스트 실행
+### 테스트 · CI
 ```bash
-# 전체 테스트 실행
-PYTHONPATH=. .venv/bin/pytest
+# 전체 테스트 (로컬 = CI와 동일)
+.venv/bin/python -m pytest tests/ -q
 ```
+PR/push 시 GitHub Actions가 `requirements.txt` 설치 후 pytest·CMS import·deploy-gate를 실행합니다.
+
+**Run frequency**: `bash scripts/compare_run_frequency.sh` → `logs/run_frequency/run_frequency_comparison.json` (봇 실행 주기 vs 10분 캐시 비교).
 
 ## 📊 현재 성과 (OOS Validated)
 - **수익률**: Ultra Aggressive 모드(Bull) 기준 5개월 **+41.68%** 달성

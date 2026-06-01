@@ -13,6 +13,7 @@ DEFAULT_AUDIT_PATH = Path("logs/execution_audit.csv")
 DEFAULT_LLM_CACHE_PATH = Path("data/llm_cache.json")
 DEFAULT_LLM_ADVISORY_PATH = Path("logs/llm_advisory/latest_summary.json")
 DEFAULT_CROWDING_GATE_PATH = Path("logs/crowding_paper/go_no_go_checklist.json")
+DEFAULT_EXTENDED_FILL_PATH = Path("logs/paper_ops/extended_hours_fill_report.json")
 
 
 def _utc_now_iso() -> str:
@@ -32,9 +33,11 @@ def build_paper_ops_summary(
     llm_cache_path: Path = DEFAULT_LLM_CACHE_PATH,
     llm_advisory_path: Path = DEFAULT_LLM_ADVISORY_PATH,
     crowding_gate_path: Path = DEFAULT_CROWDING_GATE_PATH,
+    extended_fill_path: Path = DEFAULT_EXTENDED_FILL_PATH,
 ) -> dict[str, Any]:
     llm_advisory = _load_json_if_exists(llm_advisory_path) or {}
     crowding_gate = _load_json_if_exists(crowding_gate_path) or {}
+    extended_fill = _load_json_if_exists(extended_fill_path) or {}
 
     llm_cache_keys = 0
     if llm_cache_path.is_file():
@@ -65,6 +68,14 @@ def build_paper_ops_summary(
         "crowding_gate_path": str(crowding_gate_path),
         "crowding_decision": crowding_gate.get("decision"),
         "crowding_config_applied": bool(config_apply.get("applied", False)),
+        "extended_hours_fill_path": str(extended_fill_path),
+        "extended_hours_fill": {
+            "extended_limit_orders": extended_fill.get("extended_limit_orders", 0),
+            "filled": extended_fill.get("filled", 0),
+            "open_pending": extended_fill.get("open_pending", 0),
+            "fill_rate_terminal": extended_fill.get("fill_rate_terminal"),
+            "status": extended_fill.get("status"),
+        },
         "notes": [
             "Run via: bash scripts/run_paper_ops_bootstrap.sh",
             "Crowding proposal applies to strategy_config only when gate decision is GO_PAPER.",

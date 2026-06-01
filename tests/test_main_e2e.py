@@ -79,18 +79,18 @@ class TestMainE2E(unittest.TestCase):
     @patch("src.main.get_positions_summary")
     @patch("src.main.load_price_data_batch")
     @patch("src.main.get_signal_for_ticker")
-    @patch("src.main.evaluate_ticker_consensus")
+    @patch("src.buy_guards.evaluate_ticker_consensus")
     @patch("src.main.wait_for_order_status")
     @patch("src.main.notify_run_summary")
     @patch("src.main._load_peaks")
     @patch("src.main._save_peaks")
     @patch("src.main.get_position_entry_date")
     @patch("src.main._check_price_frame_freshness")
-    @patch("src.main.is_earnings_window")
-    @patch("src.main.is_sector_allowed")
+    @patch("src.buy_guards.is_earnings_window")
+    @patch("src.buy_guards.is_sector_allowed")
     @patch("src.main.get_recent_buy_symbols")
     @patch("src.main.get_today_buy_notional")
-    @patch("src.main.is_correlation_allowed")
+    @patch("src.buy_guards.is_correlation_allowed")
     def test_full_buy_flow(self, mock_corr, mock_today, mock_recent, mock_sector, mock_earnings, mock_fresh, mock_entry, 
                           mock_save_peaks, mock_load_peaks, mock_notify, mock_wait, 
                           mock_llm, mock_signal, mock_load_data, 

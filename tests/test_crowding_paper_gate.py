@@ -2,6 +2,8 @@ from pathlib import Path
 
 import json
 
+import pytest
+
 from src.crowding_paper_gate import (
     apply_crowding_paper_proposal_if_go,
     evaluate_crowding_paper_gate,
@@ -51,6 +53,25 @@ def test_apply_crowding_proposal_on_go(tmp_path, monkeypatch):
     assert updated["tickers"] == ["AAPL", "MSFT"]
     assert updated["crowding_guard_enabled"] is True
     assert updated["crowding_lookback_days"] == 45
+
+
+def test_apply_crowding_proposal_rejects_invalid_settings(tmp_path):
+    config_path = tmp_path / "strategy_config.json"
+    proposal_path = tmp_path / "crowding_paper_proposal.json"
+    config_path.write_text(
+        json.dumps({"tickers": ["AAPL"], "crowding_guard_enabled": False, "max_orders_per_run": 3}),
+        encoding="utf-8",
+    )
+    proposal_path.write_text(
+        json.dumps({"crowding_guard_enabled": True, "crowding_lookback_days": -1}),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError):
+        apply_crowding_paper_proposal_if_go(
+            {"decision": "GO_PAPER"},
+            config_path=config_path,
+            proposal_path=proposal_path,
+        )
 
 
 def test_apply_crowding_proposal_skipped_on_no_go(tmp_path):

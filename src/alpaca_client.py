@@ -144,6 +144,7 @@ def serialize_alpaca_order(order) -> dict:
 
     return {
         "id": str(order.id),
+        "client_order_id": _optional_str(getattr(order, "client_order_id", None)),
         "symbol": str(order.symbol),
         "status": str(order.status),
         "status_simple": _normalize_order_status(order.status),

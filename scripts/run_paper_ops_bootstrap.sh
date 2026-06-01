@@ -51,7 +51,10 @@ if [[ "$SKIP_CROWDING_GATE" != "1" ]]; then
   fi
 fi
 
-echo "=== [6/6] Paper ops summary ==="
+echo "=== [6/7] Extended-hours limit fill report ==="
+.venv/bin/python -m src.extended_hours_fill_report || echo "WARN: extended-hours fill report skipped (Alpaca unavailable)"
+
+echo "=== [7/7] Paper ops summary ==="
 .venv/bin/python -m src.paper_ops_summary
 
 echo "Done. See logs/paper_ops/latest_summary.json, logs/execution_audit.csv, logs/llm_advisory/latest_summary.json"

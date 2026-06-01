@@ -15,7 +15,6 @@ from src.logger import log_execution_audit, log_signal, log_order, log_order_sta
 from src.risk_manager import (
     ExitDecision,
     apply_buy_safety_limits,
-    apply_factor_crowding_limits,
     apply_effective_leverage_exposure_limits,
     apply_portfolio_exposure_limits,
     check_additional_buy_allowed,
@@ -35,19 +34,16 @@ from src.broker_adapter import get_broker_adapter
 from src.market_clock import get_market_clock
 from src.notifier import notify_order, notify_error, notify_run_summary, notify_info
 from src.ml_model import load_ai_score_model, predict_ai_score_from_bundle
-from src.instrument_meta import check_instrument_buy_allowed, format_audit_reason
+from src.instrument_meta import format_audit_reason
 from src.margin_leverage_paper_gate import (
     apply_margin_leverage_paper_overrides,
     evaluate_margin_leverage_buy_block,
 )
-from src.sector import is_sector_allowed
-from src.correlation_guard import is_correlation_allowed
 from src.market_regime import get_current_regime
-from src.earnings import is_earnings_window
+from src.buy_guards import apply_sector_score_bonus, apply_shared_buy_guards
 from src.macro_events import get_macro_event_risk
-from src.llm_analyst import evaluate_ticker_consensus
 from src.candidate_cache import get_dynamic_universe
-from src.sector_rotation import get_sector_leadership, get_ticker_sector_bonus
+from src.sector_rotation import get_sector_leadership
 from src.portfolio_optimizer import compute_weights_from_ticker_data
 
 # 트레일링 스탑용 최고점 기록 경로
@@ -158,7 +154,6 @@ def _resolve_full_exit_reason(
         return "take profit triggered"
     return None
 from src.macro_loader import load_macro_data
-from src.news_sentiment import get_ticker_sentiment
 
 
 def _apply_volume_volatility_filters(signal: str, indicator_df, settings) -> str:
@@ -1013,12 +1008,7 @@ def main() -> None:
                 market_clock=market_clock,
             )
 
-            # 섹터 로테이션 보너스 (Phase 15-A)
-            if ai_score is not None and top_sectors:
-                bonus = get_ticker_sector_bonus(ticker, top_sectors)
-                if bonus > 0:
-                    ai_score += bonus
-                    # print(f"  SECTOR_BONUS: {ticker} score boosted by {bonus} (in {top_sectors})")
+            ai_score = apply_sector_score_bonus(ticker, ai_score, top_sectors)
 
             llm_is_ok = None
             llm_reason = ""
@@ -1067,105 +1057,32 @@ def main() -> None:
                 )
                 target_amount = 0.0
 
-            # 뉴스 감성 필터: 강한 부정 뉴스면 매수 차단
-            if risk_allowed and position is None and getattr(settings, "news_sentiment_enabled", False):
-                try:
-                    sentiment = get_ticker_sentiment(ticker)
-                    threshold = float(getattr(settings, "news_sentiment_threshold", -0.30))
-                    if sentiment is not None and sentiment < threshold:
-                        risk_allowed = False
-                        risk_reason = f"negative news sentiment (score={sentiment:.2f}, threshold={threshold})"
-                        target_amount = 0.0
-                except Exception:
-                    pass
+            guard = apply_shared_buy_guards(
+                ticker=ticker,
+                position=position,
+                settings=settings,
+                risk_allowed=risk_allowed,
+                risk_reason=risk_reason,
+                target_amount=target_amount,
+                ai_score=ai_score,
+                open_symbols=open_symbols,
+                ticker_data=ticker_data,
+                vix_df=vix_df,
+                macro_risk_active=macro_risk_active,
+                macro_risk_reason=macro_risk_reason,
+                margin_leverage_block_active=margin_leverage_block_active,
+                margin_leverage_block_reason=margin_leverage_block_reason,
+                llm_cache_only=not execute_orders,
+            )
+            risk_allowed = guard.risk_allowed
+            risk_reason = guard.risk_reason
+            target_amount = guard.target_amount
+            llm_is_ok = guard.llm_is_ok
+            llm_reason = guard.llm_reason
 
-            if risk_allowed and position is None:
-                sector_ok, sector_reason = is_sector_allowed(
-                    ticker, open_symbols,
-                    max_sector_positions=getattr(settings, "max_sector_positions", 2),
-                )
-                if not sector_ok:
-                    risk_allowed = False
-                    risk_reason = sector_reason
-                    target_amount = 0.0
-
-            if risk_allowed and position is None:
-                inst_ok, inst_reason = check_instrument_buy_allowed(
-                    ticker,
-                    open_symbols,
-                    allow_leveraged_etfs=bool(
-                        getattr(settings, "allow_leveraged_etfs", False)
-                    ),
-                    max_leveraged_etf_positions=int(
-                        getattr(settings, "max_leveraged_etf_positions", 1)
-                    ),
-                    block_leveraged_etfs_vix_above=float(
-                        getattr(settings, "block_leveraged_etfs_vix_above", 0.0)
-                    ),
-                    vix_df=vix_df,
-                )
-                if not inst_ok:
-                    risk_allowed = False
-                    risk_reason = inst_reason
-                    target_amount = 0.0
-
-            # 상관관계 필터: 기존 보유 종목과 과도한 상관관계 시 매수 차단
-            if risk_allowed and position is None and getattr(settings, "correlation_guard_enabled", False):
-                corr_ok, corr_reason = is_correlation_allowed(
-                    ticker, open_symbols, ticker_data,
-                    max_corr=float(getattr(settings, "max_correlation_threshold", 0.85)),
-                    max_portfolio_avg_corr=float(getattr(settings, "max_portfolio_avg_correlation_threshold", 0.70)),
-                    lookback_days=int(getattr(settings, "correlation_lookback_days", 60))
-                )
-                if not corr_ok:
-                    risk_allowed = False
-                    risk_reason = corr_reason
-                    target_amount = 0.0
-
-            if risk_allowed and position is None and getattr(settings, "crowding_guard_enabled", False):
-                crowding = apply_factor_crowding_limits(
-                    ticker=ticker,
-                    open_symbols=open_symbols,
-                    ticker_data=ticker_data,
-                )
-                if not crowding.allowed:
-                    risk_allowed = False
-                    risk_reason = crowding.reason
-                    target_amount = 0.0
-
-            # 실적 발표 필터: 실적 발표 전후 변동성 회피
-            if risk_allowed and position is None and getattr(settings, "earnings_filter_enabled", False):
-                in_window, earnings_reason = is_earnings_window(
-                    ticker, pd.Timestamp.now(),
-                    lookback_days=int(getattr(settings, "earnings_lookback_days", 3)),
-                    lookforward_days=int(getattr(settings, "earnings_lookforward_days", 1))
-                )
-                if in_window:
-                    risk_allowed = False
-                    risk_reason = f"earnings filter: {earnings_reason}"
-                    target_amount = 0.0
-
-            # 매크로 이벤트 리스크 적용 (Phase 18-B)
-            if risk_allowed and position is None and macro_risk_active:
-                risk_allowed = False
-                risk_reason = f"macro event risk: {macro_risk_reason}"
-                target_amount = 0.0
-
-            if risk_allowed and position is None and margin_leverage_block_active:
-                risk_allowed = False
-                risk_reason = margin_leverage_block_reason
-                target_amount = 0.0
-
-            # LLM Consensus: advisory (log only) or blocking filter
-            if risk_allowed and position is None:
-                # Dry-run: never call Gemini live; use cache/degraded policy only.
-                llm_is_ok, llm_reason = evaluate_ticker_consensus(
-                    ticker,
-                    settings=settings,
-                    cache_only=not execute_orders,
-                )
+            if risk_allowed and position is None and llm_is_ok is False:
                 llm_advisory_only = bool(getattr(settings, "llm_advisory_only", True))
-                if not llm_is_ok and llm_advisory_only:
+                if llm_advisory_only:
                     log_execution_audit(
                         event_type="LLM_ADVISORY",
                         ticker=ticker,
@@ -1179,10 +1096,6 @@ def main() -> None:
                         llm_verdict=_format_llm_verdict(llm_is_ok, llm_reason),
                         notional=target_amount,
                     )
-                elif not llm_is_ok:
-                    risk_allowed = False
-                    risk_reason = f"LLM Reject: {llm_reason}"
-                    target_amount = 0.0
 
             order_amount = min(target_amount, settings.max_test_order_amount)
 
