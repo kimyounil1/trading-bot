@@ -11,5 +11,6 @@ xgboost
 google-generativeai
 streamlit
 requests
+nltk
 joblib
 pytest
