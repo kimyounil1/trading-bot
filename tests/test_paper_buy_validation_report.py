@@ -1,8 +1,12 @@
+import json
+
 import pandas as pd
 
 from src.paper_buy_validation_report import (
+    append_paper_validation_history,
     build_audit_buy_path_comparison,
     build_rank_gate_paper_tracker,
+    paper_validation_history_row,
 )
 
 
@@ -45,6 +49,34 @@ def test_audit_buy_path_comparison_layers():
     assert report["ai_pass_llm_block"] == 1
     assert report["buy_submitted"] == 1
     assert report["buy_submitted_llm_accept"] == 1
+
+
+def test_paper_validation_history_upserts_same_day(tmp_path):
+    report = {
+        "generated_at": "2026-06-02T12:00:00Z",
+        "llm_ai_agreement": {"agreement_pct": 70.0},
+        "audit_buy_paths": {
+            "skip_ai_score_layer": 1,
+            "skip_llm_block_layer": 2,
+            "skip_rank_gate_layer": 3,
+            "buy_submitted": 4,
+        },
+        "rank_gate_paper_tracker": {
+            "calendar_days_with_rank_events": 5,
+            "gate_ready": False,
+        },
+    }
+    row = paper_validation_history_row(report)
+    assert row["date"] == "2026-06-02"
+    assert row["agreement_pct"] == 70.0
+    assert row["skip_rank_gate"] == 3
+
+    path = append_paper_validation_history(report, output_dir=tmp_path)
+    report["llm_ai_agreement"]["agreement_pct"] = 75.0
+    append_paper_validation_history(report, output_dir=tmp_path)
+    lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    assert len(lines) == 1
+    assert json.loads(lines[0])["agreement_pct"] == 75.0
 
 
 def test_rank_gate_paper_tracker_span():

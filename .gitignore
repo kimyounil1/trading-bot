@@ -46,6 +46,9 @@ logs/*
 !logs/guard_impact/latest_summary.json
 !logs/crowding_paper/
 !logs/crowding_paper/go_no_go_checklist.json
+!logs/paper_validation/
+!logs/paper_validation/latest_summary.json
+!logs/paper_validation/history.jsonl
 
 # Pytest regenerates these from golden_execution_audit.csv
 tests/fixtures/audit_daily/golden_output/

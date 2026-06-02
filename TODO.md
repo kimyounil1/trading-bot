@@ -26,7 +26,7 @@
 | **Crowding** | config **ON** · 최근 paper gate run **NO_GO** (blocked_trades=0) — impact 재평가 시 `run_guard_impact_report.sh` |
 | **Paper ops** | `logs/paper_ops/latest_summary.json` · audit ~18k rows |
 | **LLM (paper)** | blocking mode (`llm_advisory_only: false`) · 캐시 일치 ~**75%** |
-| **Rank AI (paper)** | buy/add gate ON · audit rank skip 누적 중 · **4/14일** (`gate_ready=false`) |
+| **Rank AI (paper)** | buy/add gate ON · **4/14일** rank 이벤트 (`gate_ready=false`) · 일일 timer **active** (다음: 21:45 ET) |
 | **Champion AI** | **유지** — promotion gate 실패 (AUC/Brier/fold/OOS). Rank label research만 paper gate |
 
 **Phase 31** → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
@@ -38,11 +38,8 @@
 우선순위 순. **Toss(32-A)는 API 키 전까지 보류.**
 
 1. [ ] **Rank AI paper 2주** — 매일 dry-run/bootstrap → `logs/paper_validation` · `rank_gate_ready=true` (현재 **4/14** calendar days)
-2. [ ] **Paper validation 추세** — 2주+ `agreement_pct` · SKIP(AI/LLM/rank) 레이어 관찰 (`bash scripts/run_paper_buy_validation.sh`)
-3. [ ] **Codex scoped review** — `RUN_ID=phase32` AGY pytest OK; Codex **timeout/capacity** → 여유 시:
-   ```bash
-   RUN_ID=phase32_retry SKIP_PYTEST=1 bash scripts/run_pass_complete.sh
-   ```
+2. [ ] **Paper validation 추세** — 2주+ `agreement_pct` · SKIP(AI/LLM/rank) 레이어 관찰 (`bash scripts/run_paper_buy_validation.sh` → `logs/paper_validation/history.jsonl` 일별 upsert)
+3. [x] **Codex scoped review** — `RUN_ID=phase32_retry` 완료 (`NEXT_TODO.codex.md`: `history.jsonl` gitignore whitelist 반영함)
 
 **하지 말 것 (문서: [`docs/ai_authority_gates.md`](docs/ai_authority_gates.md))**
 - `models/ai_score_model.joblib` 교체 / champion 승격 (label sweep 전 후보 portfolio gate 실패)

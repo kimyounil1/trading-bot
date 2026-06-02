@@ -18,6 +18,7 @@ from src.llm_ai_agreement_report import build_llm_ai_agreement_report
 from src.settings import load_settings
 
 DEFAULT_OUTPUT_DIR = Path("logs/paper_validation")
+HISTORY_FILENAME = "history.jsonl"
 
 _AI_SCORE_BLOCK_RE = re.compile(r"ai score filter blocked", re.IGNORECASE)
 _LLM_BLOCK_RE = re.compile(r"LLM Reject|llm reject", re.IGNORECASE)
@@ -215,6 +216,55 @@ def build_rank_gate_paper_tracker(
     }
 
 
+def paper_validation_history_row(report: dict[str, Any]) -> dict[str, Any]:
+    """Compact daily snapshot for trend observation (one row per UTC date)."""
+    paths = report.get("audit_buy_paths") or {}
+    rank = report.get("rank_gate_paper_tracker") or {}
+    agree = report.get("llm_ai_agreement") or {}
+    generated_at = str(report.get("generated_at", _utc_now_iso()))
+    return {
+        "date": generated_at[:10],
+        "generated_at": generated_at,
+        "agreement_pct": agree.get("agreement_pct"),
+        "skip_ai_score": paths.get("skip_ai_score_layer"),
+        "skip_llm_block": paths.get("skip_llm_block_layer"),
+        "skip_rank_gate": paths.get("skip_rank_gate_layer"),
+        "buy_submitted": paths.get("buy_submitted"),
+        "rank_calendar_days": rank.get("calendar_days_with_rank_events"),
+        "rank_gate_ready": rank.get("gate_ready"),
+    }
+
+
+def append_paper_validation_history(
+    report: dict[str, Any],
+    *,
+    output_dir: str | Path = DEFAULT_OUTPUT_DIR,
+) -> Path:
+    """Upsert one JSONL row per UTC date under logs/paper_validation/history.jsonl."""
+    output_dir = Path(output_dir)
+    path = output_dir / HISTORY_FILENAME
+    row = paper_validation_history_row(report)
+    date_key = row["date"]
+    kept: list[dict[str, Any]] = []
+    if path.is_file():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if rec.get("date") != date_key:
+                kept.append(rec)
+    kept.append(row)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as fh:
+        for rec in kept:
+            fh.write(json.dumps(rec, sort_keys=True) + "\n")
+    return path
+
+
 def build_paper_buy_validation_report(
     *,
     audit_path: str | Path = EXECUTION_AUDIT_LOG_PATH,
@@ -274,6 +324,7 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "latest_summary.json"
     out_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    history_path = append_paper_validation_history(report, output_dir=out_dir)
 
     paths = report["audit_buy_paths"]
     rank = report["rank_gate_paper_tracker"]
@@ -292,6 +343,7 @@ def main() -> None:
         f"{rank.get('min_calendar_days_required')}d required, ready={rank.get('gate_ready')}"
     )
     print(f"Wrote {out_path}")
+    print(f"History: {history_path}")
 
 
 if __name__ == "__main__":
