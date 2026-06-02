@@ -70,8 +70,9 @@
 4. [x] **ai_score 캘리브레이션 overlay** — Brier 열위 → isotonic/Platt 후처리로 conviction sizing 신뢰도↑.
    - champion joblib 미변경, 예측 후처리 레이어만. `logs/ml/model_calibration_report.json` 전후 비교
    - 현재 적용: `ai_score_calibration_enabled=true`일 때만 bin 기반 보정(기본 OFF, fail-open)
-5. [ ] **Regime별 약점 진단** — OOS AUC BULL 0.495 / NEUTRAL 0.48 (랜덤 이하) 원인 분석.
+5. [x] **Regime별 약점 진단** — OOS AUC BULL 0.495 / NEUTRAL 0.48 (랜덤 이하) 원인 분석.
    - feature importance × regime, 후보 feature(섹터 상대강도·breadth) 실험 리포트만 (승격 X)
+   - 신규: `src/regime_weakness_report.py` → `logs/ml/regime_weakness_report.json` (weak/high-variance regime 자동 플래그)
 
 ### C. 운영/리스크
 6. [ ] **Crowding gate 재평가** — 최근 NO_GO(blocked_trades=0). live impact로 keep/tune/disable 결정 후 문서화.
@@ -116,6 +117,7 @@ REFRESH_CANDIDATE_CACHE=1 bash scripts/run_rank_ai_gate_report.sh
 bash scripts/run_rank_gate_forward_return.sh
 bash scripts/run_llm_block_precision.sh
 bash scripts/run_paper_validation_trend.sh
+bash scripts/run_regime_weakness_report.sh
 
 # 모델 실험 (무거움)
 bash scripts/run_threshold_promotion_pipeline.sh

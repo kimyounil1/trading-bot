@@ -1,0 +1,91 @@
+{
+  "generated_at": "2026-06-02T09:22:38Z",
+  "status": "ok",
+  "fold_metrics_path": "logs/ml/fold_metrics.csv",
+  "feature_stats_path": "models/ai_feature_stats.json",
+  "thresholds": {
+    "weak_regime_auc_mean_lt": 0.5,
+    "high_variance_auc_std_gte": 0.05
+  },
+  "regimes": {
+    "BEAR": {
+      "folds": 3,
+      "roc_auc_mean": 0.5499764837112684,
+      "roc_auc_std": 0.08657682235613834,
+      "weak_regime": false,
+      "high_variance": true
+    },
+    "BULL": {
+      "folds": 3,
+      "roc_auc_mean": 0.49286740953770564,
+      "roc_auc_std": 0.006372584802194666,
+      "weak_regime": true,
+      "high_variance": false
+    },
+    "NEUTRAL": {
+      "folds": 3,
+      "roc_auc_mean": 0.48545624682795846,
+      "roc_auc_std": 0.08139948457214617,
+      "weak_regime": true,
+      "high_variance": true
+    }
+  },
+  "weak_regimes": [
+    "BULL",
+    "NEUTRAL"
+  ],
+  "feature_watchlist": [
+    "spy_rel_return_20d",
+    "ma_ratio_20_200",
+    "vix_percentile_52w",
+    "volatility_20d",
+    "yield_spread_10y3m"
+  ],
+  "feature_watchlist_snapshot": {
+    "spy_rel_return_20d": {
+      "count": 107664,
+      "mean": 0.003801254180769685,
+      "p10": -0.091805750572565,
+      "p50": -0.00013762741670775291,
+      "p90": 0.10255571267210521,
+      "std": 0.08938887485831805
+    },
+    "ma_ratio_20_200": {
+      "count": 107664,
+      "mean": 0.044237438012257935,
+      "p10": -0.13228452373629618,
+      "p50": 0.039438217959399946,
+      "p90": 0.22723227524724715,
+      "std": 0.16015126713081185
+    },
+    "vix_percentile_52w": {
+      "count": 107664,
+      "mean": 0.45466849245270996,
+      "p10": 0.031746031746031744,
+      "p50": 0.4444444444444444,
+      "p90": 0.9047619047619048,
+      "std": 0.3155105287005276
+    },
+    "volatility_20d": {
+      "count": 107664,
+      "mean": 0.020032223166156393,
+      "p10": 0.00944267934774588,
+      "p50": 0.01716180523386008,
+      "p90": 0.034106614000041995,
+      "std": 0.011305342276256063
+    },
+    "yield_spread_10y3m": {
+      "count": 107664,
+      "mean": -0.289997474015698,
+      "p10": -1.2380001544952393,
+      "p50": -0.20299983024597168,
+      "p90": 0.6149997711181641,
+      "std": 0.7616506379700653
+    }
+  },
+  "recommendations": [
+    "Weak regimes detected: BULL, NEUTRAL (mean ROC-AUC < 0.50).",
+    "Run targeted feature experiments for weak regimes only (report-only; do not promote champion).",
+    "Fold variance is high in at least one regime; prioritize stability before any authority expansion."
+  ]
+}
