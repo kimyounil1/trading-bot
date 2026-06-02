@@ -1,0 +1,5 @@
+regime,fold,y_true,y_prob
+BULL,1,1,0.7
+BULL,1,0,0.3
+BEAR,1,1,0.6
+BEAR,1,0,0.4

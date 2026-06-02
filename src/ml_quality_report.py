@@ -32,6 +32,7 @@ FOLD_METRICS_FILENAME = "fold_metrics.csv"
 FOLD_STABILITY_REPORT_FILENAME = "fold_stability_report.json"
 CALIBRATION_REPORT_FILENAME = "model_calibration_report.json"
 CALIBRATION_BINS_FILENAME = "model_calibration_bins.csv"
+CALIBRATION_ROWS_FILENAME = "model_calibration_rows.csv"
 
 # Flag when cross-fold / cross-regime ROC-AUC spread is large (see logs/ml/ai_model_metrics.csv history).
 ROC_AUC_STD_WARN_THRESHOLD = 0.05
@@ -406,6 +407,7 @@ def write_ml_quality_reports(
     stability_path = output_dir / f"{prefix}{FOLD_STABILITY_REPORT_FILENAME}"
     calibration_path = output_dir / f"{prefix}{CALIBRATION_REPORT_FILENAME}"
     bins_path = output_dir / f"{prefix}{CALIBRATION_BINS_FILENAME}"
+    rows_path = output_dir / f"{prefix}{CALIBRATION_ROWS_FILENAME}"
 
     fold_df = normalize_fold_metrics_df(metrics_df)
     fold_df.to_csv(fold_metrics_path, index=False)
@@ -426,11 +428,18 @@ def write_ml_quality_reports(
     elif bins_path.exists():
         bins_path.unlink()
 
+    calibration_rows = metrics_df.attrs.get("calibration_rows", []) if metrics_df is not None else []
+    if calibration_rows:
+        pd.DataFrame(calibration_rows).to_csv(rows_path, index=False)
+    elif rows_path.exists():
+        rows_path.unlink()
+
     return {
         "fold_metrics": fold_metrics_path,
         "fold_stability": stability_path,
         "calibration_report": calibration_path,
         "calibration_bins": bins_path,
+        "calibration_rows": rows_path,
     }
 
 

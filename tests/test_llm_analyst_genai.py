@@ -10,6 +10,7 @@ from src.llm_analyst import (
     _response_text,
     evaluate_ticker_consensus,
     llm_cache_only_for_run,
+    llm_skipped_for_run,
     reset_genai_client,
 )
 
@@ -19,10 +20,16 @@ class TestLlmAnalystGenai(unittest.TestCase):
         reset_genai_client()
 
     def test_llm_cache_only_for_run(self) -> None:
-        self.assertTrue(llm_cache_only_for_run(execute_orders=False))
-        self.assertFalse(llm_cache_only_for_run(execute_orders=True))
-        with patch.dict("os.environ", {"LLM_LIVE_IN_DRY_RUN": "1"}):
+        with patch("src.llm_analyst.llm_skipped_for_run", return_value=False):
             self.assertFalse(llm_cache_only_for_run(execute_orders=False))
+            self.assertFalse(llm_cache_only_for_run(execute_orders=True))
+        with patch("src.llm_analyst.llm_skipped_for_run", return_value=False), patch.dict(
+            os.environ, {"LLM_CACHE_ONLY_DRY_RUN": "1"}
+        ):
+            self.assertTrue(llm_cache_only_for_run(execute_orders=False))
+        with patch("src.llm_analyst.llm_skipped_for_run", return_value=True):
+            self.assertTrue(llm_cache_only_for_run(execute_orders=False))
+            self.assertTrue(llm_skipped_for_run())
 
     def test_response_text_from_text_attr(self) -> None:
         response = SimpleNamespace(text="  hello  ")

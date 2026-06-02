@@ -28,7 +28,10 @@ def check_buy_allowed(
     cash: float,
     current_positions_count: int,
     *,
+    portfolio_value: float | None = None,
     ticker: str | None = None,
+    position_mult: float = 1.0,
+    cash_buffer_mult: float = 1.0,
 ) -> RiskDecision:
     settings = load_settings()
 
@@ -41,13 +44,26 @@ def check_buy_allowed(
     if cash <= 0:
         return RiskDecision(False, "cash is zero or negative")
 
-    position_pct = float(settings.max_position_pct)
+    equity_base = portfolio_value if portfolio_value is not None and portfolio_value > 0 else cash
+    if equity_base <= 0:
+        return RiskDecision(False, "portfolio value is zero or negative")
+
+    position_pct = float(settings.max_position_pct) * max(1.0, float(position_mult))
     if ticker:
         from src.instrument_meta import adjust_position_cap_for_instrument
 
         position_pct = adjust_position_cap_for_instrument(position_pct, ticker)
 
-    target_amount = cash * position_pct
+    from src.position_sizing import max_deployable_cash
+
+    target_amount = equity_base * position_pct
+    deployable = max_deployable_cash(
+        cash,
+        equity_base,
+        settings,
+        cash_buffer_mult=cash_buffer_mult,
+    )
+    target_amount = min(target_amount, deployable)
 
     if target_amount <= 0:
         return RiskDecision(False, "target amount is zero or negative")
@@ -60,6 +76,9 @@ def check_additional_buy_allowed(
     cash: float,
     portfolio_value: float,
     current_position_value: float,
+    *,
+    position_mult: float = 1.0,
+    cash_buffer_mult: float = 1.0,
 ) -> RiskDecision:
     settings = load_settings()
 
@@ -72,13 +91,23 @@ def check_additional_buy_allowed(
     if portfolio_value <= 0:
         return RiskDecision(False, "portfolio value is zero or negative")
 
-    target_position_value = portfolio_value * settings.max_position_pct
+    target_position_value = portfolio_value * settings.max_position_pct * max(
+        1.0, float(position_mult)
+    )
     remaining_to_target = target_position_value - max(current_position_value, 0.0)
 
     if remaining_to_target <= 0:
         return RiskDecision(False, "position target allocation reached")
 
-    target_amount = min(cash, remaining_to_target)
+    from src.position_sizing import max_deployable_cash
+
+    deployable = max_deployable_cash(
+        cash,
+        portfolio_value,
+        settings,
+        cash_buffer_mult=cash_buffer_mult,
+    )
+    target_amount = min(deployable, remaining_to_target)
     if target_amount <= 0:
         return RiskDecision(False, "target amount is zero or negative")
 
@@ -153,6 +182,8 @@ def apply_buy_safety_limits(
     order_amount: float,
     submitted_notional_today: float,
     recent_buy_symbols: set[str],
+    *,
+    portfolio_value: float | None = None,
 ) -> RiskDecision:
     settings = load_settings()
 
@@ -164,7 +195,12 @@ def apply_buy_safety_limits(
             0.0,
         )
 
-    daily_limit = float(getattr(settings, "max_daily_order_amount", 0.0))
+    from src.position_sizing import daily_order_budget
+
+    daily_limit = daily_order_budget(
+        float(portfolio_value or 0.0),
+        settings,
+    )
     if daily_limit > 0:
         remaining = daily_limit - submitted_notional_today
         if remaining <= 0:
@@ -172,9 +208,9 @@ def apply_buy_safety_limits(
 
         if order_amount > remaining:
             return RiskDecision(
-                False,
-                f"daily order amount limit would be exceeded (remaining=${remaining:.2f})",
-                0.0,
+                True,
+                f"daily order amount capped (remaining=${remaining:.2f})",
+                remaining,
             )
 
     return RiskDecision(True, "buy safety limits passed", order_amount)
@@ -188,6 +224,8 @@ def apply_portfolio_exposure_limits(
     buying_power: float,
     current_gross_exposure: float,
     current_position_value: float = 0.0,
+    *,
+    cash_buffer_mult: float = 1.0,
 ) -> RiskDecision:
     settings = load_settings()
 
@@ -213,13 +251,24 @@ def apply_portfolio_exposure_limits(
             0.0,
         )
 
-    min_cash_buffer = portfolio_value * float(getattr(settings, "min_cash_buffer_pct", 0.05))
+    from src.position_sizing import effective_min_cash_buffer_pct
+
+    min_cash_buffer = portfolio_value * effective_min_cash_buffer_pct(
+        settings, cash_buffer_mult
+    )
     projected_cash = cash - order_amount
     if projected_cash < min_cash_buffer:
+        allowed_amount = max(0.0, cash - min_cash_buffer)
+        if allowed_amount <= 0:
+            return RiskDecision(
+                False,
+                f"cash buffer breached (projected=${projected_cash:.2f}, min=${min_cash_buffer:.2f})",
+                0.0,
+            )
         return RiskDecision(
-            False,
-            f"cash buffer breached (projected=${projected_cash:.2f}, min=${min_cash_buffer:.2f})",
-            0.0,
+            True,
+            f"cash buffer capped order (min=${min_cash_buffer:.2f})",
+            allowed_amount,
         )
 
     max_single_name_loss = portfolio_value * float(getattr(settings, "max_single_name_loss_pct", 0.02))

@@ -1,5 +1,7 @@
 # Model promotion gates
 
+For **what AI is allowed to control** (filter vs rank buy gate vs full buy/sell), see [`ai_authority_gates.md`](ai_authority_gates.md).
+
 Champion replacement runs only when `build_promotion_report()` returns `decision: PROMOTE`.  
 Champion files (`models/ai_score_model.joblib`) are **local-only** and updated only on `PROMOTE`.
 

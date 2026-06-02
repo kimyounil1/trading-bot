@@ -49,14 +49,22 @@
     2. 포트폴리오 구성 종목의 개별 리스크(실적 악화 등) 재평가.
     3. 시장이 안정되었다고 판단되면 `config/strategy_config.json`의 `max_portfolio_drawdown_pct`를 일시적으로 상향 조정하여 가드 해제 가능.
 
-### 2.3.1 LLM·뉴스 (advisory vs blocking)
+### 2.3.1 LLM·뉴스 (AI + LLM 합의)
 
-기본 설정: **`llm_advisory_only: true`** — LLM이 REJECT여도 **주문은 진행**, `execution_audit.csv`에 기록만.
+Paper/dry-run 기본: **`llm_advisory_only: false`** — AI 임계값 통과 **및** LLM APPROVE일 때만 매수 진행. dry-run도 캐시 미스 시 **live LLM** 호출(기본).
 
 | `llm_advisory_only` | 동작 |
 |---------------------|------|
-| `true` (기본) | `LLM_ADVISORY` / `WOULD_REJECT` 로그 + `BUY_SUBMITTED`에 `llm_verdict` 저장 |
-| `false` | REJECT 시 매수 차단 (`SKIP_BUY`, LLM Reject) |
+| `false` (paper 기본) | LLM REJECT → `SKIP_BUY` (AI 통과해도 차단) |
+| `true` | `LLM_ADVISORY` 로그만, 주문은 진행 (실험·비교용) |
+
+| 환경 변수 | 동작 |
+|-----------|------|
+| (기본 dry-run) | cache miss → Gemini/vLLM 호출 |
+| `LLM_CACHE_ONLY_DRY_RUN=1` | dry-run은 캐시만 (`llm_degraded_mode` 적용) |
+| `TRADING_BOT_SKIP_LLM=1` | pytest/CI — LLM 가드 생략 |
+
+pytest는 `tests/conftest.py`에서 `TRADING_BOT_SKIP_LLM=1` 자동 설정.
 
 **나중에 수익 비교** (paper 누적 후):
 
@@ -84,10 +92,10 @@ LIVE_LLM=1 bash scripts/run_operational_alpha_validation.sh   # cache miss 시 G
 워밍업은 진입일 키(`{티커}_{YYYY-MM-DD}`)로 저장. 당일 yfinance에 기사가 없으면 **현재 헤드라인 fallback**으로 Gemini 호출(완전한 과거 뉴스 아카이브는 아님). paper `main.py` 실행 시 같은 키로 캐시가 계속 쌓임.
 
 **로컬 vLLM 서브모델 (Gemini quota/5xx 시)** — `src/llm_vllm.py` + `src/llm_analyst.py`:
-- 기본: `http://192.168.219.116:11434/v1`, 모델 `gemma4-26B` (`.env`의 `LLM_VLLM_*`로 변경)
-- Gemini 429/500/quota 등 → 자동으로 로컬 vLLM 호출; 캐시 `llm_provider: vllm`, 사유 접두사 `[local-vLLM]`
+- **기본 OFF** (`LLM_VLLM_ENABLED` 미설정 시 116/gemma4로 폴백하지 않음)
+- 켜기: `.env`에 `LLM_VLLM_ENABLED=1`, `LLM_VLLM_BASE_URL=http://192.168.219.116:11434/v1`, `LLM_VLLM_MODEL=gemma4-26B`
+- Gemini 429/500/quota 등 → (활성 시) 로컬 vLLM 호출; 캐시 `llm_provider: vllm`
 - 점검: `PYTHONPATH=. .venv/bin/python -c "from src.llm_vllm import probe_vllm_models; print(probe_vllm_models())"`
-- 비활성: `LLM_VLLM_ENABLED=0`
 
 ```bash
 bash scripts/run_paper_ops_bootstrap.sh   # dry-run + advisory + alpha + crowding gate (report only)
@@ -97,16 +105,34 @@ APPLY_CROWDING_CONFIG=1 bash scripts/run_paper_ops_bootstrap.sh   # GO일 때만
 
 ### 2.3.2 Crowding guard (paper)
 
-`strategy_config.json` 기본: **`crowding_guard_enabled: false`**. Paper 실험 값은 `config/crowding_paper_proposal.json`만.
+**현재 (2026-06-01):** gate **GO_PAPER** → `strategy_config.json`에 proposal 반영됨 (`crowding_guard_enabled: true`).  
+재평가·롤백 시 guard impact 갱신 후 gate만 다시 실행; merge는 명시적일 때만.
 
 ```bash
 bash scripts/run_guard_impact_report.sh
-bash scripts/run_crowding_paper_gate.sh   # writes logs/crowding_paper/go_no_go_checklist.json
-# strategy_config 반영은 guard impact **갱신 직후** 또는 APPLY_CROWDING_CONFIG=1 일 때만:
-bash scripts/run_crowding_paper_gate.sh --apply-config
+bash scripts/run_crowding_paper_gate.sh   # logs/crowding_paper/go_no_go_checklist.json
+bash scripts/run_crowding_paper_gate.sh --apply-config   # GO_PAPER일 때만 merge
+# 또는 일괄:
+APPLY_CROWDING_CONFIG=1 bash scripts/run_paper_ops_bootstrap.sh
 ```
 
-2026-05-31 gate 결과: **NO_GO** (Sharpe delta below floor). **GO** 전까지 prod config에 crowding 켜지 않음.
+| 지표 (백테스트 replay) | baseline | with crowding | delta |
+|------------------------|----------|---------------|-------|
+| Sharpe | 1.228 | 1.301 | +0.073 |
+| Max DD % | -19.23 | -9.68 | +9.56pp |
+| Return % | 55.49 | 50.38 | -5.11 |
+| Blocked trades | — | 6 | — |
+
+결정 기록: `logs/crowding_paper/decision_record.json`
+
+**Live 모니터링** (dry-run/execute 후):
+
+```bash
+bash scripts/run_crowding_live_impact_report.sh --lookback-days 7
+# → logs/crowding_live/latest_summary.json (by_kind, by_ticker, alignment vs backtest)
+```
+
+`paper_ops` 요약에 포함: `logs/paper_ops/latest_summary.json` → `crowding_live` 블록.
 
 ### 2.4 유니버스 프로필 (`UNIVERSE_PROFILE`)
 

@@ -15,9 +15,11 @@ from src.crowding_live_metrics import (
     build_alignment_notes,
     count_crowding_skips_from_audit_rows,
     count_crowding_skips_from_reasons,
+    summarize_crowding_skips_from_audit_df,
     validate_crowding_live_report,
 )
 from src.daily_audit_summary import SKIP_EVENT_TYPES, load_execution_audit
+from src.settings import load_settings
 
 DEFAULT_OUTPUT_DIR = Path("logs/crowding_live")
 GUARD_IMPACT_PATH = Path("logs/guard_impact/latest_summary.json")
@@ -74,18 +76,20 @@ def build_crowding_live_impact_report(
     }
 
     if audit_df is not None and not audit_df.empty:
-        event_types = audit_df["event_type"].astype(str) if "event_type" in audit_df.columns else pd.Series(dtype=str)
-        reasons = audit_df["reason"].astype(str) if "reason" in audit_df.columns else pd.Series(dtype=str)
-        skip_mask = event_types.isin(SKIP_EVENT_TYPES)
-        skip_reasons = reasons[skip_mask].tolist()
-        live_block["skip_buy_count"] = int(skip_mask.sum())
-        crowding_count, samples = count_crowding_skips_from_audit_rows(skip_reasons)
-        live_block["crowding_skip_count"] = crowding_count
-        live_block["sample_reasons"] = samples
-        if live_block["skip_buy_count"] > 0:
-            live_block["crowding_skip_rate_of_skips"] = round(
-                crowding_count / live_block["skip_buy_count"], 4
-            )
+        summary = summarize_crowding_skips_from_audit_df(audit_df)
+        live_block.update(summary)
+        if live_block["skip_buy_count"] == 0:
+            event_types = audit_df["event_type"].astype(str)
+            skip_mask = event_types.isin(SKIP_EVENT_TYPES)
+            skip_reasons = audit_df.loc[skip_mask, "reason"].astype(str).tolist()
+            crowding_count, samples = count_crowding_skips_from_audit_rows(skip_reasons)
+            live_block["crowding_skip_count"] = crowding_count
+            live_block["sample_reasons"] = samples
+            live_block["skip_buy_count"] = int(skip_mask.sum())
+            if live_block["skip_buy_count"] > 0:
+                live_block["crowding_skip_rate_of_skips"] = round(
+                    crowding_count / live_block["skip_buy_count"], 4
+                )
     elif audit_summary:
         skip_counts = audit_summary.get("skip_reason_counts") or {}
         live_block["crowding_skip_count"] = count_crowding_skips_from_reasons(skip_counts)
@@ -98,10 +102,14 @@ def build_crowding_live_impact_report(
             live_block["crowding_skip_count"] / total_skips, 4
         )
 
+    settings = load_settings()
+    guard_enabled_now = bool(getattr(settings, "crowding_guard_enabled", False))
+    backtest_block["crowding_guard_enabled_in_config"] = guard_enabled_now
+
     alignment = build_alignment_notes(
         backtest_delta_trades=backtest_block.get("delta_trade_count"),
         live_crowding_skips=int(live_block["crowding_skip_count"]),
-        guard_enabled_in_config=bool(backtest_block.get("crowding_guard_enabled_in_config")),
+        guard_enabled_in_config=guard_enabled_now,
     )
 
     return validate_crowding_live_report(

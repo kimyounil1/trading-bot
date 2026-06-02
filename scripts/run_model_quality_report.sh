@@ -4,11 +4,14 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_DIR"
 
-METRICS_PATH="${1:-logs/ml/fold_metrics.csv}"
-if [[ ! -f "$METRICS_PATH" && -f logs/ml/ai_model_metrics.csv ]]; then
-  METRICS_PATH="logs/ml/ai_model_metrics.csv"
-fi
-
-PYTHONPATH=. "$PROJECT_DIR/.venv/bin/python" -m src.ml_quality_report \
-  --metrics "$METRICS_PATH" \
+PYTHONPATH=. "$PROJECT_DIR/.venv/bin/python" -m src.calibration_experiment \
+  --rows logs/ml/model_calibration_rows.csv \
   --output-dir logs/ml
+
+PYTHONPATH=. "$PROJECT_DIR/.venv/bin/python" -m src.label_horizon_report \
+  --output-dir logs/ml
+
+PYTHONPATH=. "$PROJECT_DIR/.venv/bin/python" -m src.model_quality_summary \
+  --ml-dir logs/ml \
+  --benchmark-gap logs/benchmark_gap/latest_summary.json \
+  --output-dir logs/model_quality

@@ -12,6 +12,7 @@ from typing import Any
 import pandas as pd
 
 from src.config import EXECUTION_AUDIT_LOG_PATH
+from src.execution_audit_io import read_execution_audit_csv
 
 DEFAULT_OUTPUT_DIR = Path("logs/audit_daily")
 
@@ -57,7 +58,10 @@ def load_execution_audit(
     if not path.is_file():
         return pd.DataFrame()
 
-    df = pd.read_csv(path)
+    try:
+        df = pd.read_csv(path)
+    except pd.errors.ParserError:
+        df = read_execution_audit_csv(path)
     if df.empty or "timestamp" not in df.columns:
         return df
 

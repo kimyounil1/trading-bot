@@ -37,6 +37,13 @@ from src.risk_manager import (
     get_recent_buy_symbols,
     get_today_buy_notional,
 )
+from src.position_dust import (
+    count_meaningful_positions,
+    dust_position_min_usd,
+    effective_position,
+)
+from src.position_sizing import cap_single_order_amount, conviction_adjustments
+from src.rank_ai_gate import apply_rank_ai_buy_gate, build_rank_ai_gate_scores
 from src.sector_rotation import get_sector_leadership
 from src.settings import load_settings
 from src.strategy import add_indicators, generate_signal
@@ -44,6 +51,7 @@ from src.strategy import add_indicators, generate_signal
 # ── 경로 및 설정 ──────────────────────────────────────────────────────────────
 CACHE_DIR = Path("logs/candidate_cache")
 LATEST_META_PATH = CACHE_DIR / "latest_meta.json"
+UNIVERSE_META_PATH = CACHE_DIR / "universe_meta.json"
 LATEST_BUY_PATH = CACHE_DIR / "latest_buy.csv"
 LATEST_EXIT_PATH = CACHE_DIR / "latest_exit.csv"
 LATEST_QUALITY_PATH = CACHE_DIR / "latest_quality.csv"
@@ -62,9 +70,10 @@ AI_MIN_PRICE_ROWS = MAX_FEATURE_LOOKBACK + 5
 
 # ── 다이내믹 유니버스 (Phase 13) ──────────────────────────────────────────────
 
-def _write_candidate_cache_meta(meta: dict) -> None:
+def _write_universe_meta(meta: dict) -> None:
+    """Persist dynamic-universe snapshot without clobbering full candidate-cache meta."""
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    LATEST_META_PATH.write_text(json.dumps(meta, indent=2, sort_keys=True), encoding="utf-8")
+    UNIVERSE_META_PATH.write_text(json.dumps(meta, indent=2, sort_keys=True), encoding="utf-8")
 
 
 def _build_dynamic_universe_meta(
@@ -140,7 +149,7 @@ def get_dynamic_universe(static_tickers: List[str], limit: int = 50) -> List[str
         requested_limit=limit,
         source=source,
     )
-    _write_candidate_cache_meta(meta)
+    _write_universe_meta(meta)
 
     print(
         f"Dynamic Universe: Static({len(static_tickers)}) + Trending({len(trending)}) "
@@ -156,7 +165,10 @@ def _resolve_watchlist_tickers(settings) -> tuple[list[str], dict | None]:
             static_tickers,
             limit=int(getattr(settings, "dynamic_count", 50)),
         )
-        universe_meta = json.loads(LATEST_META_PATH.read_text(encoding="utf-8"))
+        if UNIVERSE_META_PATH.is_file():
+            universe_meta = json.loads(UNIVERSE_META_PATH.read_text(encoding="utf-8"))
+        else:
+            universe_meta = None
         return watchlist, universe_meta
 
     return static_tickers, None
@@ -354,6 +366,19 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
         if getattr(settings, "use_ai_score", False)
         else None
     )
+    try:
+        rank_ai_gate_scores = build_rank_ai_gate_scores(
+            ticker_data,
+            settings,
+            vix_df=vix_df,
+            spy_df=spy_df,
+            macro_df=macro_df,
+        )
+    except Exception as exc:
+        if bool(getattr(settings, "rank_ai_buy_gate_fail_closed", True)):
+            raise
+        print(f"Warning: rank AI buy/add gate disabled for candidate cache: {exc}")
+        rank_ai_gate_scores = {}
 
     ai_model_bundle = None
     if getattr(settings, "use_ai_score", False):
@@ -410,6 +435,11 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
         except Exception as exc:
             exit_rows.append({"ticker": ticker, "error": str(exc)})
 
+    dust_min_usd = dust_position_min_usd(settings)
+    meaningful_positions_count = count_meaningful_positions(
+        positions, min_usd=dust_min_usd
+    )
+
     cash = float(account["cash"])
     positions_count = int(account["positions_count"])
     current_gross_exposure = sum(float(position["market_value"]) for position in positions)
@@ -443,7 +473,6 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
             getattr(settings, "margin_leverage_stress_gate_required", True)
         ),
     )
-
     for ticker in watchlist:
         frame = ticker_data.get(ticker)
         if frame is None or frame.empty:
@@ -462,13 +491,21 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
                 market_clock=clock,
             )
 
-            position = positions_by_symbol.get(ticker)
+            ai_score = apply_sector_score_bonus(ticker, ai_score, top_sectors)
+            conviction = conviction_adjustments(settings, ai_score)
+
+            position = effective_position(
+                positions_by_symbol.get(ticker),
+                min_usd=dust_min_usd,
+            )
             if position is not None:
                 risk = check_additional_buy_allowed(
                     signal=signal,
                     cash=cash,
                     portfolio_value=float(account["portfolio_value"]),
                     current_position_value=float(position["market_value"]),
+                    position_mult=conviction.position_mult,
+                    cash_buffer_mult=conviction.cash_buffer_mult,
                 )
                 risk_allowed = risk.allowed
                 reason = risk.reason
@@ -477,13 +514,15 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
                 risk = check_buy_allowed(
                     signal=signal,
                     cash=cash,
-                    current_positions_count=positions_count,
+                    current_positions_count=meaningful_positions_count,
+                    portfolio_value=float(account["portfolio_value"]),
+                    ticker=ticker,
+                    position_mult=conviction.position_mult,
+                    cash_buffer_mult=conviction.cash_buffer_mult,
                 )
                 risk_allowed = risk.allowed
                 reason = risk.reason
                 target_amount = risk.target_amount
-
-            ai_score = apply_sector_score_bonus(ticker, ai_score, top_sectors)
 
             if (
                 risk_allowed
@@ -521,7 +560,23 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
             reason = guard.risk_reason
             target_amount = guard.target_amount
 
-            order_amount = min(target_amount, settings.max_test_order_amount)
+            rank_gate = apply_rank_ai_buy_gate(
+                ticker=ticker,
+                settings=settings,
+                risk_allowed=risk_allowed,
+                risk_reason=reason,
+                target_amount=target_amount,
+                scores=rank_ai_gate_scores,
+            )
+            risk_allowed = rank_gate.risk_allowed
+            reason = rank_gate.risk_reason
+            target_amount = rank_gate.target_amount
+
+            order_amount = cap_single_order_amount(
+                target_amount,
+                float(account["portfolio_value"]),
+                settings,
+            )
 
             if risk_allowed:
                 safety = apply_buy_safety_limits(
@@ -529,6 +584,7 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
                     order_amount=order_amount,
                     submitted_notional_today=simulated_daily_notional,
                     recent_buy_symbols=recent_buy_symbols,
+                    portfolio_value=float(account["portfolio_value"]),
                 )
                 risk_allowed = safety.allowed
                 reason = safety.reason if not safety.allowed else reason
@@ -546,6 +602,7 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
                     current_position_value=(
                         float(position["market_value"]) if position is not None else 0.0
                     ),
+                    cash_buffer_mult=conviction.cash_buffer_mult,
                 )
                 risk_allowed = exposure.allowed
                 reason = exposure.reason if not exposure.allowed else reason
@@ -573,6 +630,9 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
                     "use_ai_score": getattr(settings, "use_ai_score", False),
                     "risk_allowed": risk_allowed,
                     "reason": reason,
+                    "rank_ai_score": rank_gate.score,
+                    "rank_ai_percentile": rank_gate.percentile,
+                    "rank_ai_gate_enabled": getattr(settings, "rank_ai_buy_gate_enabled", False),
                     "target_amount": target_amount,
                     "order_amount": order_amount,
                     "daily_order_used": simulated_daily_notional,

@@ -26,6 +26,7 @@ from src.risk_manager import (
     get_today_buy_notional,
 )
 from src.alpaca_client import (
+    close_position_by_symbol,
     get_account_summary,
     get_open_symbols,
     get_positions_summary,
@@ -47,7 +48,17 @@ from src.llm_analyst import llm_cache_only_for_run
 from src.macro_events import get_macro_event_risk
 from src.candidate_cache import get_dynamic_universe
 from src.sector_rotation import get_sector_leadership
-from src.portfolio_optimizer import compute_weights_from_ticker_data
+from src.position_dust import (
+    count_meaningful_positions,
+    dust_position_min_usd,
+    effective_position,
+    is_dust_position,
+)
+from src.position_sizing import (
+    cap_single_order_amount,
+    conviction_adjustments,
+)
+from src.rank_ai_gate import apply_rank_ai_buy_gate, build_rank_ai_gate_scores
 
 # 트레일링 스탑용 최고점 기록 경로
 PEAKS_PATH = Path("data/trailing_peaks.json")
@@ -490,6 +501,24 @@ def main() -> None:
             )
 
     macro_df = load_macro_data(period="2y") if getattr(settings, "use_ai_score", False) else None
+    try:
+        rank_ai_gate_scores = build_rank_ai_gate_scores(
+            ticker_data,
+            settings,
+            vix_df=vix_df,
+            spy_df=spy_df,
+            macro_df=macro_df,
+        )
+        if rank_ai_gate_scores:
+            print(
+                "Rank AI buy/add gate enabled: "
+                f"scored {len(rank_ai_gate_scores)} symbols"
+            )
+    except Exception as exc:
+        if bool(getattr(settings, "rank_ai_buy_gate_fail_closed", True)):
+            raise
+        print(f"Warning: rank AI buy/add gate disabled for this run: {exc}")
+        rank_ai_gate_scores = {}
     market_regime_bullish = True
     if getattr(settings, "market_regime_filter_enabled", False):
         regime_df = ticker_data.get(settings.market_regime_ticker)
@@ -526,6 +555,10 @@ def main() -> None:
               f"New buys will be blocked.")
 
     positions_count = account["positions_count"]
+    dust_min_usd = dust_position_min_usd(settings)
+    meaningful_positions_count = count_meaningful_positions(
+        positions, min_usd=dust_min_usd
+    )
     current_gross_exposure = sum(float(position["market_value"]) for position in positions)
     orders_submitted = 0
     submitted_notional_today = get_today_buy_notional()
@@ -590,6 +623,69 @@ def main() -> None:
         for position in positions:
             ticker = str(position["symbol"]).upper()
             try:
+                if is_dust_position(position, min_usd=dust_min_usd):
+                    dust_reason = (
+                        f"dust position cleanup (<${dust_min_usd:g} market value)"
+                    )
+                    dust_mv = float(position["market_value"])
+                    print(
+                        f"{ticker}: DUST position qty={position['qty']}, "
+                        f"market_value={dust_mv:.6f} — scheduling close"
+                    )
+                    exit_summary_rows.append(
+                        f"{ticker}: DUST exit, market_value=${dust_mv:.6f}"
+                    )
+                    log_execution_audit(
+                        event_type="DUST_EXIT",
+                        ticker=ticker,
+                        action="CLOSE",
+                        status="SUBMITTED" if can_submit_orders else "DRY_RUN",
+                        reason=dust_reason,
+                        profile_name=profile_name,
+                        regime=current_regime,
+                    )
+                    if can_submit_orders:
+                        try:
+                            raw_order = close_position_by_symbol(ticker)
+                            if raw_order is None:
+                                raise ValueError(
+                                    f"dust close returned no order for {ticker}"
+                                )
+                            live_order_count += 1
+                            log_order(
+                                ticker=ticker,
+                                notional=0.0,
+                                order_id=str(raw_order.id),
+                                status=str(raw_order.status),
+                                side=str(raw_order.side),
+                                order_type=str(raw_order.type),
+                                reason=dust_reason,
+                            )
+                            print(
+                                f"  PAPER_DUST_CLOSE: {ticker}, "
+                                f"order_id={raw_order.id}, status={raw_order.status}"
+                            )
+                            notify_info(
+                                "🧹 Dust position closed",
+                                f"{ticker}: closed negligible position (${dust_mv:.4f})",
+                            )
+                        except Exception as e:
+                            print(f"  Dust close error for {ticker}: {e}")
+                            api_error_count += 1
+                            if isinstance(e, ConnectionError) and execute_orders:
+                                notify_error(
+                                    f"CRITICAL: Network error during dust close for {ticker}",
+                                    e,
+                                )
+                    else:
+                        print(f"  DRY_RUN: would close dust position {ticker}")
+                    positions_by_symbol.pop(ticker, None)
+                    open_symbols.discard(ticker)
+                    meaningful_positions_count = max(
+                        0, meaningful_positions_count - 1
+                    )
+                    continue
+
                 data_fresh, data_reason = price_data_freshness.get(
                     ticker,
                     (False, "price data not loaded"),
@@ -1013,18 +1109,25 @@ def main() -> None:
             )
 
             ai_score = apply_sector_score_bonus(ticker, ai_score, top_sectors)
+            conviction = conviction_adjustments(settings, ai_score)
+            if conviction.label != "neutral":
+                print(f"{ticker}: sizing {conviction.label}")
 
             llm_is_ok = None
             llm_reason = ""
 
-            position = positions_by_symbol.get(ticker)
-            if position is not None:
+            held_position = effective_position(
+                positions_by_symbol.get(ticker), min_usd=dust_min_usd
+            )
+            if held_position is not None:
                 # 13-A: 이미 보유 중인 종목이라도 목표 비중에 미달하면 추가 매수 (Averaging up/down)
                 risk = check_additional_buy_allowed(
                     signal=signal,
                     cash=cash,
                     portfolio_value=float(account["portfolio_value"]),
-                    current_position_value=float(position["market_value"]),
+                    current_position_value=float(held_position["market_value"]),
+                    position_mult=conviction.position_mult,
+                    cash_buffer_mult=conviction.cash_buffer_mult,
                 )
                 risk_allowed = risk.allowed
                 risk_reason = risk.reason
@@ -1039,8 +1142,11 @@ def main() -> None:
                 risk = check_buy_allowed(
                     signal=signal,
                     cash=cash,
-                    current_positions_count=positions_count,
+                    current_positions_count=meaningful_positions_count,
+                    portfolio_value=float(account["portfolio_value"]),
                     ticker=ticker,
+                    position_mult=conviction.position_mult,
+                    cash_buffer_mult=conviction.cash_buffer_mult,
                 )
                 risk_allowed = risk.allowed
                 risk_reason = risk.reason
@@ -1063,7 +1169,7 @@ def main() -> None:
 
             guard = apply_shared_buy_guards(
                 ticker=ticker,
-                position=position,
+                position=held_position,
                 settings=settings,
                 risk_allowed=risk_allowed,
                 risk_reason=risk_reason,
@@ -1084,7 +1190,19 @@ def main() -> None:
             llm_is_ok = guard.llm_is_ok
             llm_reason = guard.llm_reason
 
-            if risk_allowed and position is None and llm_is_ok is False:
+            rank_gate = apply_rank_ai_buy_gate(
+                ticker=ticker,
+                settings=settings,
+                risk_allowed=risk_allowed,
+                risk_reason=risk_reason,
+                target_amount=target_amount,
+                scores=rank_ai_gate_scores,
+            )
+            risk_allowed = rank_gate.risk_allowed
+            risk_reason = rank_gate.risk_reason
+            target_amount = rank_gate.target_amount
+
+            if risk_allowed and held_position is None and llm_is_ok is False:
                 llm_advisory_only = bool(getattr(settings, "llm_advisory_only", True))
                 if llm_advisory_only:
                     log_execution_audit(
@@ -1101,7 +1219,11 @@ def main() -> None:
                         notional=target_amount,
                     )
 
-            order_amount = min(target_amount, settings.max_test_order_amount)
+            order_amount = cap_single_order_amount(
+                target_amount,
+                float(account["portfolio_value"]),
+                settings,
+            )
 
             if risk_allowed:
                 safety = apply_buy_safety_limits(
@@ -1109,6 +1231,7 @@ def main() -> None:
                     order_amount=order_amount,
                     submitted_notional_today=submitted_notional_today,
                     recent_buy_symbols=recent_buy_symbols,
+                    portfolio_value=float(account["portfolio_value"]),
                 )
                 risk_allowed = safety.allowed
                 risk_reason = safety.reason if not safety.allowed else risk_reason
@@ -1122,7 +1245,8 @@ def main() -> None:
                     portfolio_value=float(account["portfolio_value"]) * float(getattr(settings, "leverage_factor", 1.0)),
                     buying_power=float(account.get("buying_power", 0.0)),
                     current_gross_exposure=current_gross_exposure,
-                    current_position_value=float(position["market_value"]) if position is not None else 0.0,
+                    current_position_value=float(held_position["market_value"]) if held_position is not None else 0.0,
+                    cash_buffer_mult=conviction.cash_buffer_mult,
                 )
                 risk_allowed = exposure.allowed
                 risk_reason = exposure.reason if not exposure.allowed else risk_reason
@@ -1177,6 +1301,8 @@ def main() -> None:
                     regime=current_regime,
                     signal=signal,
                     ai_score=ai_score,
+                    rank_ai_score=rank_gate.score,
+                    rank_ai_percentile=rank_gate.percentile,
                     llm_verdict=_format_llm_verdict(llm_is_ok, llm_reason),
                     notional=order_amount,
                 )
@@ -1186,6 +1312,8 @@ def main() -> None:
                     "ticker": ticker,
                     "order_amount": order_amount,
                     "ai_score": ai_score,
+                    "rank_ai_score": rank_gate.score,
+                    "rank_ai_percentile": rank_gate.percentile,
                     "risk_reason": risk_reason,
                     "signal": signal,
                     "llm_verdict": _format_llm_verdict(llm_is_ok, llm_reason),
@@ -1226,7 +1354,9 @@ def main() -> None:
             t = candidate["ticker"]
             mvo_amount = portfolio_value * mvo_weights.get(t, 1.0 / len(approved_buys))
             # Respect individual order cap
-            candidate["order_amount"] = min(mvo_amount, settings.max_test_order_amount)
+            candidate["order_amount"] = cap_single_order_amount(
+                mvo_amount, portfolio_value, settings
+            )
         print(
             f"MVO weights: "
             + ", ".join(
@@ -1333,6 +1463,8 @@ def main() -> None:
                 regime=current_regime,
                 signal=signal,
                 ai_score=ai_score,
+                rank_ai_score=candidate.get("rank_ai_score"),
+                rank_ai_percentile=candidate.get("rank_ai_percentile"),
                 llm_verdict=llm_verdict,
                 order_id=buy_submission.order_id,
                 order_type=buy_submission.order_type,

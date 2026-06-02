@@ -6,8 +6,25 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from src.cms_reconcile import reconcile_cms_execute_with_alpaca
+
 if TYPE_CHECKING:
     from src.market_clock import MarketClock
+
+__all__ = [
+    "money",
+    "pct",
+    "order_is_filled",
+    "is_executable_buy_row",
+    "order_display_columns",
+    "orders_to_frame",
+    "count_filled_today",
+    "partition_alpaca_orders",
+    "cache_age_minutes",
+    "classify_buy_candidates",
+    "reconcile_cms_execute_with_alpaca",
+    "sort_buy_candidates",
+]
 
 
 def money(value: float) -> str:
@@ -157,69 +174,6 @@ def classify_buy_candidates(
     error_df = buy_df[error_mask].copy()
     blocked_df = buy_df[~executable_mask & ~error_mask].copy()
     return executable_df, blocked_df, error_df
-
-
-def reconcile_cms_execute_with_alpaca(
-    execute_rows: list[dict] | pd.DataFrame,
-    open_orders: list[dict],
-    closed_orders: list[dict] | None = None,
-) -> list[dict[str, str]]:
-    """Detect CMS submit vs Alpaca OPEN mismatches after paper execute."""
-    if isinstance(execute_rows, pd.DataFrame):
-        rows = execute_rows.to_dict(orient="records")
-    else:
-        rows = list(execute_rows)
-
-    closed_orders = closed_orders or []
-    closed_by_id = {str(order.get("id", "")): order for order in closed_orders}
-    open_by_id = {str(order.get("id", "")): order for order in open_orders}
-
-    alerts: list[dict[str, str]] = []
-
-    for row in rows:
-        order_id = str(row.get("order_id") or "").strip()
-        if not order_id or str(row.get("status", "")).upper() in {"ERROR", "SKIPPED"}:
-            continue
-        if order_id in open_by_id:
-            continue
-        closed = closed_by_id.get(order_id)
-        if closed is not None:
-            continue
-        alerts.append(
-            {
-                "kind": "cms_missing_on_alpaca",
-                "severity": "warning",
-                "message": (
-                    f"CMS submitted {row.get('action')} {row.get('ticker')} "
-                    f"(order_id={order_id}) but order is not OPEN or in recent closed list."
-                ),
-            }
-        )
-
-    cms_ids = {
-        str(row.get("order_id"))
-        for row in rows
-        if row.get("order_id") and str(row.get("status", "")).upper() not in {"ERROR", "SKIPPED"}
-    }
-    for order in open_orders:
-        client_id = str(order.get("client_order_id") or "")
-        order_id = str(order.get("id") or "")
-        if not client_id.startswith("cms_"):
-            continue
-        if order_id in cms_ids:
-            continue
-        alerts.append(
-            {
-                "kind": "alpaca_open_without_cms_log",
-                "severity": "warning",
-                "message": (
-                    f"Alpaca OPEN {order.get('symbol')} {order.get('side')} "
-                    f"(id={order_id}, client_order_id={client_id}) not in latest CMS execute batch."
-                ),
-            }
-        )
-
-    return alerts
 
 
 def sort_buy_candidates(buy_df: pd.DataFrame) -> pd.DataFrame:

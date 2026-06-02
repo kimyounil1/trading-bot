@@ -21,6 +21,7 @@ BENCHMARK_GAP_REPORT_KEYS = (
     "summary",
     "gap_pct",
     "beats_benchmark",
+    "spy_benchmark",
     "by_ticker",
     "by_sector",
     "by_entry_month",
@@ -56,6 +57,46 @@ def _trade_pnl(trades_df: pd.DataFrame) -> pd.Series:
     return pd.to_numeric(trades_df["return_pct"], errors="coerce") * pd.to_numeric(
         trades_df["cost_basis"], errors="coerce"
     )
+
+
+def _spy_benchmark(backtest_dir: Path, strategy_return: float) -> dict[str, Any]:
+    """SPY buy-and-hold over the same equity date window, best effort."""
+    equity_path = backtest_dir / "portfolio_equity.csv"
+    if not equity_path.is_file():
+        return {"available": False, "reason": f"Missing {equity_path}"}
+
+    try:
+        from src.data_loader import load_price_data_batch
+
+        equity = pd.read_csv(equity_path)
+        dates = pd.to_datetime(equity["date"], errors="coerce").dropna()
+        if dates.empty:
+            return {"available": False, "reason": "No valid equity dates"}
+
+        spy_df = load_price_data_batch(["SPY"], period="2y").get("SPY")
+        if spy_df is None or spy_df.empty:
+            return {"available": False, "reason": "SPY price data unavailable"}
+
+        price_col = "adj_close" if "adj_close" in spy_df.columns else "close"
+        frame = spy_df[["date", price_col]].copy()
+        frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
+        frame = frame.dropna(subset=["date", price_col]).sort_values("date")
+        window = frame[(frame["date"] >= dates.min()) & (frame["date"] <= dates.max())]
+        if len(window) < 2:
+            return {"available": False, "reason": "Not enough SPY prices in window"}
+
+        spy_return = float(window[price_col].iloc[-1] / window[price_col].iloc[0] - 1.0)
+        gap_pct = round((strategy_return - spy_return) * 100.0, 4)
+        return {
+            "available": True,
+            "return": spy_return,
+            "gap_pct": gap_pct,
+            "beats_spy": gap_pct >= 0,
+            "start_date": dates.min().strftime("%Y-%m-%d"),
+            "end_date": dates.max().strftime("%Y-%m-%d"),
+        }
+    except Exception as exc:
+        return {"available": False, "reason": str(exc)}
 
 
 def build_benchmark_gap_report(
@@ -110,6 +151,7 @@ def build_benchmark_gap_report(
         }
 
     beats_benchmark = bool(bench_valid and gap_pct >= 0)
+    spy_benchmark = _spy_benchmark(backtest_dir, float(summary["total_return"]))
     recommendations: list[str] = []
     if not bench_valid:
         recommendations.append(
@@ -138,6 +180,7 @@ def build_benchmark_gap_report(
         "summary": summary,
         "gap_pct": gap_pct,
         "beats_benchmark": beats_benchmark,
+        "spy_benchmark": spy_benchmark,
         "by_ticker": by_ticker,
         "by_sector": by_sector,
         "by_entry_month": by_entry_month,
@@ -167,6 +210,13 @@ def format_benchmark_gap_report(report: dict[str, Any]) -> str:
         "",
         "Worst tickers (PnL):",
     ]
+    spy = report.get("spy_benchmark") or {}
+    if spy.get("available"):
+        lines.insert(
+            4,
+            f"SPY return: {float(spy['return'])*100:.2f}% | "
+            f"SPY gap: {float(spy['gap_pct']):+.2f} pp",
+        )
     for row in report["by_ticker"][:5]:
         lines.append(f"  {row['ticker']}: ${row['pnl']:.2f}")
     lines.append("Sector PnL:")

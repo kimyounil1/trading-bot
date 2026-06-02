@@ -374,7 +374,9 @@ class CmsCandidateCacheDashboardTest(unittest.TestCase):
         if not cache_meta.exists():
             self.skipTest("candidate cache not generated yet")
 
-        meta = json.loads(cache_meta.read_text(encoding="utf-8"))
+        from src.candidate_cache import load_latest_candidate_cache
+
+        meta, _, _ = load_latest_candidate_cache()
         self.assertIn("orders_allowed", meta)
         self.assertIn("trading_session", meta)
 

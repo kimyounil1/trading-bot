@@ -37,12 +37,31 @@ def llm_backend_available() -> bool:
     return bool(_resolve_api_key()) or vllm_fallback_enabled()
 
 
+def _env_truthy(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes"}
+
+
+def llm_skipped_for_run() -> bool:
+    """Skip LLM buy guard during pytest/CI (TRADING_BOT_SKIP_LLM=1 or PYTEST_CURRENT_TEST)."""
+    if _env_truthy("TRADING_BOT_SKIP_LLM"):
+        return True
+    return "PYTEST_CURRENT_TEST" in os.environ
+
+
 def llm_cache_only_for_run(*, execute_orders: bool) -> bool:
-    """Paper execute uses live LLM on cache miss; dry-run uses cache unless LLM_LIVE_IN_DRY_RUN=1."""
+    """Dry-run/paper: live LLM on cache miss by default; tests skip API calls."""
+    if llm_skipped_for_run():
+        return True
     if execute_orders:
         return False
-    live = os.getenv("LLM_LIVE_IN_DRY_RUN", "").strip().lower() in {"1", "true", "yes"}
-    return not live
+    if _env_truthy("LLM_CACHE_ONLY_DRY_RUN"):
+        return True
+    live_env = os.getenv("LLM_LIVE_IN_DRY_RUN", "").strip().lower()
+    if live_env in {"0", "false", "no"}:
+        return True
+    if live_env in {"1", "true", "yes"}:
+        return False
+    return False
 
 
 def _get_genai_client() -> GenaiClient:

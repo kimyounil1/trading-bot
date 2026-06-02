@@ -13,48 +13,86 @@
 
 | 문서 | 역할 |
 |------|------|
-| **`TODO.md`** | 활성 로드맵 (다음 Phase만) |
+| **`TODO.md`** | 활성 로드맵 (지금 할 일만) |
 | **`docs/TODO_ARCHIVE.md`** | Phase 0–31 요약 |
 
 ---
 
-## Current Status (2026-06-01)
+## Current Status (2026-06-02)
 
 | 영역 | 상태 |
 |------|------|
-| **ML 백테스트** | **+96.8%** vs B&H **+65.0%** (gap +31.8pp) |
-| **Extended hours / CMS** | broker_adapter, buy_guards parity, Alpaca order board, CMS reconcile |
-| **CI/CD** | GitHub Actions green — **257** pytest (`main`) |
-| **Crowding** | gate **GO_PAPER** (리포트) · config **`crowding_guard_enabled: false`** (운영 정책) |
-| **Paper ops** | `logs/paper_ops/latest_summary.json` + extended fill report |
-| **LLM SDK** | `google-genai` (`src/llm_analyst.py`) — legacy `google-generativeai` 제거 |
+| **Alpha** | trailing 20% · 전략 **+76.1%** vs EW **+67.1%** (gap **+9.0pp**) · SPY **+28.9pp** (`logs/benchmark_gap/latest_summary.json`) |
+| **Crowding** | config **ON** · 최근 paper gate run **NO_GO** (blocked_trades=0) — impact 재평가 시 `run_guard_impact_report.sh` |
+| **Paper ops** | `logs/paper_ops/latest_summary.json` · audit ~18k rows |
+| **LLM (paper)** | blocking mode (`llm_advisory_only: false`) · 캐시 일치 ~**75%** |
+| **Rank AI (paper)** | buy/add gate ON · audit rank skip 누적 중 · **4/14일** (`gate_ready=false`) |
+| **Champion AI** | **유지** — promotion gate 실패 (AUC/Brier/fold/OOS). Rank label research만 paper gate |
 
-**Phase 31 완료** → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md) · Codex `RUN_ID=phase31`
+**Phase 31** → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
 
 ---
 
-## Phase 32 — Integrations & deprecations
+## Active — Phase 32 (남은 작업만)
 
-### 32-A Toss (KR day market)
-- [ ] Toss Open API adapter (`broker_provider: toss`) — 주문 제출 (현재: `trading_session` day_market stub only)
-- [ ] CMS/bot execute path for Toss paper
+우선순위 순. **Toss(32-A)는 API 키 전까지 보류.**
 
-### 32-B LLM SDK
-- [x] `google.generativeai` → `google.genai` (`llm_analyst.py`, `google-genai` in requirements, tests)
-- [x] 로컬 vLLM 서브모델 폴백 (`192.168.219.116:11434`, `gemma4-26B`) — Gemini quota/5xx 시
+1. [ ] **Rank AI paper 2주** — 매일 dry-run/bootstrap → `logs/paper_validation` · `rank_gate_ready=true` (현재 **4/14** calendar days)
+2. [ ] **Paper validation 추세** — 2주+ `agreement_pct` · SKIP(AI/LLM/rank) 레이어 관찰 (`bash scripts/run_paper_buy_validation.sh`)
+3. [ ] **Codex scoped review** — `RUN_ID=phase32` AGY pytest OK; Codex **timeout/capacity** → 여유 시:
+   ```bash
+   RUN_ID=phase32_retry SKIP_PYTEST=1 bash scripts/run_pass_complete.sh
+   ```
 
-### 32-C Ops
-- [ ] Crowding **GO** 재평가 후 `APPLY_CROWDING_CONFIG=1` bootstrap으로 proposal 반영 여부 결정
+**하지 말 것 (문서: [`docs/ai_authority_gates.md`](docs/ai_authority_gates.md))**
+- `models/ai_score_model.joblib` 교체 / champion 승격 (label sweep 전 후보 portfolio gate 실패)
+- Rank gate **live** 기본 ON (Tier-1 paper 2주 전)
+
+---
+
+## Phase 32 — shipped (요약)
+
+코드·테스트·리포트 경로는 반영됨. 상세 실험 수치는 `logs/model_quality/`, `logs/ml/` 참고.
+
+| 슬라이스 | 완료 내용 |
+|----------|-----------|
+| **32-B LLM** | `google.genai`, vLLM 폴백 |
+| **32-C Crowding** | GO paper apply, live impact, bootstrap step |
+| **32-D Paper** | LLM block, `llm_ai_agreement`, `paper_buy_validation`, CMS 카드, `universe_meta.json` race fix |
+| **32-E Alpha** | trailing 20%, SPY 벤치, CMS alpha metrics |
+| **32-F AI quality** | model_quality summary, calibration/label/rank experiments, rank **paper buy gate**, threshold/label sweep, dust P2, `execution_audit_io` |
+
+**Rank research (paper only):** 20d/top15%/q85 OOS gate 통과 → `rank_ai_buy_gate_enabled` paper config. Champion absolute-label 승격은 **없음**.
+
+---
+
+## Backlog — Phase 32-A Toss (blocked)
+
+- [ ] Toss Open API adapter · CMS execute path (API 키 필요)
 
 ---
 
 ## Quick commands
 
 ```bash
-bash scripts/run_paper_ops_bootstrap.sh
+# 일일 paper
+bash scripts/run_bot_once.sh dry-run
 SKIP_ALPHA=1 bash scripts/run_paper_ops_bootstrap.sh
-APPLY_CROWDING_CONFIG=1 bash scripts/run_paper_ops_bootstrap.sh   # GO + 명시적 merge만
+bash scripts/run_paper_buy_validation.sh
+
+# 리포트
+bash scripts/run_model_quality_report.sh
+bash scripts/run_rank_ai_gate_report.sh
+REFRESH_CANDIDATE_CACHE=1 bash scripts/run_rank_ai_gate_report.sh
+
+# 모델 실험 (무거움)
+bash scripts/run_threshold_promotion_pipeline.sh
+LABEL_SWEEP_ONLY=h20_t0p02 bash scripts/run_threshold_promotion_pipeline.sh
+
+# AGY + Codex
+AGY_TEST_PATHS="tests/test_paper_buy_validation_report.py tests/test_rank_ai_gate.py tests/test_execution_audit_io.py" \
+  bash scripts/run_agy_slice.sh
+RUN_ID=phase32_retry SKIP_PYTEST=1 bash scripts/run_pass_complete.sh
+
 bash scripts/run_cms.sh
-.venv/bin/python -m pytest tests/ -q
-RUN_ID=phase32 bash scripts/run_pass_complete.sh
 ```

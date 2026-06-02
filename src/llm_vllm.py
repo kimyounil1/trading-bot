@@ -7,17 +7,18 @@ from typing import Any
 
 import requests
 
-DEFAULT_VLLM_BASE_URL = "http://192.168.219.116:11434/v1"
+# Opt-in only (LLM_VLLM_ENABLED=1). Default off so a dead local host does not amplify Gemini outages.
+DEFAULT_VLLM_BASE_URL = ""
 DEFAULT_VLLM_MODEL = "gemma4-26B"
 DEFAULT_VLLM_TIMEOUT_SEC = 120.0
 
 
-def _env_flag(name: str, *, default: str = "1") -> bool:
+def _env_flag(name: str, *, default: str = "0") -> bool:
     return os.getenv(name, default).strip().lower() in {"1", "true", "yes"}
 
 
 def vllm_fallback_enabled() -> bool:
-    if not _env_flag("LLM_VLLM_ENABLED", default="1"):
+    if not _env_flag("LLM_VLLM_ENABLED", default="0"):
         return False
     return bool(vllm_base_url())
 

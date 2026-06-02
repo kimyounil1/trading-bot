@@ -73,7 +73,13 @@ class StrategySettings(StrategyProfile):
     max_sector_positions: int = 2
     stop_loss_pct: float = 0.05
     take_profit_pct: float = 0.1
-    max_test_order_amount: float = 10.0
+    max_test_order_amount: float = 10.0  # legacy $ cap; 0 = disabled (use max_single_order_pct)
+    max_single_order_pct: float = 1.0  # max one order as fraction of portfolio (1.0 = no pct cap)
+    max_daily_order_pct: float = 0.0  # >0: daily buy budget as portfolio fraction; else max_daily_order_amount
+    conviction_sizing_enabled: bool = False
+    conviction_ai_score_strong: float = 0.65  # AI score at/above → max conviction boost
+    conviction_position_mult_max: float = 1.25  # scale target position size up to this multiplier
+    conviction_cash_buffer_mult_min: float = 0.4  # at max conviction, min_cash_buffer_pct *= this
     max_orders_per_run: int = 1
     max_daily_order_amount: float = 1000.0
     buy_cooldown_days: int = 1
@@ -125,7 +131,14 @@ class StrategySettings(StrategyProfile):
     macro_event_lookback_days: int = 1
     llm_degraded_mode: str = "PASS"  # "PASS" or "FAIL"
     llm_cache_enabled: bool = True
-    llm_advisory_only: bool = True  # True: log LLM verdict, do not block orders
+    llm_advisory_only: bool = False  # False: block on LLM REJECT; True: advisory-only log
+    dust_position_min_usd: float = 5.0  # below this market value: dust cleanup / ignore for adds
+    rank_ai_buy_gate_enabled: bool = False
+    rank_ai_buy_gate_model_path: str = "logs/ml/rank_label_experiment_h20_top15_q85/rank_models.joblib"
+    rank_ai_buy_gate_prediction_horizon: int = 20
+    rank_ai_buy_gate_top_bucket_pct: float = 0.15
+    rank_ai_buy_gate_min_score_quantile: float = 0.85
+    rank_ai_buy_gate_fail_closed: bool = True
     broker_provider: str = "alpaca"  # alpaca | toss (future)
     extended_hours_enabled: bool = True
     enabled_trading_sessions: List[str] = field(
@@ -253,10 +266,26 @@ def validate_settings(settings: StrategySettings) -> StrategySettings:
         raise ValueError("max_orders_per_run must be positive")
     if settings.max_daily_order_amount <= 0:
         raise ValueError("max_daily_order_amount must be positive")
-    if settings.max_test_order_amount <= 0:
-        raise ValueError("max_test_order_amount must be positive")
+    if settings.max_test_order_amount < 0:
+        raise ValueError("max_test_order_amount must be non-negative")
+    if not 0 < settings.max_single_order_pct <= 1:
+        raise ValueError("max_single_order_pct must be between 0 and 1")
+    if not 0 <= settings.max_daily_order_pct <= 1:
+        raise ValueError("max_daily_order_pct must be between 0 and 1")
+    if settings.conviction_ai_score_strong <= 0 or settings.conviction_ai_score_strong > 1:
+        raise ValueError("conviction_ai_score_strong must be between 0 and 1")
+    if settings.conviction_position_mult_max < 1:
+        raise ValueError("conviction_position_mult_max must be >= 1")
+    if not 0 < settings.conviction_cash_buffer_mult_min <= 1:
+        raise ValueError("conviction_cash_buffer_mult_min must be between 0 and 1")
     if settings.buy_cooldown_days < 0:
         raise ValueError("buy_cooldown_days must be non-negative")
+    if settings.rank_ai_buy_gate_prediction_horizon <= 0:
+        raise ValueError("rank_ai_buy_gate_prediction_horizon must be positive")
+    if not 0 < settings.rank_ai_buy_gate_top_bucket_pct < 1:
+        raise ValueError("rank_ai_buy_gate_top_bucket_pct must be between 0 and 1")
+    if not 0 < settings.rank_ai_buy_gate_min_score_quantile <= 1:
+        raise ValueError("rank_ai_buy_gate_min_score_quantile must be between 0 and 1")
     if settings.max_holding_days <= 0:
         raise ValueError("max_holding_days must be positive")
     if not 0 <= settings.max_portfolio_drawdown_pct < 1:

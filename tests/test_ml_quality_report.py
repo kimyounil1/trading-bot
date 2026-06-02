@@ -71,6 +71,8 @@ def test_write_ml_quality_reports(tmp_path: Path):
     assert calibration["bin_count"] >= 1
     written = pd.read_csv(paths["fold_metrics"])
     assert list(written.columns[: len(FOLD_METRICS_COLUMNS)]) == list(FOLD_METRICS_COLUMNS)
+    calibration_rows = pd.read_csv(paths["calibration_rows"])
+    assert {"regime", "fold", "y_true", "y_prob"}.issubset(calibration_rows.columns)
 
 
 def test_regenerate_from_csv_round_trip(tmp_path: Path):

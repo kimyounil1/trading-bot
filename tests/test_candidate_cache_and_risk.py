@@ -101,8 +101,9 @@ class CandidateCacheAndRiskTest(unittest.TestCase):
 
         self.assertFalse(cooldown.allowed)
         self.assertIn("cooldown", cooldown.reason)
-        self.assertFalse(daily_limit.allowed)
-        self.assertIn("daily order amount limit", daily_limit.reason)
+        self.assertTrue(daily_limit.allowed)
+        self.assertIn("daily order amount capped", daily_limit.reason)
+        self.assertEqual(daily_limit.target_amount, 10.0)
 
     def test_check_additional_buy_allowed_targets_position_allocation(self) -> None:
         settings = StrategySettings(
@@ -142,7 +143,7 @@ class CandidateCacheAndRiskTest(unittest.TestCase):
 
         self.assertTrue(under_target.allowed)
         self.assertEqual(under_target.reason, "add to existing position allowed")
-        self.assertEqual(under_target.target_amount, 750.0)
+        self.assertEqual(under_target.target_amount, 500.0)
         self.assertFalse(at_target.allowed)
         self.assertEqual(at_target.reason, "position target allocation reached")
 
@@ -187,10 +188,10 @@ class CandidateCacheAndRiskTest(unittest.TestCase):
             ), patch(
                 "src.candidate_cache.CACHE_DIR", cache_dir
             ), patch(
-                "src.candidate_cache.LATEST_META_PATH", cache_dir / "latest_meta.json"
+                "src.candidate_cache.UNIVERSE_META_PATH", cache_dir / "universe_meta.json"
             ):
                 universe = get_dynamic_universe(["AAPL", "msft", "^VIX"], limit=3)
-                meta = json.loads((cache_dir / "latest_meta.json").read_text(encoding="utf-8"))
+                meta = json.loads((cache_dir / "universe_meta.json").read_text(encoding="utf-8"))
 
         self.assertEqual(set(universe), {"AAPL", "MSFT", "NVDA", "AMD"})
         self.assertEqual(meta["source"], "unit_test_source")
@@ -254,8 +255,9 @@ class CandidateCacheAndRiskTest(unittest.TestCase):
 
         self.assertFalse(gross.allowed)
         self.assertIn("gross exposure limit", gross.reason)
-        self.assertFalse(cash_buffer.allowed)
+        self.assertTrue(cash_buffer.allowed)
         self.assertIn("cash buffer", cash_buffer.reason)
+        self.assertEqual(cash_buffer.target_amount, 100.0)
         self.assertFalse(single_name.allowed)
         self.assertIn("single-name max loss", single_name.reason)
 

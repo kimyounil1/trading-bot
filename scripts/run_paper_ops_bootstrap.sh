@@ -7,24 +7,33 @@ cd "$ROOT"
 export PYTHONPATH=.
 mkdir -p logs/paper_ops
 
-echo "=== [1/6] Bot dry-run (execution_audit + signals) ==="
+echo "=== [1/9] Bot dry-run (execution_audit + signals) ==="
 bash scripts/run_bot_once.sh dry-run
 
-echo "=== [2/6] LLM advisory report ==="
+echo "=== [2/9] LLM advisory report ==="
 bash scripts/run_llm_advisory_report.sh
 
+echo "=== [2b/9] Paper buy validation (AI+LLM paths + rank gate tracker) ==="
+bash scripts/run_paper_buy_validation.sh || echo "WARN: paper buy validation skipped"
+
+echo "=== [3/9] Rank AI gate impact (optional cache refresh: REFRESH_CANDIDATE_CACHE=1) ==="
+bash scripts/run_rank_ai_gate_report.sh || echo "WARN: rank AI gate report skipped"
+
+echo "=== [4/9] Crowding live monitoring (execution_audit) ==="
+bash scripts/run_crowding_live_impact_report.sh --lookback-days "${CROWDING_LIVE_LOOKBACK_DAYS:-7}" || echo "WARN: crowding live report skipped"
+
 if [[ "${SKIP_ALPHA:-}" == "1" ]]; then
-  echo "=== [3/6] Alpha pipeline — SKIP_ALPHA=1 ==="
-  echo "=== [4/6] Operational in-loop — SKIP_ALPHA=1 ==="
+  echo "=== [5/9] Alpha pipeline — SKIP_ALPHA=1 ==="
+  echo "=== [6/9] Operational in-loop — SKIP_ALPHA=1 ==="
 else
-  echo "=== [3/6] Alpha pipeline ==="
+  echo "=== [5/9] Alpha pipeline ==="
   bash scripts/run_alpha_pipeline.sh
 
-  echo "=== [4/6] Operational in-loop (cache replay) ==="
+  echo "=== [6/9] Operational in-loop (cache replay) ==="
   bash scripts/run_operational_alpha_validation.sh
 fi
 
-echo "=== [5/6] Guard impact + crowding gate (apply proposal on GO only) ==="
+echo "=== [7/9] Guard impact + crowding gate (apply proposal on GO only) ==="
 GUARD_IMPACT="logs/guard_impact/latest_summary.json"
 SKIP_CROWDING_GATE=0
 GUARD_REFRESHED=0
@@ -51,10 +60,10 @@ if [[ "$SKIP_CROWDING_GATE" != "1" ]]; then
   fi
 fi
 
-echo "=== [6/7] Extended-hours limit fill report ==="
+echo "=== [8/9] Extended-hours limit fill report ==="
 .venv/bin/python -m src.extended_hours_fill_report || echo "WARN: extended-hours fill report skipped (Alpaca unavailable)"
 
-echo "=== [7/7] Paper ops summary ==="
+echo "=== [9/9] Paper ops summary ==="
 .venv/bin/python -m src.paper_ops_summary
 
-echo "Done. See logs/paper_ops/latest_summary.json, logs/execution_audit.csv, logs/llm_advisory/latest_summary.json"
+echo "Done. See logs/paper_ops/latest_summary.json, logs/rank_ai_gate/latest_summary.json, logs/execution_audit.csv"

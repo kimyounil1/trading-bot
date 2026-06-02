@@ -4,6 +4,10 @@ from datetime import datetime
 import pandas as pd
 
 from src.config import SIGNAL_LOG_PATH, ORDER_LOG_PATH, EXECUTION_AUDIT_LOG_PATH
+from src.execution_audit_io import (
+    EXECUTION_AUDIT_COLUMNS,
+    normalize_execution_audit_file,
+)
 
 
 def log_signal(
@@ -108,6 +112,8 @@ def log_execution_audit(
     regime: str = "",
     signal: str = "",
     ai_score: float = None,
+    rank_ai_score: float = None,
+    rank_ai_percentile: float = None,
     llm_verdict: str = "",
     order_id: str = "",
     order_type: str = "",
@@ -125,27 +131,40 @@ def log_execution_audit(
             return None
         return round(float(value), digits)
 
-    row = {
-        "timestamp": datetime.now().isoformat(timespec="seconds"),
-        "event_type": event_type,
-        "ticker": ticker,
-        "action": action,
-        "status": status,
-        "reason": reason,
-        "profile_name": profile_name,
-        "regime": regime,
-        "signal": signal,
-        "ai_score": _round_or_none(ai_score, 4),
-        "llm_verdict": llm_verdict,
-        "order_id": order_id,
-        "order_type": order_type,
-        "side": side,
-        "notional": _round_or_none(notional, 2),
-        "quantity": _round_or_none(quantity, 4),
-        "filled_qty": _round_or_none(filled_qty, 4),
-        "filled_avg_price": _round_or_none(filled_avg_price, 4),
-    }
+    row = {column: None for column in EXECUTION_AUDIT_COLUMNS}
+    row.update(
+        {
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "event_type": event_type,
+            "ticker": ticker,
+            "action": action,
+            "status": status,
+            "reason": reason,
+            "profile_name": profile_name,
+            "regime": regime,
+            "signal": signal,
+            "ai_score": _round_or_none(ai_score, 4),
+            "rank_ai_score": _round_or_none(rank_ai_score, 4),
+            "rank_ai_percentile": _round_or_none(rank_ai_percentile, 4),
+            "llm_verdict": llm_verdict,
+            "order_id": order_id,
+            "order_type": order_type,
+            "side": side,
+            "notional": _round_or_none(notional, 2),
+            "quantity": _round_or_none(quantity, 4),
+            "filled_qty": _round_or_none(filled_qty, 4),
+            "filled_avg_price": _round_or_none(filled_avg_price, 4),
+        }
+    )
 
-    df = pd.DataFrame([row])
-    write_header = not log_file.exists()
+    if log_file.exists() and log_file.stat().st_size > 0:
+        lines = log_file.read_text(encoding="utf-8").splitlines()
+        if lines:
+            first_line = lines[0]
+            expected = ",".join(EXECUTION_AUDIT_COLUMNS)
+            if first_line.strip() != expected:
+                normalize_execution_audit_file(log_file)
+
+    df = pd.DataFrame([row], columns=list(EXECUTION_AUDIT_COLUMNS))
+    write_header = not log_file.exists() or log_file.stat().st_size == 0
     df.to_csv(log_file, mode="a", header=write_header, index=False)

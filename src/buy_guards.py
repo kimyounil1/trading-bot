@@ -10,7 +10,7 @@ import pandas as pd
 from src.correlation_guard import is_correlation_allowed
 from src.earnings import is_earnings_window
 from src.instrument_meta import check_instrument_buy_allowed
-from src.llm_analyst import evaluate_ticker_consensus
+from src.llm_analyst import evaluate_ticker_consensus, llm_skipped_for_run
 from src.news_sentiment import get_ticker_sentiment
 from src.risk_manager import apply_factor_crowding_limits
 from src.sector import is_sector_allowed
@@ -156,6 +156,9 @@ def apply_shared_buy_guards(
             llm_is_ok,
             llm_reason,
         )
+
+    if llm_skipped_for_run():
+        return BuyGuardResult(risk_allowed, risk_reason, target_amount, None, "")
 
     llm_is_ok, llm_reason = evaluate_ticker_consensus(
         ticker,

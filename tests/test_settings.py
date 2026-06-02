@@ -150,6 +150,19 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(loaded.crowding_lookback_days, 45)
         self.assertEqual(loaded.crowding_max_positions, 3)
 
+    def test_load_repo_strategy_config_accepts_position_sizing_keys(self) -> None:
+        from src.settings import CONFIG_PATH
+
+        if not CONFIG_PATH.exists():
+            self.skipTest(f"missing {CONFIG_PATH}")
+        loaded = load_settings(path=CONFIG_PATH)
+        self.assertEqual(loaded.max_single_order_pct, 0.35)
+        self.assertEqual(loaded.max_daily_order_pct, 0.45)
+        self.assertTrue(loaded.conviction_sizing_enabled)
+        self.assertTrue(loaded.rank_ai_buy_gate_enabled)
+        self.assertEqual(loaded.rank_ai_buy_gate_top_bucket_pct, 0.15)
+        self.assertEqual(loaded.rank_ai_buy_gate_min_score_quantile, 0.85)
+
     def test_load_settings_rejects_unknown_json_keys(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "strategy_config.json"

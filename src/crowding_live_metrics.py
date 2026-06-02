@@ -29,6 +29,15 @@ def count_crowding_skips_from_reasons(skip_reason_counts: dict[str, int] | None)
     return total
 
 
+def crowding_skip_kind(reason: str) -> str:
+    lower = str(reason or "").lower()
+    if "momentum crowding" in lower:
+        return "momentum"
+    if "trend crowding" in lower:
+        return "trend"
+    return "other"
+
+
 def count_crowding_skips_from_audit_rows(reasons: list[str]) -> tuple[int, list[str]]:
     samples: list[str] = []
     count = 0
@@ -38,6 +47,65 @@ def count_crowding_skips_from_audit_rows(reasons: list[str]) -> tuple[int, list[
             if len(samples) < 5:
                 samples.append(str(reason)[:120])
     return count, samples
+
+
+def summarize_crowding_skips_from_audit_df(audit_df) -> dict[str, Any]:
+    """Aggregate crowding SKIP_BUY rows from execution_audit (ticker + kind)."""
+    import pandas as pd
+
+    empty: dict[str, Any] = {
+        "crowding_skip_count": 0,
+        "skip_buy_count": 0,
+        "crowding_skip_rate_of_skips": 0.0,
+        "by_kind": {},
+        "by_ticker": {},
+        "sample_reasons": [],
+        "window_start": None,
+        "window_end": None,
+    }
+    if audit_df is None or audit_df.empty:
+        return empty
+
+    df = audit_df.copy()
+    if "event_type" not in df.columns:
+        return empty
+    event_types = df["event_type"].astype(str)
+    skip_mask = event_types == "SKIP_BUY"
+    skip_df = df[skip_mask]
+    reasons = skip_df["reason"].astype(str) if "reason" in skip_df.columns else pd.Series(dtype=str)
+    crowding_mask = reasons.map(is_crowding_skip_reason)
+    crowd_df = skip_df[crowding_mask]
+
+    count, samples = count_crowding_skips_from_audit_rows(reasons[skip_mask].tolist())
+    by_kind: dict[str, int] = {}
+    for reason in crowd_df.get("reason", pd.Series(dtype=str)):
+        kind = crowding_skip_kind(str(reason))
+        by_kind[kind] = by_kind.get(kind, 0) + 1
+
+    by_ticker: dict[str, int] = {}
+    if "ticker" in crowd_df.columns:
+        for ticker, n in crowd_df["ticker"].astype(str).str.upper().value_counts().items():
+            by_ticker[str(ticker)] = int(n)
+
+    window_start = window_end = None
+    if "timestamp" in df.columns:
+        ts = pd.to_datetime(df["timestamp"], errors="coerce", utc=True)
+        if ts.notna().any():
+            window_start = ts.min().strftime("%Y-%m-%dT%H:%M:%SZ")
+            window_end = ts.max().strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    skip_buy_count = int(skip_mask.sum())
+    rate = round(count / skip_buy_count, 4) if skip_buy_count else 0.0
+    return {
+        "crowding_skip_count": count,
+        "skip_buy_count": skip_buy_count,
+        "crowding_skip_rate_of_skips": rate,
+        "by_kind": by_kind,
+        "by_ticker": by_ticker,
+        "sample_reasons": samples,
+        "window_start": window_start,
+        "window_end": window_end,
+    }
 
 
 def build_alignment_notes(

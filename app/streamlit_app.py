@@ -50,9 +50,9 @@ from src.cms_helpers import (
     orders_to_frame as _orders_to_frame,
     partition_alpaca_orders,
     pct,
-    reconcile_cms_execute_with_alpaca,
     sort_buy_candidates,
 )
+from src.cms_reconcile import reconcile_cms_execute_with_alpaca
 
 
 def load_trading_clock(settings=None):
@@ -288,12 +288,32 @@ def sidebar_settings_editor() -> None:
         step=0.01,
     )
 
+    st.sidebar.subheader("주문 크기")
     max_test_order_amount = st.sidebar.number_input(
-        "테스트 주문 금액 상한",
-        min_value=1.0,
+        "고정 달러 상한 ($, 0이면 끔)",
+        min_value=0.0,
         max_value=100000.0,
         value=float(settings.max_test_order_amount),
-        step=1.0,
+        step=100.0,
+        help="평소에는 0을 두고 총자산 비율 상한만 사용합니다.",
+    )
+
+    max_single_order_pct = st.sidebar.number_input(
+        "1회 주문 상한 (총자산 비율)",
+        min_value=0.01,
+        max_value=1.0,
+        value=float(getattr(settings, "max_single_order_pct", 1.0)),
+        step=0.01,
+        help="한 번에 넣을 수 있는 최대 비중. 예: 0.35 = 35%",
+    )
+
+    max_daily_order_pct = st.sidebar.number_input(
+        "일일 매수 예산 (총자산 비율)",
+        min_value=0.0,
+        max_value=1.0,
+        value=float(getattr(settings, "max_daily_order_pct", 0.0)),
+        step=0.01,
+        help="0이면 아래 '하루 매수 달러 상한'을 사용합니다.",
     )
 
     max_orders_per_run = st.sidebar.number_input(
@@ -305,11 +325,46 @@ def sidebar_settings_editor() -> None:
     )
 
     max_daily_order_amount = st.sidebar.number_input(
-        "일일 주문 금액 상한",
-        min_value=1.0,
+        "하루 매수 달러 상한 ($, 비율이 0일 때)",
+        min_value=0.0,
         max_value=1000000.0,
         value=float(getattr(settings, "max_daily_order_amount", 1000.0)),
         step=100.0,
+        help="일일 매수 예산 비율이 0일 때만 사용합니다.",
+    )
+
+    conviction_sizing_enabled = st.sidebar.checkbox(
+        "강한 신호는 더 크게 매수",
+        value=bool(getattr(settings, "conviction_sizing_enabled", False)),
+        help="AI 점수가 높을수록 목표 비중↑, 현금 버퍼↓",
+    )
+
+    conviction_ai_score_strong = st.sidebar.number_input(
+        "강한 신호로 보는 AI 점수",
+        min_value=0.0,
+        max_value=1.0,
+        value=float(getattr(settings, "conviction_ai_score_strong", 0.65)),
+        step=0.01,
+        disabled=not conviction_sizing_enabled,
+    )
+
+    conviction_position_mult_max = st.sidebar.number_input(
+        "강신호 목표 비중 배수",
+        min_value=1.0,
+        max_value=2.0,
+        value=float(getattr(settings, "conviction_position_mult_max", 1.25)),
+        step=0.05,
+        disabled=not conviction_sizing_enabled,
+    )
+
+    conviction_cash_buffer_mult_min = st.sidebar.number_input(
+        "강신호 현금 버퍼 배수",
+        min_value=0.0,
+        max_value=1.0,
+        value=float(getattr(settings, "conviction_cash_buffer_mult_min", 0.4)),
+        step=0.05,
+        disabled=not conviction_sizing_enabled,
+        help="강신호일 때 min_cash_buffer_pct에 곱함 (낮을수록 공격적)",
     )
 
     buy_cooldown_days = st.sidebar.number_input(
@@ -474,6 +529,12 @@ def sidebar_settings_editor() -> None:
             "stop_loss_pct": float(stop_loss_pct),
             "take_profit_pct": float(take_profit_pct),
             "max_test_order_amount": float(max_test_order_amount),
+            "max_single_order_pct": float(max_single_order_pct),
+            "max_daily_order_pct": float(max_daily_order_pct),
+            "conviction_sizing_enabled": bool(conviction_sizing_enabled),
+            "conviction_ai_score_strong": float(conviction_ai_score_strong),
+            "conviction_position_mult_max": float(conviction_position_mult_max),
+            "conviction_cash_buffer_mult_min": float(conviction_cash_buffer_mult_min),
             "max_orders_per_run": int(max_orders_per_run),
             "max_daily_order_amount": float(max_daily_order_amount),
             "buy_cooldown_days": int(buy_cooldown_days),
@@ -531,7 +592,13 @@ def render_overview() -> None:
     c5.metric("포지션 비중", pct(settings.max_position_pct))
     c6.metric("손절", pct(settings.stop_loss_pct))
     c7.metric("익절", pct(settings.take_profit_pct))
-    c8.metric("주문 금액 상한", money(settings.max_test_order_amount))
+    legacy_cap = float(settings.max_test_order_amount)
+    c8.metric(
+        "1회 주문 상한",
+        pct(settings.max_single_order_pct)
+        if legacy_cap <= 0
+        else f"{pct(settings.max_single_order_pct)} / ${legacy_cap:,.0f}",
+    )
 
     st.write("티커:", ", ".join(settings.tickers))
     st.write(
@@ -541,6 +608,79 @@ def render_overview() -> None:
             "ai_score_buy_threshold": getattr(settings, "ai_score_buy_threshold", None),
         },
     )
+
+    benchmark_gap = load_json_summary("logs/benchmark_gap/latest_summary.json")
+    if benchmark_gap:
+        summary = benchmark_gap.get("summary") or {}
+        strategy_return = summary.get("total_return")
+        benchmark_return = summary.get("benchmark_return")
+        max_drawdown = summary.get("max_drawdown")
+        sharpe_ratio = summary.get("sharpe_ratio")
+        gap_pp = benchmark_gap.get("gap_pct")
+        spy = benchmark_gap.get("spy_benchmark") or {}
+
+        st.subheader("최신 알파 리포트")
+        a1, a2, a3, a4, a5 = st.columns(5)
+        a1.metric(
+            "전략 수익",
+            pct(strategy_return) if strategy_return is not None else "—",
+        )
+        a2.metric(
+            "동일비중 벤치",
+            pct(benchmark_return) if benchmark_return is not None else "—",
+            delta=f"{float(gap_pp):+.2f}pp" if gap_pp is not None else None,
+        )
+        a3.metric(
+            "SPY 대비",
+            f"{float(spy.get('gap_pct')):+.2f}pp" if spy.get("available") else "—",
+        )
+        a4.metric("샤프", f"{float(sharpe_ratio):.2f}" if sharpe_ratio is not None else "—")
+        a5.metric(
+            "최대 낙폭",
+            pct(max_drawdown) if max_drawdown is not None else "—",
+        )
+        st.caption(
+            "벤치마크는 현재 스캔 유니버스를 동일비중으로 사서 보유한 기준입니다. "
+            f"판정: {'벤치마크 초과' if benchmark_gap.get('beats_benchmark') else '벤치마크 미달'}"
+        )
+
+    model_quality = load_json_summary("logs/model_quality/latest_summary.json")
+    paper_validation = load_json_summary("logs/paper_validation/latest_summary.json")
+    if model_quality or paper_validation:
+        st.subheader("AI · Paper 검증")
+        if model_quality:
+            mq = model_quality.get("metrics") or {}
+            r1c1, r1c2, r1c3 = st.columns(3)
+            r1c1.metric("모델 판정", str(model_quality.get("decision", "—"))[:28])
+            r1c2.metric(
+                "Challenger AUC",
+                f"{float(mq.get('challenger_avg_roc_auc', 0)):.3f}"
+                if mq.get("challenger_avg_roc_auc") is not None
+                else "—",
+            )
+            r1c3.metric(
+                "Rank label OOS gap",
+                f"{float(mq.get('rank_label_oos_gap_pp', 0)):+.1f}pp"
+                if mq.get("rank_label_oos_gap_pp") is not None
+                else "—",
+            )
+        if paper_validation:
+            agree = paper_validation.get("llm_ai_agreement") or {}
+            paths = paper_validation.get("audit_buy_paths") or {}
+            rank = paper_validation.get("rank_gate_paper_tracker") or {}
+            r2c1, r2c2, r2c3, r2c4 = st.columns(4)
+            r2c1.metric("LLM·AI 일치", f"{agree.get('agreement_pct', '—')}%")
+            r2c2.metric("SKIP (rank gate)", paths.get("skip_rank_gate_layer", 0))
+            r2c3.metric(
+                "Rank paper 일수",
+                f"{rank.get('calendar_days_with_rank_events', 0)}/"
+                f"{rank.get('min_calendar_days_required', 14)}",
+            )
+            r2c4.metric("Rank 2주 ready", "✓" if rank.get("gate_ready") else "—")
+        st.caption(
+            "상세: 모니터링 리포트 → 모델 품질 / Paper 매수 검증 · "
+            "갱신: bash scripts/run_paper_buy_validation.sh"
+        )
 
     st.divider()
 
@@ -1656,7 +1796,13 @@ def render_paper_execution() -> None:
     c1.metric("실행 잠금", "ENABLED" if lock_enabled else "LOCKED")
     c2.metric("주문 가능", str(clock.orders_allowed))
     c3.metric("Alpaca Paper", str(ALPACA_PAPER))
-    c4.metric("주문 금액 상한", money(settings.max_test_order_amount))
+    legacy_cap = float(getattr(settings, "max_test_order_amount", 0.0))
+    c4.metric(
+        "1회 주문 상한",
+        pct(getattr(settings, "max_single_order_pct", 1.0))
+        if legacy_cap <= 0
+        else f"{pct(getattr(settings, 'max_single_order_pct', 1.0))} / {money(legacy_cap)}",
+    )
 
     render_trading_clock_banner(clock)
 
@@ -2244,6 +2390,60 @@ def load_json_summary(relative_path: str) -> dict | None:
     return payload if isinstance(payload, dict) else None
 
 
+def render_crowding_paper_panel(settings) -> None:
+    """Paper crowding gate + live audit skips (logs/crowding_*)."""
+    st.subheader("몰림(crowding) 가드 — paper")
+    st.caption("포트폴리오에 비슷한 추세·급등 종목이 너무 많으면 새 매수를 막습니다.")
+    enabled = bool(getattr(settings, "crowding_guard_enabled", False))
+    gate = load_json_summary("logs/crowding_paper/go_no_go_checklist.json")
+    live = load_json_summary("logs/crowding_live/latest_summary.json")
+    paper_ops = load_json_summary("logs/paper_ops/latest_summary.json")
+
+    gate_decision = str((gate or {}).get("decision") or "—")
+    live_block = (live or {}).get("live") or {}
+    if not live_block and paper_ops:
+        live_block = (paper_ops.get("crowding_live") or {})
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("설정 켜짐", "예" if enabled else "아니오")
+    c2.metric("paper 승인 여부", gate_decision)
+    c3.metric("몰림으로 매수 스킵", int(live_block.get("crowding_skip_count") or 0))
+    rate = live_block.get("crowding_skip_rate_of_skips")
+    c4.metric(
+        "스킵 중 비율",
+        f"{100 * float(rate):.1f}%" if rate is not None else "—",
+    )
+
+    lookback = live_block.get("lookback_days") or (live or {}).get("live", {}).get("lookback_days")
+    if lookback:
+        st.caption(f"live 리포트 lookback: {lookback}일 · `logs/execution_audit.csv` 기준")
+
+    by_kind = live_block.get("by_kind") or {}
+    if by_kind:
+        st.markdown("**스킵 유형 (momentum / trend)**")
+        st.bar_chart(pd.DataFrame({"count": by_kind}).sort_values("count", ascending=False))
+
+    top_tickers = live_block.get("by_ticker") or live_block.get("top_tickers") or {}
+    if top_tickers:
+        with st.expander("티커별 crowding 스킵 (상위)"):
+            ticker_df = (
+                pd.DataFrame({"ticker": list(top_tickers.keys()), "skips": list(top_tickers.values())})
+                .sort_values("skips", ascending=False)
+                .head(20)
+            )
+            st.dataframe(ticker_df, use_container_width=True, hide_index=True)
+
+    alignment = (live or {}).get("alignment") or {}
+    for note in alignment.get("notes") or []:
+        st.info(note)
+
+    if gate is None and live is None:
+        st.caption(
+            "산출물 없음 — 아래 **Crowding live 리포트 생성** 또는 "
+            "`bash scripts/run_crowding_live_impact_report.sh`"
+        )
+
+
 def render_ops_dashboard() -> None:
     """Ops reports, universe profiles, and paper gates (Phase 26–28)."""
     from src.universe_loader import (
@@ -2258,8 +2458,11 @@ def render_ops_dashboard() -> None:
         load_stress_summary,
     )
 
-    st.title("Ops / 게이트 대시보드")
-    st.caption("로컬 로그·설정 기준 — paper 계좌와 동일하지 않을 수 있음")
+    st.title("운영 · 가드 대시보드")
+    st.markdown(
+        "봇이 **왜 매수를 안 했는지**, **가드를 켜도 괜찮은지**를 JSON 로그로 모아 둔 화면입니다. "
+        "아래 **리포트 만들기**로 파일을 만든 뒤, 펼쳐서 **한글 요약**을 보세요."
+    )
 
     settings = load_settings()
     active_profile = os.environ.get("UNIVERSE_PROFILE", "paper").strip().lower()
@@ -2398,79 +2601,105 @@ def render_ops_dashboard() -> None:
         )
 
     st.divider()
-    st.subheader("Ops latest_summary 뷰어")
+    render_crowding_paper_panel(settings)
 
-    if st.button("Crowding live 리포트 생성", key="ops_crowding_live"):
-        with st.spinner("crowding live impact..."):
-            code, out, err = run_project_command(
-                [
-                    str(ROOT_DIR / ".venv/bin/python"),
-                    "-m",
-                    "src.crowding_live_impact_report",
-                    "--lookback-days",
-                    "7",
-                ],
-                timeout=60,
-            )
-        if code == 0:
-            st.success("logs/crowding_live/latest_summary.json 갱신됨")
-        else:
-            st.error("실패")
-        if out:
-            st.code(out[-3000:])
-        if err:
-            st.code(err[-1500:])
-
-    ops_report_catalog = [
-        ("모니터링", [
-            ("일별 audit", "logs/audit_daily/latest_summary.json"),
-            ("슬리피지", "logs/slippage_reports/latest_summary.json"),
-            ("LLM cache", "logs/llm_cache/latest_summary.json"),
-            ("실행 정합", "logs/execution_alignment/latest_summary.json"),
-        ]),
-        ("백테스트·가드", [
-            ("벤치마크 gap", "logs/benchmark_gap/latest_summary.json"),
-            ("guard impact (백테스트)", "logs/guard_impact/latest_summary.json"),
-            ("crowding live (audit 대조)", "logs/crowding_live/latest_summary.json"),
-            ("crowding paper GO/NO-GO", "logs/crowding_paper/go_no_go_checklist.json"),
-            ("guard/leverage stress", "logs/leverage_stress/latest_summary.json"),
-        ]),
-        ("모델·승격", [
-            ("fold variance", "logs/fold_variance/latest_summary.json"),
-            ("promotion summary", "logs/promotion_summary/latest_summary.json"),
-            ("model quality", "logs/model_quality/latest_summary.json"),
-        ]),
-    ]
-    for section, entries in ops_report_catalog:
-        st.markdown(f"**{section}**")
-        for label, rel in entries:
-            data = load_json_summary(rel)
-            with st.expander(f"{label} — `{rel}`"):
-                if data is None:
-                    st.caption("산출물 없음 — runbook Quick commands 또는 위 버튼으로 생성")
-                else:
-                    if label.startswith("벤치마크 gap"):
-                        gap = data.get("gap_pct")
-                        beats = data.get("beats_benchmark")
-                        if gap is not None:
-                            st.metric("vs benchmark (pp)", f"{gap:+.2f}", delta="OK" if beats else "under")
-                    st.json(data)
-                    if "alignment" in data and isinstance(data["alignment"], dict):
-                        for note in data["alignment"].get("notes") or []:
-                            st.info(note)
-                    for rec in data.get("recommendations") or []:
-                        st.warning(rec)
+    st.divider()
+    render_ops_reports_panel()
 
 
 def run_project_command(command: list[str], timeout: int = 600) -> tuple[int, str, str]:
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(ROOT_DIR)
     proc = subprocess.run(
         command,
         cwd=str(ROOT_DIR),
         capture_output=True,
         text=True,
         timeout=timeout,
+        env=env,
     )
     return proc.returncode, proc.stdout, proc.stderr
+
+
+def _run_ops_generate(argv: tuple[str, ...], *, label: str) -> bool:
+    with st.spinner(label):
+        code, out, err = run_project_command(list(argv), timeout=600)
+    if code == 0:
+        st.success(f"{label} — 완료")
+        if out.strip():
+            with st.expander("실행 로그"):
+                st.code(out[-4000:])
+        return True
+    st.error(f"{label} — 실패 (코드 {code})")
+    if err.strip():
+        st.code(err[-4000:])
+    if out.strip():
+        st.code(out[-2000:])
+    return False
+
+
+def render_ops_reports_panel() -> None:
+    from src.ops_report_presenter import (
+        group_specs,
+        load_first_existing_json,
+        summarize_report,
+    )
+
+    st.subheader("모니터링 리포트")
+    st.caption(
+        "「산출물 없음」은 파일이 아직 없다는 뜻입니다. "
+        "리포트는 자동으로 안 만들어지므로 아래 버튼으로 한 번 생성하세요."
+    )
+
+    b1, b2, b3 = st.columns(3)
+    if b1.button("기본 리포트 만들기", key="ops_gen_daily", help="audit + LLM 캐시 요약"):
+        if _run_ops_generate(("bash", "scripts/run_ops_reports.sh"), label="일일 ops"):
+            st.rerun()
+    if b2.button("몰림·가드 리포트", key="ops_gen_crowding", help="crowding live + paper gate"):
+        ok_live = _run_ops_generate(
+            (
+                str(ROOT_DIR / ".venv/bin/python"),
+                "-m",
+                "src.crowding_live_impact_report",
+                "--lookback-days",
+                "7",
+            ),
+            label="몰림 live",
+        )
+        ok_gate = _run_ops_generate(
+            ("bash", "scripts/run_crowding_paper_gate.sh"),
+            label="몰림 GO/NO-GO",
+        )
+        if ok_live and ok_gate:
+            st.rerun()
+    if b3.button("paper ops 한번에", key="ops_gen_bootstrap", help="dry-run + 요약 (시간 걸림)"):
+        if _run_ops_generate(
+            ("bash", "scripts/run_paper_ops_bootstrap.sh"),
+            label="paper ops bootstrap",
+        ):
+            st.rerun()
+
+    for section, specs in group_specs().items():
+        st.markdown(f"### {section}")
+        for spec in specs:
+            data, source = load_first_existing_json(ROOT_DIR, spec.paths)
+            status = "있음" if data else "없음"
+            with st.expander(f"[{status}] {spec.title}"):
+                st.markdown(f"*{spec.subtitle}*")
+                if data and source:
+                    for line in summarize_report(spec.report_id, data, source_path=source):
+                        st.markdown(f"- {line}")
+                    with st.expander("원본 JSON (개발자용)"):
+                        st.json(data)
+                else:
+                    st.warning("아직 리포트 파일이 없습니다.")
+                    st.markdown(f"**만드는 방법:** `{spec.generate_hint}`")
+                    if spec.generate_argv and st.button(
+                        f"지금 생성",
+                        key=f"ops_gen_{spec.report_id}",
+                    ):
+                        if _run_ops_generate(spec.generate_argv, label=spec.title):
+                            st.rerun()
 
 
 
@@ -2828,7 +3057,7 @@ def main() -> None:
             "스케줄러",
             "Telegram",
             "AI 모델",
-            "Ops / 게이트",
+            "운영 · 가드",
         ],
     )
 
@@ -2860,7 +3089,7 @@ def main() -> None:
         render_telegram()
     elif page == "AI 모델":
         render_ai_model()
-    elif page == "Ops / 게이트":
+    elif page == "운영 · 가드":
         render_ops_dashboard()
 
 

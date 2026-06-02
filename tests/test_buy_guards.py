@@ -8,6 +8,7 @@ from src.buy_guards import (
     apply_shared_buy_guards,
     execution_label_for_cache,
 )
+from src.llm_analyst import llm_skipped_for_run
 
 
 class TestBuyGuards(unittest.TestCase):
@@ -57,6 +58,54 @@ class TestBuyGuards(unittest.TestCase):
         self.assertFalse(result.risk_allowed)
         self.assertIn("negative news sentiment", result.risk_reason)
 
+    @patch("src.buy_guards.llm_skipped_for_run", return_value=False)
+    @patch("src.buy_guards.evaluate_ticker_consensus", return_value=(False, "reject"))
+    def test_llm_reject_blocks_when_not_advisory(self, mock_llm, _skip) -> None:
+        settings = SimpleNamespace(
+            news_sentiment_enabled=False,
+            llm_advisory_only=False,
+        )
+        result = apply_shared_buy_guards(
+            ticker="AAPL",
+            position=None,
+            settings=settings,
+            risk_allowed=True,
+            risk_reason="ok",
+            target_amount=100.0,
+            ai_score=0.8,
+            open_symbols=set(),
+            ticker_data={},
+            vix_df=None,
+            llm_cache_only=True,
+        )
+        mock_llm.assert_called_once()
+        self.assertFalse(result.risk_allowed)
+        self.assertIn("LLM Reject", result.risk_reason)
+
+    @patch("src.buy_guards.evaluate_ticker_consensus", return_value=(False, "reject"))
+    def test_llm_skipped_under_pytest(self, mock_llm) -> None:
+        self.assertTrue(llm_skipped_for_run())
+        settings = SimpleNamespace(
+            news_sentiment_enabled=False,
+            llm_advisory_only=False,
+        )
+        result = apply_shared_buy_guards(
+            ticker="AAPL",
+            position=None,
+            settings=settings,
+            risk_allowed=True,
+            risk_reason="ok",
+            target_amount=100.0,
+            ai_score=0.8,
+            open_symbols=set(),
+            ticker_data={},
+            vix_df=None,
+            llm_cache_only=True,
+        )
+        mock_llm.assert_not_called()
+        self.assertTrue(result.risk_allowed)
+        self.assertIsNone(result.llm_is_ok)
+
 
 class TestCandidateCacheMeta(unittest.TestCase):
     def test_build_meta_includes_extended_hours_fields(self) -> None:
@@ -78,6 +127,8 @@ class TestCandidateCacheMeta(unittest.TestCase):
             ),
         ), patch(
             "src.candidate_cache.load_macro_data", return_value=None
+        ), patch(
+            "src.candidate_cache.build_rank_ai_gate_scores", return_value={}
         ):
             mock_account.return_value = {
                 "cash": 10000.0,
