@@ -1,52 +1,52 @@
 {
   "checklist": [
     {
-      "detail": "blocked_trades=6 (min 1)",
+      "detail": "blocked_trades=0 (min 1)",
       "id": "guard_active",
-      "pass": true
+      "pass": false
     },
     {
-      "detail": "sharpe_delta=0.0730 (floor -0.15)",
+      "detail": "sharpe_delta=-0.7253 (floor -0.15)",
       "id": "sharpe_not_too_worse",
-      "pass": true
+      "pass": false
     },
     {
-      "detail": "max_dd_delta_pp=9.5580 (floor -1.0)",
+      "detail": "max_dd_delta_pp=5.6972 (floor -1.0)",
       "id": "drawdown_acceptable",
       "pass": true
     },
     {
-      "detail": "trade_count_delta=-6 (floor -20)",
+      "detail": "trade_count_delta=7 (floor -20)",
       "id": "trade_count_acceptable",
       "pass": true
     }
   ],
-  "decision": "GO_PAPER",
-  "generated_at": "2026-06-01T06:21:48Z",
+  "decision": "NO_GO",
+  "generated_at": "2026-06-02T09:06:08Z",
   "guard_impact_path": "logs/guard_impact/latest_summary.json",
   "metrics": {
     "baseline": {
-      "max_drawdown_pct": -19.2344,
-      "sharpe_ratio": 1.228,
-      "total_return_pct": 55.4892,
-      "trade_count": 62,
-      "win_rate_pct": 45.1613
+      "max_drawdown_pct": -16.7604,
+      "sharpe_ratio": 1.6234,
+      "total_return_pct": 83.3742,
+      "trade_count": 48,
+      "win_rate_pct": 45.8333
     },
-    "blocked_trades": 6,
+    "blocked_trades": 0,
     "delta": {
-      "max_drawdown_pct": 9.558,
-      "sharpe_ratio": 0.073,
-      "total_return_pct": -5.1114,
-      "trade_count": -6,
-      "win_rate_pct": -2.3042
+      "max_drawdown_pct": 5.6972,
+      "sharpe_ratio": -0.7253,
+      "total_return_pct": -58.3771,
+      "trade_count": 7,
+      "win_rate_pct": -18.5606
     },
     "guarded": {
-      "estimated_crowding_blocked_trades": 6,
-      "max_drawdown_pct": -9.6764,
-      "sharpe_ratio": 1.301,
-      "total_return_pct": 50.3778,
-      "trade_count": 56,
-      "win_rate_pct": 42.8571
+      "estimated_crowding_blocked_trades": 0,
+      "max_drawdown_pct": -11.0632,
+      "sharpe_ratio": 0.8981,
+      "total_return_pct": 24.9971,
+      "trade_count": 55,
+      "win_rate_pct": 27.2727
     }
   },
   "paper_proposal_path": "config/crowding_paper_proposal.json"

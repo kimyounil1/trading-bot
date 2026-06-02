@@ -1,26 +1,26 @@
 {
   "baseline": {
-    "max_drawdown_pct": -11.8399,
-    "sharpe_ratio": 1.8213,
-    "total_return_pct": 87.4945,
-    "trade_count": 35,
-    "win_rate_pct": 74.2857
+    "max_drawdown_pct": -16.7604,
+    "sharpe_ratio": 1.6234,
+    "total_return_pct": 83.3742,
+    "trade_count": 48,
+    "win_rate_pct": 45.8333
   },
-  "crowding_guard_enabled_in_config": false,
+  "crowding_guard_enabled_in_config": true,
   "delta": {
-    "max_drawdown_pct": 1.8503,
-    "sharpe_ratio": -0.4089,
-    "total_return_pct": -52.389,
-    "trade_count": -4,
-    "win_rate_pct": -6.5438
+    "max_drawdown_pct": 5.6972,
+    "sharpe_ratio": -0.7253,
+    "total_return_pct": -58.3771,
+    "trade_count": 7,
+    "win_rate_pct": -18.5606
   },
-  "generated_at": "2026-05-31T14:15:57Z",
+  "generated_at": "2026-06-02T07:20:10Z",
   "with_crowding_guard": {
-    "estimated_crowding_blocked_trades": 4,
-    "max_drawdown_pct": -9.9896,
-    "sharpe_ratio": 1.4124,
-    "total_return_pct": 35.1055,
-    "trade_count": 31,
-    "win_rate_pct": 67.7419
+    "estimated_crowding_blocked_trades": 0,
+    "max_drawdown_pct": -11.0632,
+    "sharpe_ratio": 0.8981,
+    "total_return_pct": 24.9971,
+    "trade_count": 55,
+    "win_rate_pct": 27.2727
   }
 }

@@ -1,30 +1,30 @@
 {
-  "generated_at": "2026-05-31T14:08:19Z",
+  "generated_at": "2026-06-01T07:41:04Z",
   "mode": "in_loop_cache",
   "baseline": {
-    "total_return_pct": 96.8131,
+    "total_return_pct": 59.986,
     "benchmark_return_pct": 65.0485,
-    "gap_vs_benchmark_pp": 31.7645,
-    "beats_benchmark": true,
-    "max_drawdown_pct": -7.3137,
-    "sharpe_ratio": 3.1519,
-    "trades": 141,
-    "win_rate_pct": 60.28
+    "gap_vs_benchmark_pp": -5.0625,
+    "beats_benchmark": false,
+    "max_drawdown_pct": -9.697,
+    "sharpe_ratio": 2.1348,
+    "trades": 167,
+    "win_rate_pct": 49.7
   },
   "operational": {
-    "total_return_pct": 89.1828,
+    "total_return_pct": 59.986,
     "benchmark_return_pct": 65.0485,
-    "gap_vs_benchmark_pp": 24.1343,
-    "beats_benchmark": true,
-    "max_drawdown_pct": -7.3138,
-    "sharpe_ratio": 3.0086,
-    "trades": 140,
-    "win_rate_pct": 59.29
+    "gap_vs_benchmark_pp": -5.0625,
+    "beats_benchmark": false,
+    "max_drawdown_pct": -9.697,
+    "sharpe_ratio": 2.1348,
+    "trades": 167,
+    "win_rate_pct": 49.7
   },
   "delta": {
-    "return_pp": -7.6303,
-    "trades": -1,
-    "sharpe": -0.1433
+    "return_pp": 0.0,
+    "trades": 0,
+    "sharpe": 0.0
   },
   "notes": [
     "Operational = same portfolio_backtester with main.py buy filters in the entry loop.",

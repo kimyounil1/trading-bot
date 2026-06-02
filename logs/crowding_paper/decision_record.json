@@ -1,0 +1,13 @@
+{
+  "decision": "APPLY_GO_PAPER",
+  "decided_at": "2026-06-01T07:02:03Z",
+  "gate_report": "logs/crowding_paper/go_no_go_checklist.json",
+  "guard_impact_refreshed": "2026-06-01T07:02:03Z",
+  "rationale": [
+    "All four gate checks PASS (GO_PAPER).",
+    "Crowding guard blocks 6 crowded entries in backtest replay.",
+    "Sharpe +0.073, max drawdown improves by +9.56pp vs baseline; return -5.1pp trade-off accepted for paper.",
+    "Merged config/crowding_paper_proposal.json into strategy_config.json (crowding_guard_enabled=true)."
+  ],
+  "rollback": "Set crowding_guard_enabled=false in config/strategy_config.json or restore from git."
+}

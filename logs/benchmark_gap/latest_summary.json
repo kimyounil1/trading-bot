@@ -3,169 +3,190 @@
   "by_entry_month": [
     {
       "entry_month": "2025-06",
-      "pnl": 1581.8146991811464
+      "pnl": 918.2466348991218
     },
     {
       "entry_month": "2025-07",
-      "pnl": 589.7350377029438
+      "pnl": 824.9407252490278
     },
     {
       "entry_month": "2025-08",
-      "pnl": 546.5308008791142
+      "pnl": 609.2827010279303
     },
     {
       "entry_month": "2025-09",
-      "pnl": 418.5074038140092
+      "pnl": 1081.7196453827005
     },
     {
       "entry_month": "2025-10",
-      "pnl": 646.0909739146289
+      "pnl": 1304.0743227381283
     },
     {
       "entry_month": "2025-11",
-      "pnl": 756.7175269078036
+      "pnl": 1071.7443752319023
     },
     {
       "entry_month": "2025-12",
-      "pnl": 836.8943752613361
+      "pnl": 496.2259824055719
     },
     {
       "entry_month": "2026-01",
-      "pnl": 1274.3055360033613
+      "pnl": 229.80782174245655
     },
     {
       "entry_month": "2026-02",
-      "pnl": 692.605490730698
+      "pnl": -98.73579479449342
     },
     {
       "entry_month": "2026-03",
-      "pnl": 214.29113010114884
+      "pnl": 450.4189369515109
     },
     {
       "entry_month": "2026-04",
-      "pnl": 2123.816070702863
+      "pnl": 796.1093030948846
     }
   ],
   "by_sector": [
     {
-      "pnl": 6.344043071120495,
-      "sector": "tech"
-    },
-    {
-      "pnl": 18.741445912651443,
-      "sector": "auto"
-    },
-    {
-      "pnl": 65.9963833710301,
-      "sector": "consumer_tech"
-    },
-    {
-      "pnl": 161.62982192442632,
-      "sector": "defense"
-    },
-    {
-      "pnl": 167.0857988203445,
+      "pnl": -233.12759169980063,
       "sector": "media"
     },
     {
-      "pnl": 182.943196855442,
-      "sector": "consumer"
+      "pnl": -114.7431785391725,
+      "sector": "auto"
     },
     {
-      "pnl": 201.47969593199036,
-      "sector": "realestate"
+      "pnl": -112.74442763843638,
+      "sector": "tech"
     },
     {
-      "pnl": 336.4691159787012,
+      "pnl": -26.71513660958226,
+      "sector": "telecom"
+    },
+    {
+      "pnl": 26.44025677279558,
+      "sector": "transport"
+    },
+    {
+      "pnl": 64.04595375184066,
+      "sector": "defense"
+    },
+    {
+      "pnl": 151.54509507591789,
       "sector": "utilities"
     },
     {
-      "pnl": 345.6399784018238,
+      "pnl": 153.6297146835715,
       "sector": "etf"
     },
     {
-      "pnl": 487.7678869981121,
-      "sector": "financials"
+      "pnl": 226.56468302670993,
+      "sector": "consumer"
     },
     {
-      "pnl": 545.20459429107,
-      "sector": "energy"
-    },
-    {
-      "pnl": 687.8890830504058,
+      "pnl": 254.2456816237903,
       "sector": "materials"
     },
     {
-      "pnl": 788.1981779590517,
+      "pnl": 308.7640870461754,
+      "sector": "realestate"
+    },
+    {
+      "pnl": 405.0030262189829,
+      "sector": "energy"
+    },
+    {
+      "pnl": 443.4478476577948,
       "sector": "industrial"
     },
     {
-      "pnl": 792.3047186216495,
+      "pnl": 451.12058847569796,
+      "sector": "consumer_tech"
+    },
+    {
+      "pnl": 899.887761582321,
+      "sector": "financials"
+    },
+    {
+      "pnl": 1131.1338170790957,
       "sector": "software"
     },
     {
-      "pnl": 1547.9735393345784,
+      "pnl": 1216.5979530476975,
       "sector": "healthcare"
     },
     {
-      "pnl": 3345.6415646766554,
+      "pnl": 2438.738522373342,
       "sector": "semis"
     }
   ],
   "by_ticker": [
     {
-      "pnl": -419.7112611594189,
-      "ticker": "COIN"
-    },
-    {
-      "pnl": -199.78341737958021,
-      "ticker": "META"
-    },
-    {
-      "pnl": -163.06867838741118,
-      "ticker": "ANET"
-    },
-    {
-      "pnl": -113.36760225018156,
-      "ticker": "ASML"
-    },
-    {
-      "pnl": -91.25115546546863,
-      "ticker": "AMZN"
-    },
-    {
-      "pnl": -85.68574446988987,
+      "pnl": -306.72568768653815,
       "ticker": "TSLA"
     },
     {
-      "pnl": -71.03410602437407,
-      "ticker": "BLK"
+      "pnl": -246.18985575449415,
+      "ticker": "META"
     },
     {
-      "pnl": -68.07840649298055,
-      "ticker": "F"
+      "pnl": -233.12759169980063,
+      "ticker": "CMCSA"
     },
     {
-      "pnl": -67.85038593295985,
-      "ticker": "SNPS"
+      "pnl": -195.03410282842788,
+      "ticker": "BA"
     },
     {
-      "pnl": -56.22136274918557,
-      "ticker": "ABNB"
+      "pnl": -153.48288736535784,
+      "ticker": "XLK"
+    },
+    {
+      "pnl": -128.5404456759411,
+      "ticker": "XLF"
+    },
+    {
+      "pnl": -120.89189645059275,
+      "ticker": "DE"
+    },
+    {
+      "pnl": -115.58014663342124,
+      "ticker": "NVDA"
+    },
+    {
+      "pnl": -113.02498265893746,
+      "ticker": "XLE"
+    },
+    {
+      "pnl": -111.7308990879369,
+      "ticker": "NEE"
     }
   ],
-  "gap_pct": 31.7646,
-  "generated_at": "2026-05-31T12:56:38Z",
+  "gap_pct": 8.9964,
+  "generated_at": "2026-06-02T05:07:52Z",
   "recommendations": [],
-  "slippage_context": {},
+  "slippage_context": {
+    "matched_trades": 54,
+    "note": "Paper slippage is execution-only; backtest gap is simulation vs SPY buy-hold.",
+    "overall_avg_slippage_pct": 0.6909591669911826,
+    "status": "ok"
+  },
+  "spy_benchmark": {
+    "available": true,
+    "beats_spy": true,
+    "end_date": "2026-06-01",
+    "gap_pct": 28.8801,
+    "return": 0.472149388837249,
+    "start_date": "2024-06-03"
+  },
   "summary": {
-    "benchmark_return": 0.6504853238288733,
-    "final_equity": 19681.309045199054,
+    "benchmark_return": 0.6709858508978956,
+    "final_equity": 17609.500884259694,
     "initial_cash": 10000.0,
-    "max_drawdown": -0.0731374832818028,
-    "sharpe_ratio": 3.1519064349744568,
-    "total_return": 0.9681309045199054,
-    "trades": 141,
-    "win_rate": 0.6028368794326241
+    "max_drawdown": -0.0675535520790259,
+    "sharpe_ratio": 2.5277276524347827,
+    "total_return": 0.7609500884259695,
+    "trades": 147,
+    "win_rate": 0.5782312925170068
   }
 }
