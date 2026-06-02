@@ -1,0 +1,34 @@
+{
+  "generated_at": "2026-06-02T09:16:13Z",
+  "history_path": "logs/paper_validation/history.jsonl",
+  "rows": 1,
+  "rolling_days": 7,
+  "latest": {
+    "date": "2026-06-02",
+    "agreement_pct": 74.7,
+    "skip_ai_score": 18,
+    "skip_llm_block": 14,
+    "skip_rank_gate": 47,
+    "buy_submitted": 44,
+    "rank_calendar_days": 4,
+    "rank_gate_ready": false
+  },
+  "rolling": {
+    "agreement_pct_mean": 74.7,
+    "skip_ai_score_mean": 18.0,
+    "skip_llm_block_mean": 14.0,
+    "skip_rank_gate_mean": 47.0,
+    "buy_submitted_mean": 44.0
+  },
+  "alerts": [],
+  "tail": [
+    {
+      "date": "2026-06-02",
+      "agreement_pct": 74.7,
+      "skip_llm_block": 14,
+      "skip_rank_gate": 47,
+      "buy_submitted": 44,
+      "rank_gate_ready": false
+    }
+  ]
+}

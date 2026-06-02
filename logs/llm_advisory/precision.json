@@ -1,0 +1,36 @@
+{
+  "generated_at": "2026-06-02T09:14:58Z",
+  "lookback_days": 90,
+  "horizon_days": 20,
+  "price_period": "2y",
+  "audit_rows": 4486,
+  "events_used": {
+    "llm_reject": 0,
+    "llm_accept": 0
+  },
+  "forward_return": {
+    "llm_reject": {
+      "n": 0,
+      "mean_return": null,
+      "median_return": null,
+      "hit_rate": null
+    },
+    "llm_accept": {
+      "n": 0,
+      "mean_return": null,
+      "median_return": null,
+      "hit_rate": null
+    },
+    "delta_mean_accept_minus_reject": null,
+    "delta_hit_rate_accept_minus_reject": null
+  },
+  "excluded_rows": {
+    "missing_price_data": 0,
+    "insufficient_forward_bars": 29,
+    "other": 7
+  },
+  "sample": [],
+  "notes": [
+    "One side has zero usable forward returns; increase lookback or accumulate more advisory decisions."
+  ]
+}

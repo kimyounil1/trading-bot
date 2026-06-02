@@ -19,6 +19,7 @@ DEFAULT_CROWDING_LIVE_PATH = Path("logs/crowding_live/latest_summary.json")
 DEFAULT_EXTENDED_FILL_PATH = Path("logs/paper_ops/extended_hours_fill_report.json")
 DEFAULT_RANK_AI_GATE_PATH = Path("logs/rank_ai_gate/latest_summary.json")
 DEFAULT_PAPER_VALIDATION_PATH = Path("logs/paper_validation/latest_summary.json")
+DEFAULT_PAPER_VALIDATION_TREND_PATH = Path("logs/paper_validation/trend_summary.json")
 
 
 def _utc_now_iso() -> str:
@@ -42,10 +43,12 @@ def build_paper_ops_summary(
     extended_fill_path: Path = DEFAULT_EXTENDED_FILL_PATH,
     rank_ai_gate_path: Path = DEFAULT_RANK_AI_GATE_PATH,
     paper_validation_path: Path = DEFAULT_PAPER_VALIDATION_PATH,
+    paper_validation_trend_path: Path = DEFAULT_PAPER_VALIDATION_TREND_PATH,
 ) -> dict[str, Any]:
     llm_advisory = _load_json_if_exists(llm_advisory_path) or {}
     rank_ai_gate = _load_json_if_exists(rank_ai_gate_path) or {}
     paper_validation = _load_json_if_exists(paper_validation_path) or {}
+    paper_validation_trend = _load_json_if_exists(paper_validation_trend_path) or {}
     crowding_gate = _load_json_if_exists(crowding_gate_path) or {}
     crowding_live = _load_json_if_exists(crowding_live_path) or {}
     extended_fill = _load_json_if_exists(extended_fill_path) or {}
@@ -124,6 +127,7 @@ def build_paper_ops_summary(
             "cache_rank_passed_rows": rank_cache.get("rank_passed_rows", 0),
         },
         "paper_validation_path": str(paper_validation_path),
+        "paper_validation_trend_path": str(paper_validation_trend_path),
         "paper_validation": {
             "agreement_pct": (paper_validation.get("llm_ai_agreement") or {}).get(
                 "agreement_pct"
@@ -146,6 +150,8 @@ def build_paper_ops_summary(
             "rank_calendar_days": (
                 paper_validation.get("rank_gate_paper_tracker") or {}
             ).get("calendar_days_with_rank_events"),
+            "trend_rows": paper_validation_trend.get("rows", 0),
+            "trend_alerts": paper_validation_trend.get("alerts", []),
         },
         "notes": [
             "Run via: bash scripts/run_paper_ops_bootstrap.sh",

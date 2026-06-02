@@ -16,6 +16,9 @@ bash scripts/run_llm_advisory_report.sh
 echo "=== [2b/9] Paper buy validation (AI+LLM paths + rank gate tracker) ==="
 bash scripts/run_paper_buy_validation.sh || echo "WARN: paper buy validation skipped"
 
+echo "=== [2c/9] Paper validation trend (history rolling summary) ==="
+bash scripts/run_paper_validation_trend.sh || echo "WARN: paper validation trend skipped"
+
 echo "=== [3/9] Rank AI gate impact (optional cache refresh: REFRESH_CANDIDATE_CACHE=1) ==="
 bash scripts/run_rank_ai_gate_report.sh || echo "WARN: rank AI gate report skipped"
 

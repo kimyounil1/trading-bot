@@ -57,12 +57,14 @@
    - 산출: `logs/rank_ai_gate/forward_return.json` (blocked mean/median, passed mean/median, hit-rate, n)
    - 목적: 게이트가 "거른 게 실제로 못했나"를 수치로 — Tier-1 승인 근거
    - 현재 상태: 90d 실행 결과 usable 표본 0건(`other=47`) → 다음 2주 누적 후 재평가
-2. [ ] **LLM block precision** — LLM이 REJECT한 매수의 forward return이 ACCEPT 대비 낮은지 측정.
+2. [x] **LLM block precision** — LLM이 REJECT한 매수의 forward return이 ACCEPT 대비 낮은지 측정.
    - `score_llm_corr≈0.04` (무상관) → LLM이 alpha를 더하는지/노이즈인지 판정
    - 산출: `logs/llm_advisory/precision.json` (reject hit-rate, avg fwd return Δ)
-3. [ ] **Paper validation 추세 리포트** — `history.jsonl` 위에 rolling(7d) agreement·SKIP율·회귀 감지.
+   - 현재 상태: 90d 실행에서 parsed ACCEPT/REJECT 표본 부족 시 n=0 가능 → 누적 관찰 필요
+3. [x] **Paper validation 추세 리포트** — `history.jsonl` 위에 rolling(7d) agreement·SKIP율·회귀 감지.
    - 신규: `src/paper_validation_trend.py` → `logs/paper_validation/trend_summary.json`
-   - CMS 카드 + `rank_gate_ready` flip / agreement 급락 시 Telegram 알림
+   - `rank_gate_ready` flip / agreement 급락 / llm_block spike alert 키 생성
+   - 현재 상태: history 누적 1일이라 rolling 해석은 제한적(관측 지속 필요)
 
 ### B. 모델 품질 (champion 교체 아님 — overlay 개선)
 4. [ ] **ai_score 캘리브레이션 overlay** — Brier 열위 → isotonic/Platt 후처리로 conviction sizing 신뢰도↑.
@@ -111,6 +113,8 @@ bash scripts/run_model_quality_report.sh
 bash scripts/run_rank_ai_gate_report.sh
 REFRESH_CANDIDATE_CACHE=1 bash scripts/run_rank_ai_gate_report.sh
 bash scripts/run_rank_gate_forward_return.sh
+bash scripts/run_llm_block_precision.sh
+bash scripts/run_paper_validation_trend.sh
 
 # 모델 실험 (무거움)
 bash scripts/run_threshold_promotion_pipeline.sh
