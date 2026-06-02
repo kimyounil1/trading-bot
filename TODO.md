@@ -47,6 +47,37 @@
 
 ---
 
+## Phase 33 — 고도화 (backlog)
+
+검증·신뢰도 우선. **모델 교체/live 권한 확대는 paper 근거가 쌓인 뒤**에만. DoD는 상단 기준 따름.
+
+### A. 신호 검증 (먼저 — 근거 없이는 권한 확대 금지)
+1. [ ] **Rank gate forward-return 귀속** — rank-blocked vs rank-passed 후보의 20일 forward return 분포 비교.
+   - 신규: `src/rank_gate_forward_return.py` (audit `rank_ai_score`/`rank_ai_percentile` + `data/raw` 종가 조인)
+   - 산출: `logs/rank_ai_gate/forward_return.json` (blocked mean/median, passed mean/median, hit-rate, n)
+   - 목적: 게이트가 "거른 게 실제로 못했나"를 수치로 — Tier-1 승인 근거
+2. [ ] **LLM block precision** — LLM이 REJECT한 매수의 forward return이 ACCEPT 대비 낮은지 측정.
+   - `score_llm_corr≈0.04` (무상관) → LLM이 alpha를 더하는지/노이즈인지 판정
+   - 산출: `logs/llm_advisory/precision.json` (reject hit-rate, avg fwd return Δ)
+3. [ ] **Paper validation 추세 리포트** — `history.jsonl` 위에 rolling(7d) agreement·SKIP율·회귀 감지.
+   - 신규: `src/paper_validation_trend.py` → `logs/paper_validation/trend_summary.json`
+   - CMS 카드 + `rank_gate_ready` flip / agreement 급락 시 Telegram 알림
+
+### B. 모델 품질 (champion 교체 아님 — overlay 개선)
+4. [ ] **ai_score 캘리브레이션 overlay** — Brier 열위 → isotonic/Platt 후처리로 conviction sizing 신뢰도↑.
+   - champion joblib 미변경, 예측 후처리 레이어만. `logs/ml/model_calibration_report.json` 전후 비교
+5. [ ] **Regime별 약점 진단** — OOS AUC BULL 0.495 / NEUTRAL 0.48 (랜덤 이하) 원인 분석.
+   - feature importance × regime, 후보 feature(섹터 상대강도·breadth) 실험 리포트만 (승격 X)
+
+### C. 운영/리스크
+6. [ ] **Crowding gate 재평가** — 최근 NO_GO(blocked_trades=0). live impact로 keep/tune/disable 결정 후 문서화.
+7. [ ] **Daily scheduler 안정화** — `loginctl enable-linger $USER` (WSL/서버 로그아웃 후 timer 유지) + 실패 시 알림.
+
+### Toss(32-A) — blocked
+- [ ] Toss Open API adapter · CMS execute path (API 키 필요)
+
+---
+
 ## Phase 32 — shipped (요약)
 
 코드·테스트·리포트 경로는 반영됨. 상세 실험 수치는 `logs/model_quality/`, `logs/ml/` 참고.
@@ -60,12 +91,6 @@
 | **32-F AI quality** | model_quality summary, calibration/label/rank experiments, rank **paper buy gate**, threshold/label sweep, dust P2, `execution_audit_io` |
 
 **Rank research (paper only):** 20d/top15%/q85 OOS gate 통과 → `rank_ai_buy_gate_enabled` paper config. Champion absolute-label 승격은 **없음**.
-
----
-
-## Backlog — Phase 32-A Toss (blocked)
-
-- [ ] Toss Open API adapter · CMS execute path (API 키 필요)
 
 ---
 
