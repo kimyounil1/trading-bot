@@ -95,6 +95,9 @@ echo "Enable:"
 echo "  systemctl --user enable --now trading-bot-daily-audit.timer"
 echo "  systemctl --user enable --now trading-bot-llm-cache-report.timer"
 echo
+echo "Daily paper ops (rank/LLM validation):"
+echo "  bash scripts/install_paper_daily_timer.sh"
+echo
 echo "Weekly slippage (separate config):"
 echo "  bash scripts/install_slippage_report_timer.sh"
 echo

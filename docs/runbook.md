@@ -103,6 +103,16 @@ SKIP_ALPHA=1 bash scripts/run_paper_ops_bootstrap.sh   # model/alpha 없을 때 
 APPLY_CROWDING_CONFIG=1 bash scripts/run_paper_ops_bootstrap.sh   # GO일 때만 proposal merge
 ```
 
+**일일 paper (rank/LLM 2주 검증 누적)** — 스케줄러 권장:
+
+```bash
+bash scripts/run_daily_paper_ops.sh   # dry-run + validation + rank gate + paper_ops (alpha/guard 생략)
+bash scripts/install_paper_daily_timer.sh
+systemctl --user enable --now trading-bot-daily-paper-ops.timer
+# 기본: Mon..Fri 21:45 America/New_York (config/paper_daily_config.json)
+# 로그: logs/paper_ops/daily_scheduler.log
+```
+
 ### 2.3.2 Crowding guard (paper)
 
 **현재 (2026-06-01):** gate **GO_PAPER** → `strategy_config.json`에 proposal 반영됨 (`crowding_guard_enabled: true`).  
@@ -181,6 +191,7 @@ print(len(s.tickers), 'tickers cached')
   bash scripts/run_ops_reports.sh --heavy      # + guard impact + leverage stress
   ```
   타이머 일괄 설치: `bash scripts/install_ops_report_timers.sh`  
+  일일 paper (rank tracker): `bash scripts/install_paper_daily_timer.sh`  
   (슬리피지 주간 타이머는 별도: `bash scripts/install_slippage_report_timer.sh`)
 - **일간**: Telegram 요약 + audit JSON
   ```bash

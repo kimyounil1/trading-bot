@@ -75,10 +75,13 @@
 ## Quick commands
 
 ```bash
-# 일일 paper
-bash scripts/run_bot_once.sh dry-run
-SKIP_ALPHA=1 bash scripts/run_paper_ops_bootstrap.sh
-bash scripts/run_paper_buy_validation.sh
+# 일일 paper (수동)
+bash scripts/run_daily_paper_ops.sh
+
+# 일일 paper (스케줄러 — 평일 21:45 ET)
+bash scripts/install_paper_daily_timer.sh
+systemctl --user enable --now trading-bot-daily-paper-ops.timer
+systemctl --user list-timers trading-bot-daily-paper-ops.timer
 
 # 리포트
 bash scripts/run_model_quality_report.sh

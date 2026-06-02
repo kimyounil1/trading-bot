@@ -1,0 +1,7 @@
+{
+  "timezone": "America/New_York",
+  "schedule_note": "Weekdays after US cash close: dry-run, paper validation, rank gate tracker, paper_ops summary (no alpha retrain).",
+  "on_calendar": "Mon..Fri 21:45:00",
+  "service_name": "trading-bot-daily-paper-ops.service",
+  "timer_name": "trading-bot-daily-paper-ops.timer"
+}
