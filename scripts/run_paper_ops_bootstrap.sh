@@ -25,6 +25,9 @@ bash scripts/run_rank_ai_gate_report.sh || echo "WARN: rank AI gate report skipp
 echo "=== [4/9] Crowding live monitoring (execution_audit) ==="
 bash scripts/run_crowding_live_impact_report.sh --lookback-days "${CROWDING_LIVE_LOOKBACK_DAYS:-7}" || echo "WARN: crowding live report skipped"
 
+echo "=== [4b/9] Crowding gate reassessment (keep/tune/disable) ==="
+bash scripts/run_crowding_gate_reassessment.sh || echo "WARN: crowding gate reassessment skipped"
+
 if [[ "${SKIP_ALPHA:-}" == "1" ]]; then
   echo "=== [5/9] Alpha pipeline — SKIP_ALPHA=1 ==="
   echo "=== [6/9] Operational in-loop — SKIP_ALPHA=1 ==="

@@ -47,6 +47,7 @@ logs/*
 !logs/guard_impact/latest_summary.json
 !logs/crowding_paper/
 !logs/crowding_paper/go_no_go_checklist.json
+!logs/crowding_paper/reassessment.json
 !logs/paper_validation/
 !logs/paper_validation/latest_summary.json
 !logs/paper_validation/history.jsonl

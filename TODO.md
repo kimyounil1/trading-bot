@@ -75,7 +75,9 @@
    - 신규: `src/regime_weakness_report.py` → `logs/ml/regime_weakness_report.json` (weak/high-variance regime 자동 플래그)
 
 ### C. 운영/리스크
-6. [ ] **Crowding gate 재평가** — 최근 NO_GO(blocked_trades=0). live impact로 keep/tune/disable 결정 후 문서화.
+6. [x] **Crowding gate 재평가** — 최근 NO_GO(blocked_trades=0). live impact로 keep/tune/disable 결정 후 문서화.
+   - 신규: `src/crowding_gate_reassessment.py` → `logs/crowding_paper/reassessment.json`
+   - 현재 상태: `NO_GO` + blocked_trades=0, recommendation=`DISABLE_OR_KEEP_OFF`
 7. [ ] **Daily scheduler 안정화** — `loginctl enable-linger $USER` (WSL/서버 로그아웃 후 timer 유지) + 실패 시 알림.
 
 ### Toss(32-A) — blocked
@@ -118,6 +120,7 @@ bash scripts/run_rank_gate_forward_return.sh
 bash scripts/run_llm_block_precision.sh
 bash scripts/run_paper_validation_trend.sh
 bash scripts/run_regime_weakness_report.sh
+bash scripts/run_crowding_gate_reassessment.sh
 
 # 모델 실험 (무거움)
 bash scripts/run_threshold_promotion_pipeline.sh

@@ -16,6 +16,7 @@ DEFAULT_LLM_CACHE_PATH = Path("data/llm_cache.json")
 DEFAULT_LLM_ADVISORY_PATH = Path("logs/llm_advisory/latest_summary.json")
 DEFAULT_CROWDING_GATE_PATH = Path("logs/crowding_paper/go_no_go_checklist.json")
 DEFAULT_CROWDING_LIVE_PATH = Path("logs/crowding_live/latest_summary.json")
+DEFAULT_CROWDING_REASSESS_PATH = Path("logs/crowding_paper/reassessment.json")
 DEFAULT_EXTENDED_FILL_PATH = Path("logs/paper_ops/extended_hours_fill_report.json")
 DEFAULT_RANK_AI_GATE_PATH = Path("logs/rank_ai_gate/latest_summary.json")
 DEFAULT_PAPER_VALIDATION_PATH = Path("logs/paper_validation/latest_summary.json")
@@ -40,6 +41,7 @@ def build_paper_ops_summary(
     llm_advisory_path: Path = DEFAULT_LLM_ADVISORY_PATH,
     crowding_gate_path: Path = DEFAULT_CROWDING_GATE_PATH,
     crowding_live_path: Path = DEFAULT_CROWDING_LIVE_PATH,
+    crowding_reassess_path: Path = DEFAULT_CROWDING_REASSESS_PATH,
     extended_fill_path: Path = DEFAULT_EXTENDED_FILL_PATH,
     rank_ai_gate_path: Path = DEFAULT_RANK_AI_GATE_PATH,
     paper_validation_path: Path = DEFAULT_PAPER_VALIDATION_PATH,
@@ -51,6 +53,7 @@ def build_paper_ops_summary(
     paper_validation_trend = _load_json_if_exists(paper_validation_trend_path) or {}
     crowding_gate = _load_json_if_exists(crowding_gate_path) or {}
     crowding_live = _load_json_if_exists(crowding_live_path) or {}
+    crowding_reassess = _load_json_if_exists(crowding_reassess_path) or {}
     extended_fill = _load_json_if_exists(extended_fill_path) or {}
 
     llm_cache_keys = 0
@@ -90,6 +93,7 @@ def build_paper_ops_summary(
         "crowding_gate_last_apply_attempted": bool(config_apply.get("applied", False)),
         "crowding_config_applied": crowding_enabled_in_config,
         "crowding_live_path": str(crowding_live_path),
+        "crowding_reassessment_path": str(crowding_reassess_path),
         "crowding_live": {
             "lookback_days": crowding_live.get("live", {}).get("lookback_days"),
             "crowding_skip_count": crowding_live.get("live", {}).get("crowding_skip_count", 0),
@@ -108,6 +112,10 @@ def build_paper_ops_summary(
                 )[:10]
             ),
             "alignment_notes": crowding_live.get("alignment", {}).get("notes", []),
+        },
+        "crowding_reassessment": {
+            "recommendation": crowding_reassess.get("recommendation"),
+            "rationale": crowding_reassess.get("rationale", []),
         },
         "extended_hours_fill_path": str(extended_fill_path),
         "extended_hours_fill": {

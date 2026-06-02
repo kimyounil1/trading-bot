@@ -1,0 +1,22 @@
+{
+  "generated_at": "2026-06-02T09:29:52Z",
+  "go_no_go_path": "logs/crowding_paper/go_no_go_checklist.json",
+  "live_impact_path": "logs/crowding_live/latest_summary.json",
+  "decision": "NO_GO",
+  "recommendation": "TUNE",
+  "inputs": {
+    "blocked_trades": 0,
+    "sharpe_delta": -0.7253,
+    "total_return_delta_pct": -58.3771,
+    "live_crowding_skip_count": 287,
+    "live_crowding_skip_rate_of_skips": 0.071
+  },
+  "criteria": {
+    "min_live_skip_rate": 0.01,
+    "min_backtest_blocked_trades": 1,
+    "min_sharpe_delta_for_keep": -0.15
+  },
+  "rationale": [
+    "Live crowding skips are present; tune thresholds instead of enabling now."
+  ]
+}
