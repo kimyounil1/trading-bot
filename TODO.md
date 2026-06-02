@@ -78,7 +78,9 @@
 6. [x] **Crowding gate 재평가** — 최근 NO_GO(blocked_trades=0). live impact로 keep/tune/disable 결정 후 문서화.
    - 신규: `src/crowding_gate_reassessment.py` → `logs/crowding_paper/reassessment.json`
    - 현재 상태: `NO_GO` + blocked_trades=0, recommendation=`DISABLE_OR_KEEP_OFF`
-7. [ ] **Daily scheduler 안정화** — `loginctl enable-linger $USER` (WSL/서버 로그아웃 후 timer 유지) + 실패 시 알림.
+7. [x] **Daily scheduler 안정화** — `loginctl enable-linger $USER` (WSL/서버 로그아웃 후 timer 유지) + 실패 시 알림.
+   - `scripts/run_daily_paper_ops.sh`: bootstrap 실패 시 Telegram `notify_error` 알림 추가
+   - `scripts/check_paper_daily_timer.sh`: timer active/next + linger 상태 점검(`logs/paper_ops/scheduler_health.json`)
 
 ### Toss(32-A) — blocked
 - [ ] Toss Open API adapter · CMS execute path (API 키 필요)
@@ -121,6 +123,7 @@ bash scripts/run_llm_block_precision.sh
 bash scripts/run_paper_validation_trend.sh
 bash scripts/run_regime_weakness_report.sh
 bash scripts/run_crowding_gate_reassessment.sh
+bash scripts/check_paper_daily_timer.sh
 
 # 모델 실험 (무거움)
 bash scripts/run_threshold_promotion_pipeline.sh
