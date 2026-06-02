@@ -52,10 +52,11 @@
 검증·신뢰도 우선. **모델 교체/live 권한 확대는 paper 근거가 쌓인 뒤**에만. DoD는 상단 기준 따름.
 
 ### A. 신호 검증 (먼저 — 근거 없이는 권한 확대 금지)
-1. [ ] **Rank gate forward-return 귀속** — rank-blocked vs rank-passed 후보의 20일 forward return 분포 비교.
+1. [x] **Rank gate forward-return 귀속** — rank-blocked vs rank-passed 후보의 20일 forward return 분포 비교.
    - 신규: `src/rank_gate_forward_return.py` (audit `rank_ai_score`/`rank_ai_percentile` + `data/raw` 종가 조인)
    - 산출: `logs/rank_ai_gate/forward_return.json` (blocked mean/median, passed mean/median, hit-rate, n)
    - 목적: 게이트가 "거른 게 실제로 못했나"를 수치로 — Tier-1 승인 근거
+   - 현재 상태: 90d 실행 결과 usable 표본 0건(`other=47`) → 다음 2주 누적 후 재평가
 2. [ ] **LLM block precision** — LLM이 REJECT한 매수의 forward return이 ACCEPT 대비 낮은지 측정.
    - `score_llm_corr≈0.04` (무상관) → LLM이 alpha를 더하는지/노이즈인지 판정
    - 산출: `logs/llm_advisory/precision.json` (reject hit-rate, avg fwd return Δ)
@@ -109,6 +110,7 @@ systemctl --user list-timers trading-bot-daily-paper-ops.timer
 bash scripts/run_model_quality_report.sh
 bash scripts/run_rank_ai_gate_report.sh
 REFRESH_CANDIDATE_CACHE=1 bash scripts/run_rank_ai_gate_report.sh
+bash scripts/run_rank_gate_forward_return.sh
 
 # 모델 실험 (무거움)
 bash scripts/run_threshold_promotion_pipeline.sh
