@@ -63,6 +63,8 @@ class StrategySettings(StrategyProfile):
     rsi_buy_limit: float = 65.0
     use_ai_score: bool = False
     ai_score_buy_threshold: float = 0.55
+    ai_score_calibration_enabled: bool = False
+    ai_score_calibration_bins_path: str = "logs/ml/model_calibration_bins.csv"
     market_regime_filter_enabled: bool = False
     market_regime_ticker: str = "SPY"
     market_regime_ma_fast: int = 50

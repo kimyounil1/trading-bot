@@ -16,6 +16,8 @@ from sklearn.model_selection import TimeSeriesSplit
 
 from src.features import FEATURE_COLUMNS, build_features
 from src.market_regime import compute_daily_regime, get_current_regime
+from src.ai_score_calibration import calibrate_ai_score
+from src.settings import load_settings
 
 MODEL_PATH = Path("models/ai_score_model.joblib")
 MODEL_METADATA_PATH = Path("models/ai_score_model_metadata.json")
@@ -598,7 +600,32 @@ def predict_ai_score_from_bundle(
     macro_df: pd.DataFrame | None = None,
 ) -> float:
     proba_series = model.predict_proba(df, vix_df=vix_df, spy_df=spy_df, macro_df=macro_df)
-    return float(proba_series.iloc[-1])
+    raw_score = float(proba_series.iloc[-1])
+    try:
+        settings = load_settings()
+        if not bool(getattr(settings, "ai_score_calibration_enabled", False)):
+            return raw_score
+        regime = "NEUTRAL"
+        if spy_df is not None and vix_df is not None:
+            try:
+                regime = str(get_current_regime(spy_df, vix_df))
+            except Exception:
+                regime = "NEUTRAL"
+        calibrated = calibrate_ai_score(
+            raw_score,
+            regime=regime,
+            bins_path=str(
+                getattr(
+                    settings,
+                    "ai_score_calibration_bins_path",
+                    "logs/ml/model_calibration_bins.csv",
+                )
+            ),
+        )
+        return float(calibrated) if calibrated is not None else raw_score
+    except Exception:
+        # Fail-open: score calibration is an overlay, never a hard dependency.
+        return raw_score
 
 
 def predict_ai_score(df: pd.DataFrame) -> float:

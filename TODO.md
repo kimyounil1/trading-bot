@@ -67,8 +67,9 @@
    - 현재 상태: history 누적 1일이라 rolling 해석은 제한적(관측 지속 필요)
 
 ### B. 모델 품질 (champion 교체 아님 — overlay 개선)
-4. [ ] **ai_score 캘리브레이션 overlay** — Brier 열위 → isotonic/Platt 후처리로 conviction sizing 신뢰도↑.
+4. [x] **ai_score 캘리브레이션 overlay** — Brier 열위 → isotonic/Platt 후처리로 conviction sizing 신뢰도↑.
    - champion joblib 미변경, 예측 후처리 레이어만. `logs/ml/model_calibration_report.json` 전후 비교
+   - 현재 적용: `ai_score_calibration_enabled=true`일 때만 bin 기반 보정(기본 OFF, fail-open)
 5. [ ] **Regime별 약점 진단** — OOS AUC BULL 0.495 / NEUTRAL 0.48 (랜덤 이하) 원인 분석.
    - feature importance × regime, 후보 feature(섹터 상대강도·breadth) 실험 리포트만 (승격 X)
 
