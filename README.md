@@ -25,6 +25,12 @@
 - **Fail-Safe**: 네트워크 오류 발생 시 무리한 재시도 대신 안전하게 실행을 중단하고 알림을 발송합니다.
 - **Comprehensive Audit**: 모든 주문 사유, 적용 프로필, AI 점수, LLM 판정 결과를 통합 로그로 기록하여 완벽한 사후 추적성을 보장합니다.
 
+### 5. Paper 검증 & Rank AI gate (Phase 32–33)
+- **Rank AI buy/add gate (paper)**: cross-sectional rank 모델로 신규 매수·추가매수만 필터 (`rank_ai_buy_gate_enabled`). 매도 로직은 변경 없음. Tier 규칙: [`docs/ai_authority_gates.md`](docs/ai_authority_gates.md)
+- **Paper validation**: AI vs LLM agreement, SKIP 레이어(AI/LLM/rank), 2주 rank gate 누적 → `logs/paper_validation/`
+- **신호 검증 리포트**: rank forward-return, LLM block precision, paper validation trend (Phase 33)
+- **일일 paper ops**: 평일 21:45 ET systemd timer → dry-run + bootstrap + 리포트 갱신
+
 ## 📂 프로젝트 구조
 
 ```text
@@ -32,20 +38,30 @@ trading-bot/
 ├── app/                # Streamlit CMS 대시보드
 ├── config/             # 전략 프로필 및 시스템 설정 (JSON)
 ├── data/               # 피크 정보, LLM 캐시, 트레일링 스탑 데이터
-├── logs/               # 실행 감사(Audit), 주문, 신호 로그 (CSV)
+├── logs/               # 실행 감사(Audit), 주문, 신호 로그 (대부분 gitignore; 일부 summary만 추적)
 ├── models/             # 챔피언 모델 (로컬, git 미추적 — retrain·승격 후 생성)
 ├── scripts/            # 실행, 서비스 등록 및 에이전트 오케스트레이터
-│   ├── agent_orchestrator.py # Codex 리뷰 / optional Gemini CLI 루프
-│   ├── run_cursor_post_workflow.sh # Cursor 구현 후 리뷰 패킷 수집
-│   └── run_bot_once.sh     # 봇 단발성 실행 쉘 스크립트
-├── src/                # 핵심 로직 (Python 3.12)
+│   ├── run_daily_paper_ops.sh      # 일일 paper bootstrap (timer entrypoint)
+│   ├── run_paper_ops_bootstrap.sh  # dry-run + LLM/rank/validation 리포트
+│   ├── run_pass_complete.sh        # pytest + Codex scoped review
+│   └── run_bot_once.sh               # 봇 단발성 실행
+├── src/                # 핵심 로직 (Python 3.11+)
 │   ├── main.py         # 메인 트레이딩 루프
-│   ├── alpaca_client.py # Alpaca API 고도화 (Retry/Idempotency)
-│   ├── llm_analyst.py  # Gemini LLM 분석 및 캐싱
-│   ├── macro_events.py # 경제 지표 캘린더 리스크 관리
-│   └── correlation_guard.py # 포트폴리오 상관관계 관리
+│   ├── rank_ai_gate.py # Rank AI paper buy/add gate
+│   ├── paper_buy_validation_report.py
+│   └── llm_analyst.py  # Gemini LLM 분석 및 캐싱
 └── tests/              # 유닛 및 E2E 테스트 스위트
 ```
+
+### Git에 없는 것 (clone 후 로컬 생성)
+| 경로 | 생성 방법 |
+|------|-----------|
+| `models/ai_score_model.joblib` | `bash scripts/run_retrain.sh` 또는 `PYTHONPATH=. .venv/bin/python -m src.train_ai_model` |
+| `logs/ml/.../rank_models.joblib` | `PYTHONPATH=. .venv/bin/python -m src.rank_label_experiment --output-dir logs/ml/rank_label_experiment_h20_top15_q85` |
+| `data/raw/{ticker}/*.csv` | yfinance 자동 캐시 (`src/data_loader.py`) |
+| `logs/paper_ops/`, 대부분 `logs/*` | `bash scripts/run_daily_paper_ops.sh` |
+
+Champion·rank 모델은 **코드로 재생성** 가능. 바이트 단위 복제가 필요하면 `models/`·실험 폴더를 rsync/scp.
 
 ## 🤖 AI Agent Harness (Cursor-First)
 
@@ -73,22 +89,53 @@ trading-bot/
 ## 🛠 시작하기
 
 ### 환경 설정
-- **Python 3.12** 전용 프로젝트입니다.
-- `.env.example` 파일을 복사하여 `.env` 파일을 생성하고 Alpaca API Key 및 Gemini API Key를 입력하세요.
+- **Python 3.11+** (로컬 `.venv`는 3.12 권장)
+- `.env.example`을 복사해 `.env` 생성 — Alpaca API Key, `GEMINI_API_KEY` 또는 `GOOGLE_API_KEY`
+- clone 직후 champion 모델 없음 → 아래 **Git에 없는 것** 표 참고
 
 ### 가상환경 구축 및 실행
 ```bash
-# 가상환경 생성 및 패키지 설치
-python3.12 -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# 드라이런 실행 (주문 미제출)
+# 드라이런 (주문 미제출)
 PYTHONPATH=. .venv/bin/python src/main.py
 
-# 실제 Paper Trading 실행
+# Paper Trading 실행
 PYTHONPATH=. .venv/bin/python src/main.py --execute
 ```
+
+### 일일 paper ops (Rank/LLM 검증 누적)
+```bash
+# 수동 1회
+bash scripts/run_daily_paper_ops.sh
+
+# systemd timer (평일 21:45 America/New_York)
+bash scripts/install_paper_daily_timer.sh
+systemctl --user enable --now trading-bot-daily-paper-ops.timer
+systemctl --user list-timers trading-bot-daily-paper-ops.timer
+
+# 로그아웃 후에도 timer 유지 (WSL/서버)
+loginctl enable-linger $USER
+
+# timer/linger 상태 점검
+bash scripts/check_paper_daily_timer.sh
+```
+
+### 검증·리포트 (Phase 33)
+```bash
+bash scripts/run_paper_buy_validation.sh      # → logs/paper_validation/latest_summary.json
+bash scripts/run_paper_validation_trend.sh  # → logs/paper_validation/trend_summary.json
+bash scripts/run_rank_gate_forward_return.sh
+bash scripts/run_llm_block_precision.sh
+bash scripts/run_rank_ai_gate_report.sh
+bash scripts/run_crowding_gate_reassessment.sh
+bash scripts/run_regime_weakness_report.sh
+bash scripts/run_model_quality_report.sh
+```
+
+요약 대시보드: `bash scripts/run_cms.sh` · paper ops: `logs/paper_ops/latest_summary.json`
 
 ### 테스트 · CI
 ```bash
@@ -97,8 +144,17 @@ PYTHONPATH=. .venv/bin/python src/main.py --execute
 ```
 PR/push 시 GitHub Actions가 `requirements.txt` 설치 후 pytest·CMS import·deploy-gate를 실행합니다.
 
-**Run frequency**: `bash scripts/compare_run_frequency.sh` → `logs/run_frequency/run_frequency_comparison.json` (봇 실행 주기 vs 10분 캐시 비교).
+**Run frequency**: `bash scripts/compare_run_frequency.sh` → `logs/run_frequency/run_frequency_comparison.json`
 
-## 📊 현재 성과 (OOS Validated)
-- **수익률**: Ultra Aggressive 모드(Bull) 기준 5개월 **+41.68%** 달성
-- **안정성**: Bear 시장 예측력 강화 및 고도화된 리스크 가드로 Drawdown 최소화
+로드맵·활성 TODO: [`TODO.md`](TODO.md) · AI 권한 Tier: [`docs/ai_authority_gates.md`](docs/ai_authority_gates.md)
+
+## 📊 현재 성과·상태 (2026-06)
+| 영역 | 요약 |
+|------|------|
+| **Alpha (backtest)** | trailing 20% · vs EW **+9.0pp** · vs SPY **+28.9pp** — `logs/benchmark_gap/latest_summary.json` |
+| **Champion AI** | overlay 유지 (promotion gate 미통과). `ai_score_calibration_enabled` 옵션 overlay 추가 (기본 OFF) |
+| **Rank AI (paper)** | buy/add gate ON · 2주 paper validation 진행 중 (`rank_gate_ready` 누적) |
+| **LLM (paper)** | blocking mode · agreement ~75% |
+| **Crowding** | config ON · gate **NO_GO** → reassessment `TUNE`/`DISABLE_OR_KEEP_OFF` 참고 |
+
+과거 OOS 스냅샷: Ultra Aggressive(Bull) 5개월 **+41.68%** (레거시 벤치마크).
