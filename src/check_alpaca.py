@@ -1,10 +1,12 @@
-from src.alpaca_client import get_account_summary
+from src.brokers import broker_account_snapshot
+from src.settings import load_settings
 
 
 def main() -> None:
-    account = get_account_summary()
+    settings = load_settings()
+    account, _ = broker_account_snapshot(settings.broker_provider)
 
-    print("Alpaca paper account connected.")
+    print(f"Broker ({settings.broker_provider}) account connected.")
     print(f"status={account['status']}")
     print(f"currency={account['currency']}")
     print(f"cash={account['cash']:.2f}")

@@ -25,15 +25,17 @@ from src.risk_manager import (
     get_recent_buy_symbols,
     get_today_buy_notional,
 )
-from src.alpaca_client import (
-    close_position_by_symbol,
-    get_account_summary,
-    get_open_symbols,
-    get_positions_summary,
-    get_position_entry_date,
-    wait_for_order_status,
-)
+from src.alpaca_client import get_position_entry_date
+from src.order_intent import AuditContext, build_audit_context, build_buy_intent
 from src.broker_adapter import get_broker_adapter
+from src.live_deploy_guard import assert_live_execution_allowed
+from src.live_readiness import assert_live_readiness_for_execute
+from src.risk.live_safety import LiveSafetyGuard
+from src.trading_config_guard import (
+    apply_environment_profile,
+    resolve_trading_environment,
+    validate_trading_config,
+)
 from src.market_clock import get_market_clock
 from src.notifier import notify_order, notify_error, notify_run_summary, notify_info
 from src.ml_model import load_ai_score_model, predict_ai_score_from_bundle
@@ -312,6 +314,10 @@ def _order_is_filled(status: str) -> bool:
     return "FILLED" in normalized and "PARTIALLY" not in normalized
 
 
+def _audit_log(audit_ctx: AuditContext, **kwargs) -> None:
+    log_execution_audit(**kwargs, **audit_ctx.as_audit_fields())
+
+
 def _filled_notional(checked_order: dict, fallback: float) -> float:
     filled_qty = checked_order.get("filled_qty")
     filled_avg_price = checked_order.get("filled_avg_price")
@@ -333,17 +339,36 @@ def main() -> None:
     execute_orders = args.execute
     run_id = datetime.now().strftime("%Y%m%dT%H%M%S")
     settings = load_settings()
+    broker_adapter = get_broker_adapter(settings.broker_provider)
+    trading_env = resolve_trading_environment(settings)
+    settings = apply_environment_profile(settings, trading_env)
+    validate_trading_config(settings, trading_env, broker_adapter)
+    if execute_orders:
+        assert_live_execution_allowed(
+            execute=True,
+            trading_environment=trading_env,
+        )
+        assert_live_readiness_for_execute(
+            settings=settings,
+            environment=trading_env,
+        )
     ai_model_bundle = None
     if getattr(settings, "use_ai_score", False):
         try:
             ai_model_bundle = load_ai_score_model()
         except Exception:
             ai_model_bundle = None
+    audit_ctx = build_audit_context(
+        run_id=run_id,
+        settings=settings,
+        environment=trading_env,
+        ai_model_bundle=ai_model_bundle,
+    )
 
     try:
-        account = get_account_summary()
-        open_symbols = get_open_symbols()
-        positions = get_positions_summary()
+        account = broker_adapter.get_account()
+        positions = broker_adapter.get_positions()
+        open_symbols = broker_adapter.get_open_symbols()
     except ConnectionError as exc:
         if execute_orders:
             raise
@@ -484,7 +509,13 @@ def main() -> None:
     print(f"  - Buy Threshold: {settings.ai_score_buy_threshold:.2f}")
 
     market_clock = get_market_clock(settings)
-    broker_adapter = get_broker_adapter(settings.broker_provider)
+    live_safety_guard = LiveSafetyGuard.from_settings(
+        settings,
+        account=account,
+        positions=positions,
+    )
+    if live_safety_guard.kill_switch_active():
+        print(f"LIVE_SAFETY: manual kill switch active ({live_safety_guard.config.kill_switch_path})")
     extended_slippage = float(
         getattr(settings, "extended_hours_limit_slippage_pct", 0.005)
     )
@@ -646,24 +677,29 @@ def main() -> None:
                     )
                     if can_submit_orders:
                         try:
-                            raw_order = close_position_by_symbol(ticker)
-                            if raw_order is None:
-                                raise ValueError(
-                                    f"dust close returned no order for {ticker}"
-                                )
+                            dust_qty = float(position["qty"])
+                            dust_submission = broker_adapter.submit_sell_qty(
+                                ticker,
+                                dust_qty,
+                                limit_price=float(position.get("current_price") or 0.0),
+                                market_clock=market_clock,
+                                slippage_pct=extended_slippage,
+                                client_order_id=f"dust_{run_id}_{ticker}",
+                            )
                             live_order_count += 1
                             log_order(
                                 ticker=ticker,
                                 notional=0.0,
-                                order_id=str(raw_order.id),
-                                status=str(raw_order.status),
-                                side=str(raw_order.side),
-                                order_type=str(raw_order.type),
+                                order_id=dust_submission.order_id,
+                                status=dust_submission.status,
+                                side=dust_submission.side,
+                                order_type=dust_submission.order_type,
                                 reason=dust_reason,
                             )
                             print(
                                 f"  PAPER_DUST_CLOSE: {ticker}, "
-                                f"order_id={raw_order.id}, status={raw_order.status}"
+                                f"order_id={dust_submission.order_id}, "
+                                f"status={dust_submission.status}"
                             )
                             notify_info(
                                 "🧹 Dust position closed",
@@ -990,7 +1026,7 @@ def main() -> None:
                     side=exit_submission.side,
                 )
 
-                checked_order = wait_for_order_status(exit_submission.order_id)
+                checked_order = broker_adapter.wait_for_order_status(exit_submission.order_id)
                 log_order_status(
                     ticker=ticker,
                     order_id=checked_order["id"],
@@ -1424,6 +1460,57 @@ def main() -> None:
             submitted_notional_today += order_amount
             continue
 
+        safety_check = live_safety_guard.check_new_buy(
+            notional=order_amount,
+            open_positions_count=meaningful_positions_count,
+        )
+        if not safety_check.allowed:
+            print(f"  LIVE_SAFETY_BLOCK: would BUY {ticker} — {safety_check.reason}")
+            buy_summary_rows.append(
+                f"{ticker}: LIVE_SAFETY_BLOCK {safety_check.reason}, ai_score={ai_score}"
+            )
+            skipped_reasons["buy:live_safety"] += 1
+            buy_intent = build_buy_intent(
+                run_id=run_id,
+                ticker=ticker,
+                notional=order_amount,
+                signal=signal,
+                ai_score=ai_score,
+                rank_ai_score=candidate.get("rank_ai_score"),
+                rank_ai_percentile=candidate.get("rank_ai_percentile"),
+                llm_verdict=llm_verdict,
+                risk_reason=risk_reason,
+            )
+            _audit_log(
+                audit_ctx,
+                event_type="SKIP_BUY",
+                ticker=ticker,
+                action="BUY",
+                status="SKIPPED",
+                reason=f"live safety: {safety_check.reason}",
+                profile_name=profile_name,
+                regime=current_regime,
+                signal=signal,
+                ai_score=ai_score,
+                llm_verdict=llm_verdict,
+                notional=order_amount,
+                risk_block_reason=safety_check.reason,
+                order_intent_id=buy_intent.intent_id,
+            )
+            continue
+
+        buy_intent = build_buy_intent(
+            run_id=run_id,
+            ticker=ticker,
+            notional=order_amount,
+            signal=signal,
+            ai_score=ai_score,
+            rank_ai_score=candidate.get("rank_ai_score"),
+            rank_ai_percentile=candidate.get("rank_ai_percentile"),
+            llm_verdict=llm_verdict,
+            risk_reason=risk_reason,
+            client_order_id=f"buy_{run_id}_{ticker}",
+        )
         try:
             buy_submission = broker_adapter.submit_buy_notional(
                 ticker=ticker,
@@ -1431,8 +1518,9 @@ def main() -> None:
                 limit_price=float(candidate["limit_price"]),
                 market_clock=market_clock,
                 slippage_pct=extended_slippage,
-                client_order_id=f"buy_{run_id}_{ticker}",
+                client_order_id=buy_intent.client_order_id,
             )
+            live_safety_guard.record_order_success()
             live_order_count += 1
             orders_submitted += 1
             submitted_notional_today += order_amount
@@ -1453,7 +1541,8 @@ def main() -> None:
                 f"session={market_clock.session.value}, "
                 f"order_id={buy_submission.order_id}, status={buy_submission.status}"
             )
-            log_execution_audit(
+            _audit_log(
+                audit_ctx,
                 event_type="BUY_SUBMITTED",
                 ticker=ticker,
                 action="BUY",
@@ -1470,9 +1559,11 @@ def main() -> None:
                 order_type=buy_submission.order_type,
                 side=buy_submission.side,
                 notional=order_amount,
+                order_intent_id=buy_intent.intent_id,
+                broker_order_id=buy_submission.order_id,
             )
 
-            checked_order = wait_for_order_status(buy_submission.order_id)
+            checked_order = broker_adapter.wait_for_order_status(buy_submission.order_id)
             log_order_status(
                 ticker=ticker,
                 order_id=checked_order["id"],
@@ -1538,6 +1629,7 @@ def main() -> None:
                 cash -= filled_notional
                 current_gross_exposure += filled_notional
         except Exception as exc:
+            live_safety_guard.record_order_failure()
             if isinstance(exc, ConnectionError) and execute_orders:
                 notify_error(f"CRITICAL: Network error during buy execution for {ticker}", exc)
                 raise

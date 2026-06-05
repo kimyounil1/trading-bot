@@ -107,8 +107,10 @@ def run_and_display_simulation(s_period, s_max_pos, s_pos_pct, s_ai_thr, s_use_a
 @st.cache_data(ttl=60)
 def load_live_data():
     try:
-        from src.alpaca_client import get_account_summary, get_positions_summary
-        return get_account_summary(), get_positions_summary()
+        from src.brokers import broker_account_snapshot
+        from src.settings import load_settings
+        settings = load_settings()
+        return broker_account_snapshot(settings.broker_provider)
     except: return None, []
 
 @st.cache_data(ttl=300)

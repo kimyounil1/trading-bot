@@ -13,7 +13,7 @@ from typing import List
 import pandas as pd
 import requests
 
-from src.alpaca_client import get_account_summary, get_positions_summary
+from src.broker_adapter import get_broker_adapter
 from src.daily_bar_session import drop_incomplete_session_bar
 from src.data_loader import load_price_data_batch
 from src.features import MAX_FEATURE_LOOKBACK
@@ -341,11 +341,12 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
     clock = get_market_clock(settings)
     watchlist, universe_meta = _resolve_watchlist_tickers(settings)
 
+    broker = get_broker_adapter(settings.broker_provider)
     try:
-        account = get_account_summary()
-        positions = get_positions_summary()
-    except ConnectionError as exc:
-        print(f"Alpaca unavailable, building candidate cache with offline defaults: {exc}")
+        account = broker.get_account()
+        positions = broker.get_positions()
+    except (ConnectionError, NotImplementedError) as exc:
+        print(f"Broker unavailable, building candidate cache with offline defaults: {exc}")
         account = _offline_account_summary()
         positions = []
 

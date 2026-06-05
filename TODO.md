@@ -87,6 +87,41 @@
 
 ---
 
+## Phase 34 — Live foundation (paper 14일·Toss API·live 전환 **대기 중** 병렬 작업)
+
+**목표:** 수익률 실험보다 **운영·검증·확장성** — Rank/Toss/Live가 열렸을 때 바로 안전하게 붙일 바닥.
+**전제:** Phase 32 관측(2주)·Tier-1 live·champion 승격은 **여전히 금지** ([`docs/ai_authority_gates.md`](docs/ai_authority_gates.md)).
+
+**이미 있음 (중복 작업 금지):** `src/broker_adapter.py` — submit buy/sell + Toss stub. `main.py`·CMS는 여전히 `alpaca_client` 직접 호출.
+
+**Phase 34에 넣지 않음 (이유):**
+- Toss **실 API** 구현 — API 키·스펙 대기 (stub·readiness 차단만)
+- Champion 승격 / rank **live** 기본 ON — paper 근거 후
+- DL/RL live (`docs/RESEARCH_MODELS.md`)
+- 대규모 `main.py` 일괄 리팩터 한 방 — Sprint별 점진 이전
+
+### Sprint 1 — Broker + safety
+1. [x] **Broker adapter v2** — `src/brokers/` + account/positions/orders/cancel; `main`·`candidate_cache`·CMS·CLI·dust sell adapter 경유
+2. [x] **FakeBroker** — `PaperBrokerAdapter` (`broker_provider=paper`); `tests/test_paper_broker.py`
+3. [x] **LiveSafetyGuard** — `src/risk/live_safety.py`; kill switch 항상·limits는 `live_safety_enabled`; `main` BUY 전 검사
+
+### Sprint 2 — Config + readiness
+4. [x] **Paper / live / research 프로필 + schema** — `config/profiles/` + `config/schema/trading_config.schema.json`; `validate_trading_config` on `main` startup
+5. [x] **Live deploy guard** — `TRADING_ENV=live` + `CONFIRM_LIVE_TRADING=YES_I_UNDERSTAND` or `ALLOW_LIVE_TRADING=true` before `--execute`
+6. [x] **LiveReadinessGate** — `bash scripts/run_live_readiness.sh` → `logs/live_readiness/latest_summary.json`; live `--execute` requires `safe_to_execute_live`
+
+### Sprint 3 — Execution traceability
+7. [x] **OrderIntent 레이어 (점진)** — `src/order_intent.py`; BUY path + `AuditContext`; full main migration follow-up
+8. [x] **Execution audit v2** — extended `EXECUTION_AUDIT_COLUMNS` + `logger.log_execution_audit` v2 fields
+9. [x] **Data health check** — `bash scripts/run_data_health_check.sh` → `logs/data_health/latest_summary.json`
+
+### Sprint 4 — Operator UX (paper 기간에도 유용)
+10. [x] **CMS operator view** — overview: live readiness, scheduler, candidates, blocked audit tail
+
+**Codex:** Phase 34 슬라이스마다 1회 (`RUN_ID=phase34_<slice>`). Sprint 1 완료 후 FakeBroker E2E(duplicate `client_order_id`·kill switch·daily loss·broker fail-safe)는 Sprint 1 DoD에 포함.
+
+---
+
 ## Phase 32 — shipped (요약)
 
 코드·테스트·리포트 경로는 반영됨. 상세 실험 수치는 `logs/model_quality/`, `logs/ml/` 참고.
@@ -124,6 +159,8 @@ bash scripts/run_paper_validation_trend.sh
 bash scripts/run_regime_weakness_report.sh
 bash scripts/run_crowding_gate_reassessment.sh
 bash scripts/check_paper_daily_timer.sh
+bash scripts/run_live_readiness.sh
+bash scripts/run_data_health_check.sh
 
 # 모델 실험 (무거움)
 bash scripts/run_threshold_promotion_pipeline.sh

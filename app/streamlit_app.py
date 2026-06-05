@@ -13,15 +13,14 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
 from src.alpaca_client import (
-    get_account_summary,
-    get_positions_summary,
     get_order_summary,
     get_open_orders,
     get_recent_closed_orders,
-    get_open_symbols,
     wait_for_order_status,
 )
 from src.broker_adapter import get_broker_adapter
+from src.brokers import broker_account_snapshot
+from src.execution_audit_io import read_execution_audit_csv
 from src.market_clock import get_market_clock, MarketClock
 from src.settings import load_settings, CONFIG_PATH
 from src.execution_lock import (
@@ -569,8 +568,7 @@ def render_overview() -> None:
 
     settings = load_settings()
     clock = load_trading_clock(settings)
-    account = get_account_summary()
-    positions = get_positions_summary()
+    account, positions = load_broker_snapshot(settings)
 
     render_trading_clock_banner(clock)
 
@@ -681,6 +679,9 @@ def render_overview() -> None:
             "상세: 모니터링 리포트 → 모델 품질 / Paper 매수 검증 · "
             "갱신: bash scripts/run_paper_buy_validation.sh"
         )
+
+    render_live_readiness_panel()
+    render_operator_decisions_panel()
 
     st.divider()
 
@@ -1536,7 +1537,7 @@ def render_dry_run() -> None:
 def build_cms_dry_run_rows():
     meta, exit_df, buy_df, _, _ = load_latest_candidate_cache_full()
     settings = load_settings()
-    account = get_account_summary()
+    account, _ = load_broker_snapshot(settings)
     clock = load_trading_clock(settings)
     return account, clock, settings, exit_df, buy_df
 
@@ -1612,8 +1613,9 @@ def execute_cms_paper_actions(
     extended_slippage = float(
         getattr(settings, "extended_hours_limit_slippage_pct", 0.005)
     )
+    _, positions = load_broker_snapshot(settings)
     positions_by_symbol = {
-        str(item["symbol"]).upper(): item for item in get_positions_summary()
+        str(item["symbol"]).upper(): item for item in positions
     }
     rows = []
 
@@ -1788,7 +1790,7 @@ def render_paper_execution() -> None:
     required_phrase = get_required_phrase()
     settings = load_settings()
     clock = load_trading_clock(settings)
-    account = get_account_summary()
+    account, _ = load_broker_snapshot(settings)
 
     st.subheader("안전 점검")
 
@@ -2377,6 +2379,103 @@ def render_telegram() -> None:
         except Exception as exc:
             st.error(f"Telegram 전송 실패: {exc}")
 
+
+
+def load_broker_snapshot(settings=None):
+    settings = settings or load_settings()
+    try:
+        return broker_account_snapshot(settings.broker_provider)
+    except Exception:
+        return {
+            "cash": 0.0,
+            "portfolio_value": 0.0,
+            "positions_count": 0,
+            "buying_power": 0.0,
+        }, []
+
+
+def render_live_readiness_panel() -> None:
+    readiness = load_json_summary("logs/live_readiness/latest_summary.json")
+    scheduler = load_json_summary("logs/paper_ops/scheduler_health.json")
+    if not readiness and not scheduler:
+        return
+    st.subheader("Live readiness · Scheduler")
+    if readiness:
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Live GO/NO_GO", readiness.get("overall", "—"))
+        c2.metric(
+            "Safe to execute",
+            "yes" if readiness.get("safe_to_execute_live") else "no",
+        )
+        c3.metric("Environment", readiness.get("trading_environment", "—"))
+        reasons = readiness.get("reasons") or []
+        if reasons:
+            st.caption("Blockers: " + "; ".join(str(r) for r in reasons[:6]))
+        st.caption("갱신: bash scripts/run_live_readiness.sh")
+    if scheduler:
+        s1, s2 = st.columns(2)
+        s1.metric("Daily timer", scheduler.get("timer_active", "—"))
+        s2.metric("Linger", scheduler.get("linger_enabled", "—"))
+        if scheduler.get("recommended_action"):
+            st.warning(scheduler["recommended_action"])
+
+
+def render_operator_decisions_panel() -> None:
+    st.subheader("오늘 후보 · Blocked")
+    try:
+        meta, _exit_df, buy_df, _q, _e = load_latest_candidate_cache_full()
+    except FileNotFoundError:
+        st.info("후보 캐시 없음 — `python -m src.generate_candidate_cache`")
+        return
+    st.caption(
+        f"캐시 생성: {meta.get('generated_at', '—')} · "
+        f"source={meta.get('source', '—')}"
+    )
+    if buy_df is not None and not buy_df.empty:
+        show_cols = [
+            c
+            for c in (
+                "ticker",
+                "signal",
+                "ai_score",
+                "rank_ai_score",
+                "rank_ai_percentile",
+                "llm_verdict",
+                "buy_allowed",
+                "block_reason",
+            )
+            if c in buy_df.columns
+        ]
+        st.dataframe(
+            buy_df[show_cols].head(30) if show_cols else buy_df.head(30),
+            use_container_width=True,
+        )
+    audit_path = ROOT_DIR / "logs/execution_audit.csv"
+    if audit_path.is_file():
+        audit_df = read_execution_audit_csv(audit_path)
+        if not audit_df.empty and "event_type" in audit_df.columns:
+            blocked = audit_df[
+                audit_df["event_type"].astype(str).str.contains("SKIP", na=False)
+            ].tail(40)
+            if not blocked.empty:
+                st.markdown("**Recent blocked / skipped (audit tail)**")
+                cols = [
+                    c
+                    for c in (
+                        "timestamp",
+                        "ticker",
+                        "event_type",
+                        "reason",
+                        "risk_block_reason",
+                        "rank_ai_score",
+                        "llm_verdict",
+                    )
+                    if c in blocked.columns
+                ]
+                st.dataframe(
+                    blocked[cols] if cols else blocked,
+                    use_container_width=True,
+                )
 
 
 def load_json_summary(relative_path: str) -> dict | None:

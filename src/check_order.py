@@ -1,6 +1,7 @@
 import sys
 
-from src.alpaca_client import get_order_summary, get_positions_summary
+from src.broker_adapter import get_broker_adapter
+from src.settings import load_settings
 
 
 def main() -> None:
@@ -9,7 +10,9 @@ def main() -> None:
         raise SystemExit(1)
 
     order_id = sys.argv[1]
-    order = get_order_summary(order_id)
+    settings = load_settings()
+    broker = get_broker_adapter(settings.broker_provider)
+    order = broker.get_order_status(order_id)
 
     print("Order summary")
     print("-" * 80)
@@ -19,7 +22,7 @@ def main() -> None:
     print()
     print("Current positions")
     print("-" * 80)
-    positions = get_positions_summary()
+    positions = broker.get_positions()
 
     if not positions:
         print("No open positions.")

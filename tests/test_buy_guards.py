@@ -1,6 +1,6 @@
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
@@ -111,10 +111,17 @@ class TestCandidateCacheMeta(unittest.TestCase):
     def test_build_meta_includes_extended_hours_fields(self) -> None:
         from src.candidate_cache import build_candidate_cache
 
+        mock_broker = MagicMock()
+        mock_broker.get_account.return_value = {
+            "cash": 10000.0,
+            "portfolio_value": 10000.0,
+            "last_equity": 10000.0,
+            "positions_count": 0,
+            "buying_power": 10000.0,
+        }
+        mock_broker.get_positions.return_value = []
         with patch("src.candidate_cache.get_market_clock") as mock_clock, patch(
-            "src.candidate_cache.get_account_summary"
-        ) as mock_account, patch(
-            "src.candidate_cache.get_positions_summary", return_value=[]
+            "src.candidate_cache.get_broker_adapter", return_value=mock_broker
         ), patch(
             "src.candidate_cache._resolve_watchlist_tickers", return_value=(["AAPL"], None)
         ), patch(
@@ -130,12 +137,6 @@ class TestCandidateCacheMeta(unittest.TestCase):
         ), patch(
             "src.candidate_cache.build_rank_ai_gate_scores", return_value={}
         ):
-            mock_account.return_value = {
-                "cash": 10000.0,
-                "portfolio_value": 10000.0,
-                "positions_count": 0,
-                "buying_power": 10000.0,
-            }
             mock_clock.return_value = SimpleNamespace(
                 orders_allowed=True,
                 session=SimpleNamespace(value="regular"),

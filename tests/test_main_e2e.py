@@ -53,8 +53,19 @@ class TestMainE2E(unittest.TestCase):
             broker_provider="alpaca",
         )
 
-    def _mock_broker(self):
+    def _mock_broker(self, *, positions=None):
         mock_adapter = MagicMock()
+        mock_adapter.get_account.return_value = {
+            "cash": 10000.0,
+            "portfolio_value": 10000.0,
+            "last_equity": 10000.0,
+            "positions_count": 0,
+            "buying_power": 20000.0,
+        }
+        mock_adapter.get_positions.return_value = positions or []
+        mock_adapter.get_open_symbols.return_value = {
+            str(p["symbol"]).upper() for p in (positions or [])
+        }
         mock_adapter.submit_buy_notional.return_value = OrderSubmission(
             order_id="order_123",
             status="ACCEPTED",
@@ -67,6 +78,14 @@ class TestMainE2E(unittest.TestCase):
             side="SELL",
             order_type="MARKET",
         )
+        mock_adapter.wait_for_order_status.return_value = {
+            "id": "order_123",
+            "status": "FILLED",
+            "side": "BUY",
+            "type": "MARKET",
+            "filled_qty": "1.0",
+            "filled_avg_price": "150.0",
+        }
         return mock_adapter
 
     @patch("src.main.parse_args")
@@ -74,13 +93,9 @@ class TestMainE2E(unittest.TestCase):
     @patch("src.main.apply_dynamic_profile")
     @patch("src.main.get_market_clock")
     @patch("src.main.get_broker_adapter")
-    @patch("src.main.get_account_summary")
-    @patch("src.main.get_open_symbols")
-    @patch("src.main.get_positions_summary")
     @patch("src.main.load_price_data_batch")
     @patch("src.main.get_signal_for_ticker")
     @patch("src.buy_guards.evaluate_ticker_consensus")
-    @patch("src.main.wait_for_order_status")
     @patch("src.main.notify_run_summary")
     @patch("src.main._load_peaks")
     @patch("src.main._save_peaks")
@@ -92,9 +107,9 @@ class TestMainE2E(unittest.TestCase):
     @patch("src.main.get_today_buy_notional")
     @patch("src.buy_guards.is_correlation_allowed")
     def test_full_buy_flow(self, mock_corr, mock_today, mock_recent, mock_sector, mock_earnings, mock_fresh, mock_entry, 
-                          mock_save_peaks, mock_load_peaks, mock_notify, mock_wait, 
+                          mock_save_peaks, mock_load_peaks, mock_notify, 
                           mock_llm, mock_signal, mock_load_data, 
-                          mock_pos, mock_open_sym, mock_acc, mock_broker, mock_clock, 
+                          mock_broker, mock_clock, 
                           mock_profile, mock_settings, mock_args):
         
         mock_args.return_value = Namespace(execute=True)
@@ -104,9 +119,6 @@ class TestMainE2E(unittest.TestCase):
         
         mock_clock.return_value = self._open_clock()
         mock_broker.return_value = self._mock_broker()
-        mock_acc.return_value = {"cash": 10000.0, "portfolio_value": 10000.0, "positions_count": 0, "buying_power": 20000.0}
-        mock_open_sym.return_value = set()
-        mock_pos.return_value = []
         mock_load_data.return_value = {"AAPL": pd.DataFrame(), "SPY": pd.DataFrame(), "^VIX": pd.DataFrame()}
         
         # Mock valid BUY signal
@@ -120,10 +132,6 @@ class TestMainE2E(unittest.TestCase):
         mock_recent.return_value = set()
         mock_today.return_value = 0.0
         
-        mock_order = MagicMock()
-        mock_order.id = "order_123"; mock_order.status = "ACCEPTED"; mock_order.side = "BUY"; mock_order.type = "MARKET"
-        mock_wait.return_value = {"id": "order_123", "status": "FILLED", "side": "BUY", "type": "MARKET", "filled_qty": "1.0", "filled_avg_price": "150.0"}
-
         main()
         mock_broker.return_value.submit_buy_notional.assert_called_once()
         print("E2E Buy Flow Verified")
@@ -133,18 +141,14 @@ class TestMainE2E(unittest.TestCase):
     @patch("src.main.apply_dynamic_profile")
     @patch("src.main.get_market_clock")
     @patch("src.main.get_broker_adapter")
-    @patch("src.main.get_account_summary")
-    @patch("src.main.get_open_symbols")
-    @patch("src.main.get_positions_summary")
     @patch("src.main.load_price_data_batch")
     @patch("src.main.get_signal_for_ticker")
     @patch("src.main.get_position_entry_date")
-    @patch("src.main.wait_for_order_status")
     @patch("src.main._load_peaks")
     @patch("src.main._check_price_frame_freshness")
     @patch("src.main.notify_run_summary")
-    def test_exit_by_time_limit(self, mock_notify, mock_fresh, mock_load_peaks, mock_wait, mock_entry, 
-                               mock_signal, mock_load_data, mock_pos, mock_open_sym, mock_acc, mock_broker, mock_clock, 
+    def test_exit_by_time_limit(self, mock_notify, mock_fresh, mock_load_peaks, mock_entry, 
+                               mock_signal, mock_load_data, mock_broker, mock_clock, 
                                mock_profile, mock_settings, mock_args):
         
         mock_args.return_value = Namespace(execute=True)
@@ -153,12 +157,16 @@ class TestMainE2E(unittest.TestCase):
         mock_profile.return_value = (self.settings, "TEST_PROFILE")
         
         mock_clock.return_value = self._open_clock()
-        mock_broker.return_value = self._mock_broker()
-        # Ensure positions is not empty
         positions_list = [{"symbol": "AAPL", "qty": 10, "current_price": 100.0, "market_value": 1000.0, "unrealized_plpc": 0.01}]
-        mock_pos.return_value = positions_list
-        mock_acc.return_value = {"cash": 5000.0, "portfolio_value": 10000.0, "positions_count": 1}
-        mock_open_sym.return_value = {"AAPL"}
+        broker = self._mock_broker(positions=positions_list)
+        broker.get_account.return_value = {
+            "cash": 5000.0,
+            "portfolio_value": 10000.0,
+            "last_equity": 10000.0,
+            "positions_count": 1,
+            "buying_power": 5000.0,
+        }
+        mock_broker.return_value = broker
         mock_load_data.return_value = {"AAPL": pd.DataFrame(), "SPY": pd.DataFrame(), "^VIX": pd.DataFrame()}
         mock_fresh.return_value = (True, "")
         
@@ -168,10 +176,14 @@ class TestMainE2E(unittest.TestCase):
         # 31 days ago (exceeds 30 day limit)
         mock_entry.return_value = datetime.now(timezone.utc) - pd.Timedelta(days=31)
         mock_load_peaks.return_value = {"AAPL": 110.0}
-        
-        mock_broker.return_value = self._mock_broker()
-        
-        mock_wait.return_value = {"id": "exit_123", "status": "FILLED", "side": "SELL", "type": "MARKET", "filled_qty": "10", "filled_avg_price": "100.0"}
+        broker.wait_for_order_status.return_value = {
+            "id": "exit_123",
+            "status": "FILLED",
+            "side": "SELL",
+            "type": "MARKET",
+            "filled_qty": "10",
+            "filled_avg_price": "100.0",
+        }
 
         main()
         mock_broker.return_value.submit_sell_qty.assert_called_once()
@@ -182,16 +194,12 @@ class TestMainE2E(unittest.TestCase):
     @patch("src.main.apply_dynamic_profile")
     @patch("src.main.get_market_clock")
     @patch("src.main.get_broker_adapter")
-    @patch("src.main.get_account_summary")
-    @patch("src.main.get_open_symbols")
-    @patch("src.main.get_positions_summary")
     @patch("src.main.load_price_data_batch")
     @patch("src.main.get_signal_for_ticker")
-    @patch("src.main.wait_for_order_status")
     @patch("src.main._load_peaks")
     @patch("src.main._check_price_frame_freshness")
     @patch("src.main.notify_run_summary")
-    def test_simultaneous_exit_and_trim(self, mock_notify, mock_fresh, mock_load_peaks, mock_wait, mock_signal, mock_load_data, mock_pos, mock_open_sym, mock_acc, 
+    def test_simultaneous_exit_and_trim(self, mock_notify, mock_fresh, mock_load_peaks, mock_signal, mock_load_data,
                                        mock_broker, mock_clock, mock_profile, mock_settings, mock_args):
         """Verify that Full Exit (Trailing Stop) takes precedence over Rebalance Trim."""
         mock_args.return_value = Namespace(execute=True)
@@ -203,17 +211,29 @@ class TestMainE2E(unittest.TestCase):
         mock_profile.return_value = (self.settings, "TEST_PROFILE")
         
         mock_clock.return_value = self._open_clock()
-        mock_broker.return_value = self._mock_broker()
-        mock_acc.return_value = {"cash": 8000.0, "portfolio_value": 10000.0, "positions_count": 1}
-        mock_open_sym.return_value = {"AAPL"}
-        # Current price 100, Peak was 110. Drawdown = 10/110 = 9%. Stop is 5% -> should FULL EXIT
-        mock_pos.return_value = [{"symbol": "AAPL", "qty": 20, "current_price": 100.0, "market_value": 2000.0, "unrealized_plpc": -0.05}]
+        positions_list = [
+            {"symbol": "AAPL", "qty": 20, "current_price": 100.0, "market_value": 2000.0, "unrealized_plpc": -0.05}
+        ]
+        broker = self._mock_broker(positions=positions_list)
+        broker.get_account.return_value = {
+            "cash": 8000.0,
+            "portfolio_value": 10000.0,
+            "last_equity": 10000.0,
+            "positions_count": 1,
+            "buying_power": 8000.0,
+        }
+        mock_broker.return_value = broker
         mock_load_data.return_value = {"AAPL": pd.DataFrame()}
         mock_fresh.return_value = (True, "")
         mock_signal.return_value = ("HOLD", {"close": 100.0}, 0.5)
         mock_load_peaks.return_value = {"AAPL": 110.0}
-        
-        mock_wait.return_value = {"id": "full_exit_123", "status": "FILLED", "side": "SELL", "filled_qty": "20"}
+        broker.wait_for_order_status.return_value = {
+            "id": "full_exit_123",
+            "status": "FILLED",
+            "side": "SELL",
+            "filled_qty": "20",
+            "filled_avg_price": "100.0",
+        }
 
         main()
         

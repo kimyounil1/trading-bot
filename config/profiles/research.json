@@ -1,0 +1,9 @@
+{
+  "profile": "research",
+  "description": "Offline/research overlays — no live execute assumptions.",
+  "trading_environment": "research",
+  "live_safety_enabled": false,
+  "live_readiness_passed": false,
+  "llm_advisory_only": true,
+  "rank_ai_buy_gate_enabled": false
+}

@@ -127,13 +127,6 @@ class PreQlibReadinessTest(unittest.TestCase):
         ), patch(
             "src.main.get_broker_adapter"
         ) as broker_adapter_mock, patch(
-            "src.main.get_account_summary",
-            return_value={"cash": 1000.0, "positions_count": 0, "portfolio_value": 1000.0},
-        ), patch(
-            "src.main.get_open_symbols", return_value=[]
-        ), patch(
-            "src.main.get_positions_summary", return_value=[]
-        ), patch(
             "src.main.load_price_data_batch", return_value={"AAPL": frame}
         ), patch(
             "src.main.get_today_buy_notional", return_value=0.0
@@ -146,6 +139,15 @@ class PreQlibReadinessTest(unittest.TestCase):
         ) as notify_error_mock, patch(
             "src.main.notify_run_summary"
         ) as notify_summary_mock:
+            broker_adapter_mock.return_value.get_account.return_value = {
+                "cash": 1000.0,
+                "positions_count": 0,
+                "portfolio_value": 1000.0,
+                "last_equity": 1000.0,
+                "buying_power": 1000.0,
+            }
+            broker_adapter_mock.return_value.get_positions.return_value = []
+            broker_adapter_mock.return_value.get_open_symbols.return_value = set()
             broker_adapter_mock.return_value.submit_buy_notional = MagicMock()
             main()
 

@@ -15,6 +15,27 @@ class AllocationType(Enum):
     RISK_PARITY = "risk_parity"
 
 
+class TradeAction(Enum):
+    BUY = "BUY"
+    SELL = "SELL"
+    HOLD = "HOLD"
+    CLOSE = "CLOSE"
+    NOISE = "NOISE"
+
+
+@dataclass(frozen=True)
+class TradeSignal:
+    action: TradeAction
+    symbol: str
+    market: str
+    target_weight_pct: Optional[float]
+    entry_price: Optional[float]
+    stop_price: Optional[float]
+    confidence: float
+    reasoning: str
+    is_new_position: bool
+
+
 @dataclass
 class StrategyProfile:
     """개별 전략의 기술적 지표 및 필터 설정"""
@@ -141,7 +162,20 @@ class StrategySettings(StrategyProfile):
     rank_ai_buy_gate_top_bucket_pct: float = 0.15
     rank_ai_buy_gate_min_score_quantile: float = 0.85
     rank_ai_buy_gate_fail_closed: bool = True
-    broker_provider: str = "alpaca"  # alpaca | toss (future)
+    broker_provider: str = "alpaca"  # alpaca | paper (fake) | toss (future)
+    live_safety_enabled: bool = False
+    live_safety_kill_switch_path: str = "data/runtime/KILL_SWITCH"
+    live_safety_state_path: str = "data/runtime/live_safety_state.json"
+    live_safety_max_daily_loss_pct: float = 0.0
+    live_safety_max_daily_loss_amount: float = 0.0
+    live_safety_max_position_notional: float = 0.0
+    live_safety_max_total_exposure: float = 0.0
+    live_safety_max_orders_per_day: int = 0
+    live_safety_max_consecutive_order_failures: int = 0
+    trading_environment: str = "paper"
+    live_readiness_passed: bool = False
+    llm_precision_min_n: int = 5
+    exit_model_gate_ready: bool = False
     extended_hours_enabled: bool = True
     enabled_trading_sessions: List[str] = field(
         default_factory=lambda: [
@@ -331,8 +365,25 @@ def validate_settings(settings: StrategySettings) -> StrategySettings:
     if settings.rebalance_threshold_pct < 0:
         raise ValueError("rebalance_threshold_pct must be non-negative")
     settings.broker_provider = str(settings.broker_provider).strip().lower()
-    if settings.broker_provider not in {"alpaca", "toss"}:
-        raise ValueError("broker_provider must be 'alpaca' or 'toss'")
+    if settings.broker_provider not in {"alpaca", "toss", "paper", "fake"}:
+        raise ValueError("broker_provider must be 'alpaca', 'paper', or 'toss'")
+    if settings.live_safety_max_daily_loss_pct < 0 or settings.live_safety_max_daily_loss_pct > 1:
+        raise ValueError("live_safety_max_daily_loss_pct must be between 0 and 1")
+    if settings.live_safety_max_daily_loss_amount < 0:
+        raise ValueError("live_safety_max_daily_loss_amount must be non-negative")
+    if settings.live_safety_max_position_notional < 0:
+        raise ValueError("live_safety_max_position_notional must be non-negative")
+    if settings.live_safety_max_total_exposure < 0:
+        raise ValueError("live_safety_max_total_exposure must be non-negative")
+    if settings.live_safety_max_orders_per_day < 0:
+        raise ValueError("live_safety_max_orders_per_day must be non-negative")
+    if settings.live_safety_max_consecutive_order_failures < 0:
+        raise ValueError("live_safety_max_consecutive_order_failures must be non-negative")
+    env = str(settings.trading_environment).strip().lower()
+    if env not in {"paper", "live", "research"}:
+        raise ValueError("trading_environment must be 'paper', 'live', or 'research'")
+    if settings.llm_precision_min_n < 0:
+        raise ValueError("llm_precision_min_n must be non-negative")
     if not settings.enabled_trading_sessions:
         raise ValueError("enabled_trading_sessions must not be empty")
     normalized_sessions = {

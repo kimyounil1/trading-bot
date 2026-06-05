@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "trading-bot strategy settings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tickers", "broker_provider"],
+  "properties": {
+    "trading_environment": {
+      "type": "string",
+      "enum": ["paper", "live", "research"]
+    },
+    "broker_provider": {
+      "type": "string",
+      "enum": ["alpaca", "paper", "fake", "toss"]
+    },
+    "rank_ai_buy_gate_enabled": { "type": "boolean" },
+    "live_readiness_passed": { "type": "boolean" },
+    "llm_advisory_only": { "type": "boolean" },
+    "llm_precision_min_n": { "type": "integer", "minimum": 0 },
+    "ai_exit_enabled": { "type": "boolean" },
+    "exit_model_gate_ready": { "type": "boolean" },
+    "live_safety_enabled": { "type": "boolean" },
+    "live_safety_max_daily_loss_pct": { "type": "number", "minimum": 0, "maximum": 1 },
+    "live_safety_max_daily_loss_amount": { "type": "number", "minimum": 0 },
+    "tickers": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    }
+  }
+}

@@ -154,14 +154,15 @@ class TestExecutionResilience(unittest.TestCase):
         self.assertFalse(fresh)
         self.assertEqual(reason, "price data has no valid dates")
 
-    @patch("src.main.get_account_summary")
+    @patch("src.main.get_broker_adapter")
     @patch("src.main.notify_error")
-    def test_alpaca_timeout_failure_stops_execution(self, mock_notify, mock_get_account):
+    def test_alpaca_timeout_failure_stops_execution(self, mock_notify, mock_get_broker):
         from src.main import main
         from argparse import Namespace
         
-        # Mock ConnectionError on account summary retrieval
-        mock_get_account.side_effect = ConnectionError("Alpaca Connection Timeout")
+        broker = MagicMock()
+        broker.get_account.side_effect = ConnectionError("Alpaca Connection Timeout")
+        mock_get_broker.return_value = broker
         
         # Set execute mode to True so it fails safe instead of fallback
         with patch("src.main.parse_args") as mock_args, \
@@ -170,10 +171,11 @@ class TestExecutionResilience(unittest.TestCase):
             mock_args.return_value = Namespace(execute=True)
             mock_settings.return_value = SimpleNamespace(
                 tickers=["AAPL"],
+                broker_provider="alpaca",
                 dynamic_universe_enabled=False,
                 sector_rotation_enabled=False,
                 use_ai_score=False,
-                market_regime_filter_enabled=False
+                market_regime_filter_enabled=False,
             )
             
             # Should raise ConnectionError

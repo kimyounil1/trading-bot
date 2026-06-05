@@ -1,0 +1,18 @@
+{
+  "profile": "live_safe",
+  "description": "Live execution profile — requires deploy guard + readiness report GO.",
+  "trading_environment": "live",
+  "live_safety_enabled": true,
+  "live_safety_max_daily_loss_pct": 0.03,
+  "live_safety_max_daily_loss_amount": 500.0,
+  "live_safety_max_position_notional": 5000.0,
+  "live_safety_max_total_exposure": 0.95,
+  "live_safety_max_orders_per_day": 20,
+  "live_safety_max_consecutive_order_failures": 3,
+  "live_readiness_passed": false,
+  "rank_ai_buy_gate_enabled": false,
+  "llm_advisory_only": true,
+  "llm_precision_min_n": 5,
+  "exit_model_gate_ready": false,
+  "ai_exit_enabled": false
+}

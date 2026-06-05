@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from src.broker_adapter import AlpacaBrokerAdapter, OrderSubmission, get_broker_adapter
+from src.brokers.paper import PaperBrokerAdapter
 from src.market_clock import MarketClock
 from src.trading_session import TradingSession
 
@@ -10,6 +11,16 @@ class BrokerAdapterTest(unittest.TestCase):
     def test_get_broker_adapter_alpaca(self) -> None:
         adapter = get_broker_adapter("alpaca")
         self.assertEqual(adapter.provider, "alpaca")
+
+    def test_get_broker_adapter_paper(self) -> None:
+        adapter = get_broker_adapter("paper")
+        self.assertIsInstance(adapter, PaperBrokerAdapter)
+
+    @patch("src.alpaca_client.get_account_summary")
+    def test_alpaca_get_account_delegates(self, mock_account) -> None:
+        mock_account.return_value = {"cash": 1.0, "portfolio_value": 2.0}
+        adapter = AlpacaBrokerAdapter()
+        self.assertEqual(adapter.get_account()["portfolio_value"], 2.0)
 
     def test_get_broker_adapter_toss_stub(self) -> None:
         adapter = get_broker_adapter("toss")

@@ -230,6 +230,21 @@ def get_order_summary(order_id: str) -> dict:
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
     retry=retry_if_exception_type((RequestException, ConnectionError)),
+    reraise=True,
+)
+def cancel_order_by_id(order_id: str) -> dict:
+    client = get_trading_client()
+    try:
+        order = client.cancel_order_by_id(order_id)
+    except RequestException as exc:
+        raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
+    return serialize_alpaca_order(order)
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RequestException, ConnectionError)),
     reraise=True
 )
 def submit_market_buy_notional_order(

@@ -122,6 +122,16 @@ def log_execution_audit(
     quantity: float = None,
     filled_qty: float = None,
     filled_avg_price: float = None,
+    decision_id: str = "",
+    run_id: str = "",
+    broker: str = "",
+    environment: str = "",
+    config_hash: str = "",
+    model_version: str = "",
+    rank_model_version: str = "",
+    risk_block_reason: str = "",
+    order_intent_id: str = "",
+    broker_order_id: str = "",
 ) -> None:
     log_file = Path(EXECUTION_AUDIT_LOG_PATH)
     log_file.parent.mkdir(parents=True, exist_ok=True)
@@ -154,6 +164,16 @@ def log_execution_audit(
             "quantity": _round_or_none(quantity, 4),
             "filled_qty": _round_or_none(filled_qty, 4),
             "filled_avg_price": _round_or_none(filled_avg_price, 4),
+            "decision_id": decision_id or None,
+            "run_id": run_id or None,
+            "broker": broker or None,
+            "environment": environment or None,
+            "config_hash": config_hash or None,
+            "model_version": model_version or None,
+            "rank_model_version": rank_model_version or None,
+            "risk_block_reason": risk_block_reason or None,
+            "order_intent_id": order_intent_id or None,
+            "broker_order_id": broker_order_id or (order_id or None),
         }
     )
 

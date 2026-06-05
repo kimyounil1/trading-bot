@@ -133,9 +133,12 @@ bash scripts/run_rank_ai_gate_report.sh
 bash scripts/run_crowding_gate_reassessment.sh
 bash scripts/run_regime_weakness_report.sh
 bash scripts/run_model_quality_report.sh
+bash scripts/run_live_readiness.sh   # live GO/NO_GO (Phase 34)
 ```
 
-요약 대시보드: `bash scripts/run_cms.sh` · paper ops: `logs/paper_ops/latest_summary.json`
+Live execute (double confirm): `TRADING_ENV=live CONFIRM_LIVE_TRADING=YES_I_UNDERSTAND PYTHONPATH=. .venv/bin/python src/main.py --execute`
+
+요약 대시보드: `bash scripts/run_cms.sh` · paper ops: `logs/paper_ops/latest_summary.json` · live readiness: `logs/live_readiness/latest_summary.json`
 
 ### 테스트 · CI
 ```bash

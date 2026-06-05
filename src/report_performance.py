@@ -11,7 +11,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.alpaca_client import get_account_summary, get_positions_summary
+from src.brokers import broker_account_snapshot
+from src.settings import load_settings
 from src.config import ORDER_LOG_PATH, SIGNAL_LOG_PATH
 
 
@@ -312,9 +313,9 @@ def run_weekly_slippage_report(
 
 
 def report_account_performance() -> None:
-    """Alpaca paper 계좌의 현재 실적 요약."""
-    account = get_account_summary()
-    positions = get_positions_summary()
+    """Broker paper 계좌의 현재 실적 요약."""
+    settings = load_settings()
+    account, positions = broker_account_snapshot(settings.broker_provider)
 
     print("\n=== Account Performance Summary ===")
     print(f"Portfolio Value: ${account['portfolio_value']:.2f}")

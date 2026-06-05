@@ -4,8 +4,8 @@ import json
 import pandas as pd
 
 from src.config import LOG_PATH, ORDER_LOG_PATH
+from src.brokers import broker_account_snapshot
 from src.settings import load_settings
-from src.alpaca_client import get_account_summary, get_positions_summary
 from src.market_clock import get_market_clock
 
 
@@ -44,7 +44,8 @@ def print_market() -> None:
 def print_account() -> None:
     print_section("Account")
     try:
-        account = get_account_summary()
+        settings = load_settings()
+        account, _ = broker_account_snapshot(settings.broker_provider)
     except Exception as exc:
         print(f"Unavailable: {exc}")
         return
@@ -60,7 +61,7 @@ def print_account() -> None:
 def print_positions() -> None:
     print_section("Positions")
     try:
-        positions = get_positions_summary()
+        _, positions = broker_account_snapshot(settings.broker_provider)
     except Exception as exc:
         print(f"Unavailable: {exc}")
         return

@@ -1,0 +1,7 @@
+{
+  "profile": "paper",
+  "description": "Default paper trading: dry-run/bootstrap, rank gate experiment allowed.",
+  "trading_environment": "paper",
+  "live_safety_enabled": false,
+  "live_readiness_passed": false
+}
