@@ -42,11 +42,22 @@ from src.cms_helpers import (
     order_is_filled as _order_is_filled,
     orders_to_frame as _orders_to_frame,
     partition_alpaca_orders,
-    fetch_broker_order_book,
     pct,
     sort_buy_candidates,
 )
 from src.cms_reconcile import reconcile_cms_execute_with_alpaca
+
+
+def _fetch_broker_order_book(broker, *, closed_limit: int = 50):
+    """Open + closed orders via adapter, with alpaca_client fallback."""
+    get_open = getattr(broker, "get_open_orders", None)
+    get_closed = getattr(broker, "get_recent_closed_orders", None)
+    if callable(get_open) and callable(get_closed):
+        return get_open(), get_closed(limit=int(closed_limit))
+
+    from src.alpaca_client import get_open_orders, get_recent_closed_orders
+
+    return get_open_orders(), get_recent_closed_orders(limit=int(closed_limit))
 
 
 def load_trading_clock(settings=None):
@@ -92,7 +103,7 @@ def render_alpaca_order_board(*, closed_limit: int = 50, settings=None) -> None:
     )
 
     try:
-        open_orders, closed_orders = fetch_broker_order_book(
+        open_orders, closed_orders = _fetch_broker_order_book(
             broker,
             closed_limit=int(closed_limit),
         )
@@ -1951,7 +1962,7 @@ def render_paper_execution() -> None:
             st.dataframe(result_df, width="stretch")
 
             try:
-                open_for_reconcile, closed_for_reconcile = fetch_broker_order_book(
+                open_for_reconcile, closed_for_reconcile = _fetch_broker_order_book(
                     broker,
                     closed_limit=100,
                 )
