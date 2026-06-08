@@ -426,7 +426,7 @@
 
 ### C. Definition of Done
 
-8. [ ] **Phase 37 Codex pass** — `RUN_ID=phase37_main_split bash scripts/run_pass_complete.sh`
+8. [x] **Phase 37 Codex pass** — `RUN_ID=phase37_main_split bash scripts/run_pass_complete.sh`
 
 **하지 말 것**
 
