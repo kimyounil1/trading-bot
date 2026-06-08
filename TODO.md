@@ -129,7 +129,7 @@
 3. [x] **Bootstrap wiring** — data health + live readiness in `run_paper_ops_bootstrap.sh`
 4. [x] **`load_settings` profile merge** — environment overlay 자동 적용
 5. [ ] **Audit v2 full migration** — all SKIP/SELL paths via `_audit_log`
-6. [ ] **Codex pass** — `RUN_ID=phase34_followup bash scripts/run_pass_complete.sh`
+6. [x] **Codex pass** — `RUN_ID=phase34_followup bash scripts/run_pass_complete.sh`
 7. [ ] **Alpaca order board** — CMS extended-hours paths via adapter (optional)
 
 ---

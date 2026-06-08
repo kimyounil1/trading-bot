@@ -1,0 +1,8 @@
+config/execution_lock.json
+logs/crowding_paper/go_no_go_checklist.json
+logs/crowding_paper/reassessment.json
+logs/llm_advisory/latest_summary.json
+logs/paper_validation/history.jsonl
+logs/paper_validation/latest_summary.json
+logs/paper_validation/trend_summary.json
+tests/test_execution_resilience.py

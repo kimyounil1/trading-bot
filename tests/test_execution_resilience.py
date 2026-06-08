@@ -3,6 +3,7 @@ from unittest.mock import patch, MagicMock
 from types import SimpleNamespace
 from src.alpaca_client import submit_market_buy_notional_order, close_position_by_symbol
 from src.llm_analyst import evaluate_ticker_consensus
+from src.settings import StrategySettings
 import json
 from pathlib import Path
 
@@ -169,7 +170,7 @@ class TestExecutionResilience(unittest.TestCase):
              patch("src.main.load_settings") as mock_settings:
             
             mock_args.return_value = Namespace(execute=True)
-            mock_settings.return_value = SimpleNamespace(
+            mock_settings.return_value = StrategySettings(
                 tickers=["AAPL"],
                 broker_provider="alpaca",
                 dynamic_universe_enabled=False,

@@ -1,0 +1,1 @@
+No actionable bugs were identified in the changed test, configuration, or generated report artifacts. The only executable-code-facing change updates the test fixture to use the real StrategySettings type, which is consistent with main's environment profile handling.
