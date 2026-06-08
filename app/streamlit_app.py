@@ -42,6 +42,7 @@ from src.cms_helpers import (
     order_is_filled as _order_is_filled,
     orders_to_frame as _orders_to_frame,
     partition_alpaca_orders,
+    fetch_broker_order_book,
     pct,
     sort_buy_candidates,
 )
@@ -91,8 +92,10 @@ def render_alpaca_order_board(*, closed_limit: int = 50, settings=None) -> None:
     )
 
     try:
-        open_orders = broker.get_open_orders()
-        closed_orders = broker.get_recent_closed_orders(limit=int(closed_limit))
+        open_orders, closed_orders = fetch_broker_order_book(
+            broker,
+            closed_limit=int(closed_limit),
+        )
     except Exception as exc:
         st.error(f"{provider_label} 주문 조회 실패: {exc}")
         return
@@ -1948,10 +1951,14 @@ def render_paper_execution() -> None:
             st.dataframe(result_df, width="stretch")
 
             try:
+                open_for_reconcile, closed_for_reconcile = fetch_broker_order_book(
+                    broker,
+                    closed_limit=100,
+                )
                 reconcile_alerts = reconcile_cms_execute_with_alpaca(
                     result_df,
-                    broker.get_open_orders(),
-                    broker.get_recent_closed_orders(limit=100),
+                    open_for_reconcile,
+                    closed_for_reconcile,
                 )
                 for alert in reconcile_alerts:
                     st.warning(alert["message"])

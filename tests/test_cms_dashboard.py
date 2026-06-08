@@ -14,6 +14,7 @@ from src.cms_helpers import (
     cache_age_minutes,
     classify_buy_candidates,
     count_filled_today,
+    fetch_broker_order_book,
     is_executable_buy_row,
     money,
     order_display_columns,
@@ -126,6 +127,24 @@ class CmsHelpersTest(unittest.TestCase):
         frame = orders_to_frame(orders, order_display_columns()["open"])
         self.assertEqual(frame.loc[0, "symbol"], "AMT")
         self.assertEqual(len(frame.columns), len(order_display_columns()["open"]))
+
+    def test_fetch_broker_order_book_falls_back_without_adapter_methods(self) -> None:
+        class _LegacyBroker:
+            provider = "alpaca"
+
+        open_orders = [{"id": "1", "status": "NEW"}]
+        closed_orders = [{"id": "2", "status": "FILLED"}]
+        with patch(
+            "src.alpaca_client.get_open_orders",
+            return_value=open_orders,
+        ), patch(
+            "src.alpaca_client.get_recent_closed_orders",
+            return_value=closed_orders,
+        ):
+            opened, closed = fetch_broker_order_book(_LegacyBroker(), closed_limit=25)
+
+        self.assertEqual(opened, open_orders)
+        self.assertEqual(closed, closed_orders)
 
     def test_partition_alpaca_orders(self) -> None:
         open_orders = [

@@ -20,6 +20,7 @@ __all__ = [
     "orders_to_frame",
     "count_filled_today",
     "partition_alpaca_orders",
+    "fetch_broker_order_book",
     "cache_age_minutes",
     "classify_buy_candidates",
     "reconcile_cms_execute_with_alpaca",
@@ -117,6 +118,18 @@ def count_filled_today(orders: list[dict], *, now: pd.Timestamp | None = None) -
         if filled_date.date() == today_utc:
             count += 1
     return count
+
+
+def fetch_broker_order_book(broker: object, *, closed_limit: int = 50) -> tuple[list[dict], list[dict]]:
+    """Open + recently closed orders via adapter, with alpaca_client fallback."""
+    get_open = getattr(broker, "get_open_orders", None)
+    get_closed = getattr(broker, "get_recent_closed_orders", None)
+    if callable(get_open) and callable(get_closed):
+        return get_open(), get_closed(limit=int(closed_limit))
+
+    from src.alpaca_client import get_open_orders, get_recent_closed_orders
+
+    return get_open_orders(), get_recent_closed_orders(limit=int(closed_limit))
 
 
 def partition_alpaca_orders(
