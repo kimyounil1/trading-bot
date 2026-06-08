@@ -41,6 +41,8 @@ from src.position_dust import (
     count_meaningful_positions,
     dust_position_min_usd,
     effective_position,
+    meaningful_gross_exposure,
+    meaningful_open_symbols,
 )
 from src.position_sizing import cap_single_order_amount, conviction_adjustments
 from src.rank_ai_gate import apply_rank_ai_buy_gate, build_rank_ai_gate_scores
@@ -350,7 +352,12 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
         account = _offline_account_summary()
         positions = []
 
-    open_symbols = {str(position["symbol"]).upper() for position in positions}
+    dust_min_usd = dust_position_min_usd(settings)
+    meaningful_positions_count = count_meaningful_positions(
+        positions, min_usd=dust_min_usd
+    )
+
+    open_symbols = meaningful_open_symbols(positions, min_usd=dust_min_usd)
     positions_by_symbol = {
         str(position["symbol"]).upper(): position for position in positions
     }
@@ -436,14 +443,11 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
         except Exception as exc:
             exit_rows.append({"ticker": ticker, "error": str(exc)})
 
-    dust_min_usd = dust_position_min_usd(settings)
-    meaningful_positions_count = count_meaningful_positions(
+    cash = float(account["cash"])
+    positions_count = meaningful_positions_count
+    current_gross_exposure = meaningful_gross_exposure(
         positions, min_usd=dust_min_usd
     )
-
-    cash = float(account["cash"])
-    positions_count = int(account["positions_count"])
-    current_gross_exposure = sum(float(position["market_value"]) for position in positions)
     dry_run_orders_count = 0
     simulated_daily_notional = get_today_buy_notional()
     recent_buy_symbols = get_recent_buy_symbols(
@@ -664,7 +668,7 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
         "next_close": clock.next_close,
         "cash": account["cash"],
         "portfolio_value": account["portfolio_value"],
-        "positions_count": account["positions_count"],
+        "positions_count": meaningful_positions_count,
         "watchlist_size": len(watchlist),
         "tickers": watchlist,
         "max_orders_per_run": settings.max_orders_per_run,

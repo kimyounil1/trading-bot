@@ -45,3 +45,28 @@ def count_meaningful_positions(
     min_usd: float = 5.0,
 ) -> int:
     return sum(1 for position in positions if not is_dust_position(position, min_usd=min_usd))
+
+
+def meaningful_open_symbols(
+    positions: list[dict[str, Any]],
+    *,
+    min_usd: float = 5.0,
+) -> set[str]:
+    """Open symbols excluding dust — for buy guards and correlation checks."""
+    return {
+        str(position["symbol"]).upper()
+        for position in positions
+        if not is_dust_position(position, min_usd=min_usd)
+    }
+
+
+def meaningful_gross_exposure(
+    positions: list[dict[str, Any]],
+    *,
+    min_usd: float = 5.0,
+) -> float:
+    return sum(
+        float(position.get("market_value", 0.0))
+        for position in positions
+        if not is_dust_position(position, min_usd=min_usd)
+    )

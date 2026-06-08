@@ -69,6 +69,10 @@ fi
 echo "=== [8/9] Extended-hours limit fill report ==="
 .venv/bin/python -m src.extended_hours_fill_report || echo "WARN: extended-hours fill report skipped (Alpaca unavailable)"
 
+echo "=== [8b/9] Data health + live readiness ==="
+bash scripts/run_data_health_check.sh || echo "WARN: data health check skipped"
+bash scripts/run_live_readiness.sh || echo "WARN: live readiness skipped"
+
 echo "=== [9/9] Paper ops summary ==="
 .venv/bin/python -m src.paper_ops_summary
 

@@ -122,6 +122,18 @@
 
 ---
 
+## Phase 35 — Follow-up (병렬)
+
+1. [x] **Dust guard parity** — `meaningful_open_symbols` / cache `positions_count` dust 제외
+2. [x] **FakeBroker order-path tests** — `tests/test_broker_order_path.py`
+3. [x] **Bootstrap wiring** — data health + live readiness in `run_paper_ops_bootstrap.sh`
+4. [x] **`load_settings` profile merge** — environment overlay 자동 적용
+5. [ ] **Audit v2 full migration** — all SKIP/SELL paths via `_audit_log`
+6. [ ] **Codex pass** — `RUN_ID=phase34_followup bash scripts/run_pass_complete.sh`
+7. [ ] **Alpaca order board** — CMS extended-hours paths via adapter (optional)
+
+---
+
 ## Phase 32 — shipped (요약)
 
 코드·테스트·리포트 경로는 반영됨. 상세 실험 수치는 `logs/model_quality/`, `logs/ml/` 참고.

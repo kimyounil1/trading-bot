@@ -55,6 +55,8 @@ from src.position_dust import (
     dust_position_min_usd,
     effective_position,
     is_dust_position,
+    meaningful_gross_exposure,
+    meaningful_open_symbols,
 )
 from src.position_sizing import (
     cap_single_order_amount,
@@ -590,7 +592,10 @@ def main() -> None:
     meaningful_positions_count = count_meaningful_positions(
         positions, min_usd=dust_min_usd
     )
-    current_gross_exposure = sum(float(position["market_value"]) for position in positions)
+    guard_open_symbols = meaningful_open_symbols(positions, min_usd=dust_min_usd)
+    current_gross_exposure = meaningful_gross_exposure(
+        positions, min_usd=dust_min_usd
+    )
     orders_submitted = 0
     submitted_notional_today = get_today_buy_notional()
     recent_buy_symbols = get_recent_buy_symbols(
@@ -717,6 +722,7 @@ def main() -> None:
                         print(f"  DRY_RUN: would close dust position {ticker}")
                     positions_by_symbol.pop(ticker, None)
                     open_symbols.discard(ticker)
+                    guard_open_symbols.discard(ticker)
                     meaningful_positions_count = max(
                         0, meaningful_positions_count - 1
                     )
@@ -1211,7 +1217,7 @@ def main() -> None:
                 risk_reason=risk_reason,
                 target_amount=target_amount,
                 ai_score=ai_score,
-                open_symbols=open_symbols,
+                open_symbols=guard_open_symbols,
                 ticker_data=ticker_data,
                 vix_df=vix_df,
                 macro_risk_active=macro_risk_active,
@@ -1623,7 +1629,8 @@ def main() -> None:
 
             filled_notional = _filled_notional(checked_order, order_amount)
             if filled_notional > 0:
-                if ticker not in open_symbols:
+                if ticker not in guard_open_symbols:
+                    guard_open_symbols.add(ticker)
                     open_symbols.add(ticker)
                     positions_count += 1
                 cash -= filled_notional

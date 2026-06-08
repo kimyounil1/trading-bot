@@ -430,7 +430,18 @@ def load_settings(path: Union[str, Path] = CONFIG_PATH) -> StrategySettings:
         merged.update(payload)
     else:
         merged["tickers"] = resolve_scan_tickers(list(merged["tickers"]))
-    return validate_settings(StrategySettings(**merged))
+    settings = validate_settings(StrategySettings(**merged))
+    try:
+        from src.trading_config_guard import (
+            apply_environment_profile,
+            resolve_trading_environment,
+        )
+
+        env = resolve_trading_environment(settings)
+        settings = apply_environment_profile(settings, env)
+    except ValueError:
+        pass
+    return settings
 
 
 def save_settings(settings: StrategySettings, path: Union[str, Path] = CONFIG_PATH) -> None:
