@@ -26,6 +26,11 @@ class AlpacaBrokerAdapter(BrokerAdapter):
 
         return get_open_orders(limit=limit)
 
+    def get_recent_closed_orders(self, *, limit: int = 50) -> list[dict[str, Any]]:
+        from src.alpaca_client import get_recent_closed_orders
+
+        return get_recent_closed_orders(limit=limit)
+
     def get_order_status(self, order_id: str) -> dict[str, Any]:
         from src.alpaca_client import get_order_summary
 

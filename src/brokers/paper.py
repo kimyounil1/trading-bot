@@ -105,6 +105,15 @@ class PaperBrokerAdapter(BrokerAdapter):
         ]
         return rows[:limit]
 
+    def get_recent_closed_orders(self, *, limit: int = 50) -> list[dict[str, Any]]:
+        open_statuses = {"NEW", "ACCEPTED", "PENDING_NEW", "PARTIALLY_FILLED"}
+        rows = [
+            o.to_dict()
+            for o in self.orders.values()
+            if o.status.upper() not in open_statuses
+        ]
+        return list(reversed(rows[-limit:]))
+
     def get_order_status(self, order_id: str) -> dict[str, Any]:
         order = self.orders[order_id]
         summary = order.to_dict()

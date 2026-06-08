@@ -31,6 +31,9 @@ class TossBrokerAdapter(BrokerAdapter):
     def get_open_orders(self, *, limit: int = 100) -> list[dict[str, Any]]:
         self._stub()
 
+    def get_recent_closed_orders(self, *, limit: int = 50) -> list[dict[str, Any]]:
+        self._stub()
+
     def get_order_status(self, order_id: str) -> dict[str, Any]:
         self._stub()
 

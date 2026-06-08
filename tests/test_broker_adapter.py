@@ -22,6 +22,14 @@ class BrokerAdapterTest(unittest.TestCase):
         adapter = AlpacaBrokerAdapter()
         self.assertEqual(adapter.get_account()["portfolio_value"], 2.0)
 
+    @patch("src.alpaca_client.get_recent_closed_orders")
+    def test_alpaca_get_recent_closed_orders_delegates(self, mock_closed) -> None:
+        mock_closed.return_value = [{"id": "ord-1", "status": "FILLED"}]
+        adapter = AlpacaBrokerAdapter()
+        orders = adapter.get_recent_closed_orders(limit=25)
+        mock_closed.assert_called_once_with(limit=25)
+        self.assertEqual(orders[0]["id"], "ord-1")
+
     def test_get_broker_adapter_toss_stub(self) -> None:
         adapter = get_broker_adapter("toss")
         self.assertEqual(adapter.provider, "toss")

@@ -242,6 +242,7 @@ class CmsDashboardIntegrationTest(unittest.TestCase):
             ]
         )
         mock_broker = MagicMock()
+        mock_broker.provider = "alpaca"
         mock_broker.submit_sell_qty.return_value = OrderSubmission(
             order_id="sell-1",
             status="ACCEPTED",
@@ -254,6 +255,24 @@ class CmsDashboardIntegrationTest(unittest.TestCase):
             side="BUY",
             order_type="LIMIT",
         )
+        mock_broker.wait_for_order_status.side_effect = [
+            {
+                "id": "sell-1",
+                "status": "OrderStatus.FILLED",
+                "side": "SELL",
+                "type": "LIMIT",
+                "filled_qty": "2",
+                "filled_avg_price": "900",
+            },
+            {
+                "id": "buy-1",
+                "status": "OrderStatus.NEW",
+                "side": "BUY",
+                "type": "LIMIT",
+                "filled_qty": "0",
+                "filled_avg_price": "0",
+            },
+        ]
 
         with patch.object(
             self.cms,
@@ -261,36 +280,18 @@ class CmsDashboardIntegrationTest(unittest.TestCase):
             return_value=mock_broker,
         ), patch.object(
             self.cms,
-            "get_positions_summary",
-            return_value=[
-                {
-                    "symbol": "NVDA",
-                    "qty": 2.0,
-                    "current_price": 900.0,
-                    "market_value": 1800.0,
-                }
-            ],
-        ), patch.object(
-            self.cms,
-            "wait_for_order_status",
-            side_effect=[
-                {
-                    "id": "sell-1",
-                    "status": "OrderStatus.FILLED",
-                    "side": "SELL",
-                    "type": "LIMIT",
-                    "filled_qty": "2",
-                    "filled_avg_price": "900",
-                },
-                {
-                    "id": "buy-1",
-                    "status": "OrderStatus.NEW",
-                    "side": "BUY",
-                    "type": "LIMIT",
-                    "filled_qty": "0",
-                    "filled_avg_price": "0",
-                },
-            ],
+            "load_broker_snapshot",
+            return_value=(
+                {"cash": 10000.0, "portfolio_value": 20000.0},
+                [
+                    {
+                        "symbol": "NVDA",
+                        "qty": 2.0,
+                        "current_price": 900.0,
+                        "market_value": 1800.0,
+                    }
+                ],
+            ),
         ), patch.object(self.cms, "log_order"), patch.object(self.cms, "log_order_status"):
             result = self.cms.execute_cms_paper_actions(exit_df, buy_df, settings, clock)
 
@@ -360,10 +361,19 @@ class CmsDashboardIntegrationTest(unittest.TestCase):
                 "id": "def",
             }
         ]
-        with patch.object(self.cms, "get_open_orders", return_value=open_orders), patch.object(
+        mock_broker = MagicMock()
+        mock_broker.provider = "alpaca"
+        mock_broker.get_open_orders.return_value = open_orders
+        mock_broker.get_recent_closed_orders.return_value = closed_orders
+        settings = SimpleNamespace(broker_provider="alpaca")
+        with patch.object(
             self.cms,
-            "get_recent_closed_orders",
-            return_value=closed_orders,
+            "get_broker_adapter",
+            return_value=mock_broker,
+        ), patch.object(
+            self.cms,
+            "load_settings",
+            return_value=settings,
         ), patch.object(self.cms, "read_csv_if_exists", return_value=pd.DataFrame()):
             self.cms.render_alpaca_order_board(closed_limit=20)
 

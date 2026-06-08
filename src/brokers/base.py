@@ -38,6 +38,10 @@ class BrokerAdapter(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def get_recent_closed_orders(self, *, limit: int = 50) -> list[dict[str, Any]]:
+        raise NotImplementedError
+
+    @abstractmethod
     def get_order_status(self, order_id: str) -> dict[str, Any]:
         raise NotImplementedError
 

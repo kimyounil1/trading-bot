@@ -12,12 +12,6 @@ import streamlit as st
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
-from src.alpaca_client import (
-    get_order_summary,
-    get_open_orders,
-    get_recent_closed_orders,
-    wait_for_order_status,
-)
 from src.broker_adapter import get_broker_adapter
 from src.brokers import broker_account_snapshot
 from src.execution_audit_io import read_execution_audit_csv
@@ -74,25 +68,33 @@ def render_trading_clock_banner(clock: MarketClock) -> None:
     )
 
 
-def render_alpaca_order_board(*, closed_limit: int = 50) -> None:
-    st.subheader("Alpaca 주문 현황")
+def render_alpaca_order_board(*, closed_limit: int = 50, settings=None) -> None:
+    settings = settings or load_settings()
+    broker = get_broker_adapter(settings.broker_provider)
+    provider_label = str(settings.broker_provider).upper()
+
+    st.subheader(f"{provider_label} 주문 현황")
 
     col_refresh, col_limit = st.columns([1, 3])
-    col_refresh.button("Alpaca 주문 새로고침", type="primary", key="refresh_alpaca_orders")
+    col_refresh.button(
+        f"{provider_label} 주문 새로고침",
+        type="primary",
+        key="refresh_broker_orders",
+    )
     closed_limit = col_limit.number_input(
         "최근 종료 주문 조회 수",
         min_value=10,
         max_value=200,
         value=int(closed_limit),
         step=10,
-        key="alpaca_closed_order_limit",
+        key="broker_closed_order_limit",
     )
 
     try:
-        open_orders = get_open_orders()
-        closed_orders = get_recent_closed_orders(limit=int(closed_limit))
+        open_orders = broker.get_open_orders()
+        closed_orders = broker.get_recent_closed_orders(limit=int(closed_limit))
     except Exception as exc:
-        st.error(f"Alpaca 주문 조회 실패: {exc}")
+        st.error(f"{provider_label} 주문 조회 실패: {exc}")
         return
 
     filled_orders, closed_other, partial_open = partition_alpaca_orders(
@@ -106,7 +108,7 @@ def render_alpaca_order_board(*, closed_limit: int = 50) -> None:
     m4.metric("오늘 체결", _count_filled_today(closed_orders))
 
     st.caption(
-        "미체결은 Alpaca OPEN 주문입니다. extended/overnight 지정가는 시장가 도달 전까지 "
+        f"미체결은 {provider_label} OPEN 주문입니다. extended/overnight 지정가는 시장가 도달 전까지 "
         "대기 상태로 남을 수 있습니다."
     )
 
@@ -145,7 +147,7 @@ def render_alpaca_order_board(*, closed_limit: int = 50) -> None:
             st.write("최근 로컬 로그 30건")
             st.dataframe(recent_log, width="stretch")
             st.caption(
-                "로컬 로그는 봇/CMS가 기록한 제출 이력이고, 위 탭은 Alpaca 실시간 상태입니다."
+                f"로컬 로그는 봇/CMS가 기록한 제출 이력이고, 위 탭은 {provider_label} 실시간 상태입니다."
             )
 
 
@@ -716,13 +718,15 @@ def get_recent_order_ids(limit: int = 10) -> list[str]:
     return order_ids
 
 
-def refresh_recent_order_statuses(limit: int = 10) -> pd.DataFrame:
+def refresh_recent_order_statuses(limit: int = 10, settings=None) -> pd.DataFrame:
+    settings = settings or load_settings()
+    broker = get_broker_adapter(settings.broker_provider)
     order_ids = get_recent_order_ids(limit=limit)
     rows = []
 
     for order_id in order_ids:
         try:
-            order = get_order_summary(order_id)
+            order = broker.get_order_status(order_id)
 
             row = {
                 "order_id": order["id"],
@@ -1659,7 +1663,7 @@ def execute_cms_paper_actions(
                     reason=reason,
                 )
 
-                checked_order = wait_for_order_status(submission.order_id)
+                checked_order = broker.wait_for_order_status(submission.order_id)
 
                 log_order_status(
                     ticker=ticker,
@@ -1735,7 +1739,7 @@ def execute_cms_paper_actions(
                     reason=reason,
                 )
 
-                checked_order = wait_for_order_status(submission.order_id)
+                checked_order = broker.wait_for_order_status(submission.order_id)
 
                 log_order_status(
                     ticker=ticker,
@@ -1922,6 +1926,7 @@ def render_paper_execution() -> None:
     )
 
     if execute_clicked:
+        broker = get_broker_adapter(settings.broker_provider)
         result_df = execute_cms_paper_actions(exit_df, buy_df, settings, clock)
 
         history_dir = save_execution_run_history(
@@ -1945,13 +1950,13 @@ def render_paper_execution() -> None:
             try:
                 reconcile_alerts = reconcile_cms_execute_with_alpaca(
                     result_df,
-                    get_open_orders(),
-                    get_recent_closed_orders(limit=100),
+                    broker.get_open_orders(),
+                    broker.get_recent_closed_orders(limit=100),
                 )
                 for alert in reconcile_alerts:
                     st.warning(alert["message"])
             except ConnectionError as exc:
-                st.info(f"Alpaca 대조 알림 생략 (연결 불가): {exc}")
+                st.info(f"브로커 대조 알림 생략 (연결 불가): {exc}")
 
 def render_execution_runs() -> None:
     st.header("실행 이력")
