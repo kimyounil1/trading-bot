@@ -62,14 +62,7 @@ from src.position_sizing import (
     cap_single_order_amount,
     conviction_adjustments,
 )
-from src.portfolio_sleeves import (
-    CORE_SLEEVE_ID,
-    PortfolioSleeveAllocator,
-    sleeve_fields_for_audit,
-    sleeves_enabled,
-    trim_candidates_to_sleeve_budget,
-    validate_sleeve_open_order_budget,
-)
+from src.sleeve_runtime import init_sleeve_run_context
 from src.rank_ai_gate import apply_rank_ai_buy_gate, build_rank_ai_gate_scores
 
 # 트레일링 스탑용 최고점 기록 경로
@@ -396,47 +389,12 @@ def main() -> None:
     except Exception as exc:
         print(f"Warning: open orders unavailable for sleeve allocator: {exc}")
         open_orders_for_sleeves = []
-    sleeve_allocator = PortfolioSleeveAllocator(
+    sleeve_ctx = init_sleeve_run_context(
         settings,
+        broker_adapter=broker_adapter,
         account=account,
         positions=positions,
-        open_orders=open_orders_for_sleeves,
     )
-    sleeve_snapshot = sleeve_allocator.build_snapshot()
-    sleeve_recon_ok = True
-    sleeve_recon_reason = ""
-    if sleeves_enabled(settings):
-        sleeve_recon_ok, sleeve_recon_reason = validate_sleeve_open_order_budget(
-            sleeve_snapshot,
-            open_orders_for_sleeves,
-        )
-        sleeve_budgets = {
-            sleeve_id: round(budget.order_budget, 2)
-            for sleeve_id, budget in sleeve_snapshot.sleeves.items()
-        }
-        print(f"Portfolio sleeves enabled: order_budgets={sleeve_budgets}")
-        if not sleeve_recon_ok:
-            print(f"SLEEVE_RECONCILIATION_NO_GO: {sleeve_recon_reason}")
-
-    core_sleeve_budget_remaining = (
-        sleeve_allocator.order_budget_for(CORE_SLEEVE_ID)
-        if sleeves_enabled(settings)
-        else None
-    )
-
-    def _buy_sleeve_audit(
-        *,
-        budget_before: float | None = None,
-        budget_after: float | None = None,
-    ) -> dict:
-        if not sleeves_enabled(settings):
-            return {}
-        return sleeve_fields_for_audit(
-            sleeve_snapshot,
-            sleeve_id=CORE_SLEEVE_ID,
-            budget_before=budget_before,
-            budget_after=budget_after,
-        )
     # 다이내믹 유니버스 적용 (Phase 13)
     original_tickers = list(settings.tickers)
     if getattr(settings, "dynamic_universe_enabled", False):
@@ -1372,16 +1330,14 @@ def main() -> None:
                 risk_reason = leverage_cap.reason if not leverage_cap.allowed else risk_reason
                 order_amount = leverage_cap.target_amount
 
-            if sleeves_enabled(settings):
-                if not sleeve_recon_ok:
-                    risk_allowed = False
-                    risk_reason = sleeve_recon_reason
-                    target_amount = 0.0
-                    order_amount = 0.0
-                elif core_sleeve_budget_remaining is not None and core_sleeve_budget_remaining <= 0:
-                    risk_allowed = False
-                    risk_reason = "core sleeve budget exhausted for this run"
-                    order_amount = 0.0
+            risk_allowed, risk_reason, target_amount, order_amount = (
+                sleeve_ctx.apply_pre_candidate_gate(
+                    risk_allowed=risk_allowed,
+                    risk_reason=risk_reason,
+                    target_amount=target_amount,
+                    order_amount=order_amount,
+                )
+            )
 
             log_signal(
                 ticker=ticker,
@@ -1426,7 +1382,9 @@ def main() -> None:
                     rank_ai_percentile=rank_gate.percentile,
                     llm_verdict=_format_llm_verdict(llm_is_ok, llm_reason),
                     notional=order_amount,
-                    **_buy_sleeve_audit(budget_after=0.0 if not risk_allowed else order_amount),
+                    **sleeve_ctx.audit_fields(
+                        budget_after=0.0 if not risk_allowed else order_amount
+                    ),
                 )
 
             if risk_allowed:
@@ -1488,20 +1446,7 @@ def main() -> None:
             )
         )
 
-    if sleeves_enabled(settings) and approved_buys:
-        initial_core_budget = sleeve_allocator.order_budget_for(CORE_SLEEVE_ID)
-        before_count = len(approved_buys)
-        approved_buys, core_sleeve_budget_remaining = trim_candidates_to_sleeve_budget(
-            approved_buys,
-            initial_core_budget,
-            min_amount=10.0,
-        )
-        if len(approved_buys) != before_count:
-            print(
-                "Portfolio sleeves: trimmed "
-                f"{before_count - len(approved_buys)} buy candidate(s) to fit "
-                f"core budget (${initial_core_budget:.2f})"
-            )
+    approved_buys = sleeve_ctx.trim_approved_buys(approved_buys)
 
     # 4) 주문 제출 (Pass 3)
     for candidate in approved_buys:
@@ -1603,11 +1548,8 @@ def main() -> None:
             )
             continue
 
-        if (
-            sleeves_enabled(settings)
-            and core_sleeve_budget_remaining is not None
-            and order_amount > core_sleeve_budget_remaining + 1e-6
-        ):
+        submit_ok, submit_reason = sleeve_ctx.check_submit_budget(order_amount)
+        if not submit_ok:
             skipped_reasons["buy:core sleeve budget exhausted"] += 1
             _audit_log(
                 audit_ctx,
@@ -1615,21 +1557,20 @@ def main() -> None:
                 ticker=ticker,
                 action="BUY",
                 status="SKIPPED",
-                reason=(
-                    f"core sleeve budget exhausted "
-                    f"(${core_sleeve_budget_remaining:.2f} remaining)"
-                ),
+                reason=submit_reason,
                 profile_name=profile_name,
                 regime=current_regime,
                 signal=signal,
                 ai_score=ai_score,
                 llm_verdict=llm_verdict,
                 notional=order_amount,
-                **_buy_sleeve_audit(budget_before=core_sleeve_budget_remaining),
+                **sleeve_ctx.audit_fields(
+                    budget_before=sleeve_ctx.core_budget_remaining
+                ),
             )
             continue
 
-        sleeve_budget_before_submit = core_sleeve_budget_remaining
+        sleeve_budget_before_submit = sleeve_ctx.core_budget_remaining
         buy_intent = build_buy_intent(
             run_id=run_id,
             ticker=ticker,
@@ -1641,31 +1582,9 @@ def main() -> None:
             llm_verdict=llm_verdict,
             risk_reason=risk_reason,
             client_order_id=f"buy_{run_id}_{ticker}",
-            sleeve_id=CORE_SLEEVE_ID,
-            sleeve_strategy=(
-                sleeve_snapshot.sleeves[CORE_SLEEVE_ID].strategy
-                if sleeves_enabled(settings) and CORE_SLEEVE_ID in sleeve_snapshot.sleeves
-                else "current_core"
-            ),
-            sleeve_target_weight=(
-                sleeve_snapshot.sleeves[CORE_SLEEVE_ID].target_weight
-                if sleeves_enabled(settings) and CORE_SLEEVE_ID in sleeve_snapshot.sleeves
-                else None
-            ),
-            sleeve_budget_before=(
-                sleeve_budget_before_submit
-                if sleeves_enabled(settings)
-                else None
-            ),
-            sleeve_budget_after=(
-                max(0.0, float(sleeve_budget_before_submit or 0.0) - order_amount)
-                if sleeves_enabled(settings)
-                else None
-            ),
-            sleeve_risk_mode=(
-                sleeve_snapshot.sleeves[CORE_SLEEVE_ID].risk_mode
-                if sleeves_enabled(settings) and CORE_SLEEVE_ID in sleeve_snapshot.sleeves
-                else ""
+            **sleeve_ctx.buy_intent_sleeve_kwargs(
+                order_amount,
+                budget_before_submit=sleeve_budget_before_submit,
             ),
         )
         try:
@@ -1681,10 +1600,7 @@ def main() -> None:
             live_order_count += 1
             orders_submitted += 1
             submitted_notional_today += order_amount
-            if core_sleeve_budget_remaining is not None:
-                core_sleeve_budget_remaining = max(
-                    0.0, core_sleeve_budget_remaining - order_amount
-                )
+            sleeve_ctx.consume_submit_budget(order_amount)
 
             log_order(
                 ticker=ticker,
@@ -1722,7 +1638,7 @@ def main() -> None:
                 notional=order_amount,
                 order_intent_id=buy_intent.intent_id,
                 broker_order_id=buy_submission.order_id,
-                **_buy_sleeve_audit(
+                **sleeve_ctx.audit_fields(
                     budget_before=buy_intent.sleeve_budget_before,
                     budget_after=buy_intent.sleeve_budget_after,
                 ),

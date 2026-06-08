@@ -405,6 +405,34 @@
 * cash sleeve를 다른 슬리브가 임의로 침범하게 하지 말 것.
 * 21일 수익률만 보고 live 승격하지 말 것. MDD, turnover, slippage, benchmark 대비 초과수익을 함께 봐야 함.
 
+---
+
+## Phase 37 — CMS sleeve UX + main.py trading pipeline split
+
+**목표:** 슬리브는 CMS에서 저장·조작하고, `main.py`는 orchestration만 담당하도록 trading path를 모듈화한다.
+
+### A. CMS sleeve control (done in branch)
+
+1. [x] **대시보드 슬리브 저장** — Overview 패널에서 ON/OFF·비중·enabled 저장 → `strategy_config.json` + config history
+2. [x] **`sleeve_runtime.py` 분리** — allocator init, pre-gate, trim, submit budget (`SleeveRunContext`)
+
+### B. main.py pipeline split (next)
+
+3. [ ] **`src/trading/run_context.py`** — account, audit_ctx, regime, ticker_data, sleeve_ctx 한 묶음
+4. [ ] **`src/trading/buy_pipeline.py`** — 후보 scan → risk/guards → MVO → submit (sleeve budget 경유)
+5. [ ] **`src/trading/exit_pipeline.py`** — SELL, trailing stop, dust cleanup, rebalance trim
+6. [ ] **`main.py` slim** — parse args, load settings, `run_context` + exit + buy 순 호출 (~500 lines 목표)
+7. [ ] **회귀 테스트** — dry-run smoke + sleeve budget integration + 기존 broker path tests green
+
+### C. Definition of Done
+
+8. [ ] **Phase 37 Codex pass** — `RUN_ID=phase37_main_split bash scripts/run_pass_complete.sh`
+
+**하지 말 것**
+
+* buy/exit 동작 변경 없이 rename-only 리팩터 금지 — 테스트로 동작 동일성 확인
+* CMS 슬리브 저장 시 tournament `paper_only` 우회 UI 추가 금지
+
 
 ## Phase 32 — shipped (요약)
 

@@ -1,16 +1,16 @@
 import unittest
-from unittest.mock import patch
 
 from src.portfolio_sleeves import CORE_SLEEVE_ID, cap_order_amount_for_sleeve
 from src.settings import StrategySettings
 
 
 class SleeveOrderBudgetIntegrationTest(unittest.TestCase):
-    @patch("src.main.PortfolioSleeveAllocator")
-    def test_cap_order_amount_for_sleeve_import(self, _mock) -> None:
+    def test_init_sleeve_run_context_import(self) -> None:
+        from src.sleeve_runtime import init_sleeve_run_context
+
         settings = StrategySettings(portfolio_sleeves_enabled=False)
         self.assertFalse(settings.portfolio_sleeves_enabled)
-        self.assertEqual(CORE_SLEEVE_ID, "core")
+        self.assertTrue(callable(init_sleeve_run_context))
 
     def test_cap_respects_zero_budget(self) -> None:
         from src.portfolio_sleeves import PortfolioSleeveAllocator, default_sleeves_config

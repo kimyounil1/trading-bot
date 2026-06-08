@@ -43,8 +43,9 @@ from src.cms_helpers import (
     orders_to_frame as _orders_to_frame,
     partition_alpaca_orders,
     pct,
-    sort_buy_candidates,
     build_sleeve_control_panel_rows,
+    build_sleeves_config_dict,
+    save_sleeve_settings,
     validate_sleeve_target_weights,
 )
 from src.cms_reconcile import reconcile_cms_execute_with_alpaca
@@ -2509,15 +2510,113 @@ def render_sleeve_control_panel(
     account: dict | None,
     positions: list[dict] | None,
 ) -> None:
-    from src.portfolio_sleeves import PortfolioSleeveAllocator, sleeves_enabled
+    from src.portfolio_sleeves import (
+        PortfolioSleeveAllocator,
+        default_sleeves_config,
+        sleeves_enabled,
+    )
 
     st.subheader("Portfolio sleeves (core / tournament / cash)")
-    enabled = sleeves_enabled(settings)
-    st.caption(
-        f"portfolio_sleeves_enabled={enabled} · tournament live enable: 없음 (paper-only)"
-    )
-    if not enabled:
-        st.info("슬리브 비활성 — config에서 portfolio_sleeves_enabled=true 로 켤 수 있습니다.")
+    st.caption("tournament 슬리브는 paper-only · live ON 버튼 없음")
+
+    raw_sleeves = getattr(settings, "sleeves", None) or default_sleeves_config()
+    if not isinstance(raw_sleeves, dict):
+        raw_sleeves = default_sleeves_config()
+
+    def _sleeve_weight(sleeve_id: str, default: float) -> float:
+        block = raw_sleeves.get(sleeve_id) or {}
+        try:
+            return float(block.get("target_weight", default))
+        except (TypeError, ValueError):
+            return default
+
+    def _sleeve_enabled(sleeve_id: str, default: bool = True) -> bool:
+        block = raw_sleeves.get(sleeve_id) or {}
+        return bool(block.get("enabled", default))
+
+    with st.form("sleeve_settings_form", clear_on_submit=False):
+        sleeves_on = st.toggle(
+            "슬리브 운용 활성화 (portfolio_sleeves_enabled)",
+            value=sleeves_enabled(settings),
+        )
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.markdown("**Core**")
+            core_on = st.checkbox("core enabled", value=_sleeve_enabled("core"), disabled=not sleeves_on)
+            core_w = st.number_input(
+                "core target %",
+                min_value=0.0,
+                max_value=100.0,
+                value=_sleeve_weight("core", 0.50) * 100.0,
+                step=5.0,
+                disabled=not sleeves_on,
+            )
+        with c2:
+            st.markdown("**Tournament** (paper-only)")
+            tournament_on = st.checkbox(
+                "tournament enabled",
+                value=_sleeve_enabled("tournament"),
+                disabled=not sleeves_on,
+            )
+            tournament_w = st.number_input(
+                "tournament target %",
+                min_value=0.0,
+                max_value=100.0,
+                value=_sleeve_weight("tournament", 0.30) * 100.0,
+                step=5.0,
+                disabled=not sleeves_on,
+            )
+        with c3:
+            st.markdown("**Cash**")
+            cash_on = st.checkbox("cash enabled", value=_sleeve_enabled("cash"), disabled=not sleeves_on)
+            cash_w = st.number_input(
+                "cash target %",
+                min_value=0.0,
+                max_value=100.0,
+                value=_sleeve_weight("cash", 0.20) * 100.0,
+                step=5.0,
+                disabled=not sleeves_on,
+            )
+
+        total_pct = core_w + tournament_w + cash_w
+        if total_pct > 100.0 + 1e-6:
+            st.error(f"target weight 합계 {total_pct:.1f}% — 100% 초과 시 저장 불가")
+        elif cash_w <= 0 and sleeves_on:
+            st.warning("cash weight 0% — 대기자금 슬리브가 없습니다")
+        else:
+            implicit = max(0.0, 100.0 - total_pct)
+            st.caption(
+                f"합계 {total_pct:.1f}%"
+                + (f" · 잔여 {implicit:.1f}%는 자동 cash로 간주" if implicit > 0 else "")
+            )
+
+        save_clicked = st.form_submit_button("슬리브 설정 저장", type="primary")
+
+    if save_clicked:
+        config_path = ROOT_DIR / CONFIG_PATH
+        old_data: dict = {}
+        if config_path.is_file():
+            old_data = json.loads(config_path.read_text(encoding="utf-8"))
+        errors = save_sleeve_settings(
+            settings,
+            portfolio_sleeves_enabled=sleeves_on,
+            core_weight=core_w / 100.0,
+            tournament_weight=tournament_w / 100.0,
+            cash_weight=cash_w / 100.0,
+            core_enabled=core_on,
+            tournament_enabled=tournament_on,
+            cash_enabled=cash_on,
+        )
+        if errors:
+            st.error("저장 실패: " + "; ".join(errors))
+        else:
+            new_data = json.loads(config_path.read_text(encoding="utf-8"))
+            history_path = save_config_history(old_data, new_data)
+            st.success(f"저장 완료 — 이력: {history_path.relative_to(ROOT_DIR)}")
+            st.rerun()
+
+    if not sleeves_on:
+        st.info("슬리브가 꺼져 있습니다. 위에서 활성화 후 저장하세요.")
         return
 
     account = account or {"portfolio_value": 0.0, "cash": 0.0, "buying_power": 0.0}
@@ -2530,7 +2629,7 @@ def render_sleeve_control_panel(
         open_orders = []
 
     allocator = PortfolioSleeveAllocator(
-        settings,
+        load_settings(),
         account=account,
         positions=positions,
         open_orders=open_orders,
@@ -2542,30 +2641,8 @@ def render_sleeve_control_panel(
         tournament_summary=tournament_summary,
     )
     if rows:
+        st.markdown("**현재 슬리브 상태**")
         st.dataframe(pd.DataFrame(rows), use_container_width=True)
-
-    raw_weights = {
-        sleeve_id: float(budget.target_weight)
-        for sleeve_id, budget in snapshot.sleeves.items()
-    }
-    with st.expander("슬리브 비중 검증 (읽기 전용)"):
-        edited = {}
-        for sleeve_id, weight in raw_weights.items():
-            edited[sleeve_id] = st.number_input(
-                f"{sleeve_id} target weight",
-                min_value=0.0,
-                max_value=1.0,
-                value=float(weight),
-                step=0.05,
-                key=f"sleeve_weight_{sleeve_id}",
-            )
-        errors = validate_sleeve_target_weights(edited)
-        if errors:
-            st.error("; ".join(errors))
-        elif sum(edited.values()) > 1.0:
-            st.error("target weight 합계가 100%를 초과합니다 — 저장 금지")
-        else:
-            st.success("비중 합계 OK (CMS config 저장은 strategy_config.json 수동 편집)")
 
 
 def load_json_summary(relative_path: str) -> dict | None:
