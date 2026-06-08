@@ -73,6 +73,10 @@ echo "=== [8b/9] Data health + live readiness ==="
 bash scripts/run_data_health_check.sh || echo "WARN: data health check skipped"
 bash scripts/run_live_readiness.sh || echo "WARN: live readiness skipped"
 
+echo "=== [8c/9] Sleeve + tournament reports ==="
+bash scripts/run_sleeve_performance_report.sh || echo "WARN: sleeve performance report skipped"
+bash scripts/run_tournament_score_report.sh || echo "WARN: tournament score report skipped"
+
 echo "=== [9/9] Paper ops summary ==="
 .venv/bin/python -m src.paper_ops_summary
 

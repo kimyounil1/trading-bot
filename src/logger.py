@@ -132,6 +132,12 @@ def log_execution_audit(
     risk_block_reason: str = "",
     order_intent_id: str = "",
     broker_order_id: str = "",
+    sleeve_id: str = "",
+    sleeve_strategy: str = "",
+    sleeve_target_weight: float = None,
+    sleeve_budget_before: float = None,
+    sleeve_budget_after: float = None,
+    sleeve_risk_mode: str = "",
 ) -> None:
     log_file = Path(EXECUTION_AUDIT_LOG_PATH)
     log_file.parent.mkdir(parents=True, exist_ok=True)
@@ -174,6 +180,12 @@ def log_execution_audit(
             "risk_block_reason": risk_block_reason or None,
             "order_intent_id": order_intent_id or None,
             "broker_order_id": broker_order_id or (order_id or None),
+            "sleeve_id": sleeve_id or None,
+            "sleeve_strategy": sleeve_strategy or None,
+            "sleeve_target_weight": _round_or_none(sleeve_target_weight, 4),
+            "sleeve_budget_before": _round_or_none(sleeve_budget_before, 2),
+            "sleeve_budget_after": _round_or_none(sleeve_budget_after, 2),
+            "sleeve_risk_mode": sleeve_risk_mode or None,
         }
     )
 

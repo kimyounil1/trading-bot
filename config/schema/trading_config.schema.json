@@ -26,6 +26,8 @@
       "type": "array",
       "items": { "type": "string" },
       "minItems": 1
-    }
+    },
+    "portfolio_sleeves_enabled": { "type": "boolean" },
+    "sleeves": { "type": "object" }
   }
 }

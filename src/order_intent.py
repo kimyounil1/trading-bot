@@ -25,6 +25,12 @@ class OrderIntent:
     llm_verdict: str = ""
     risk_reason: str = ""
     client_order_id: str = ""
+    sleeve_id: str = "core"
+    sleeve_strategy: str = ""
+    sleeve_target_weight: Optional[float] = None
+    sleeve_budget_before: Optional[float] = None
+    sleeve_budget_after: Optional[float] = None
+    sleeve_risk_mode: str = ""
 
 
 @dataclass
@@ -55,6 +61,12 @@ def build_buy_intent(
     llm_verdict: str = "",
     risk_reason: str = "",
     client_order_id: str = "",
+    sleeve_id: str = "core",
+    sleeve_strategy: str = "",
+    sleeve_target_weight: Optional[float] = None,
+    sleeve_budget_before: Optional[float] = None,
+    sleeve_budget_after: Optional[float] = None,
+    sleeve_risk_mode: str = "",
 ) -> OrderIntent:
     return OrderIntent(
         intent_id=new_intent_id(),
@@ -69,6 +81,12 @@ def build_buy_intent(
         llm_verdict=llm_verdict,
         risk_reason=risk_reason,
         client_order_id=client_order_id or f"buy_{run_id}_{ticker}",
+        sleeve_id=str(sleeve_id or "core").lower(),
+        sleeve_strategy=sleeve_strategy,
+        sleeve_target_weight=sleeve_target_weight,
+        sleeve_budget_before=sleeve_budget_before,
+        sleeve_budget_after=sleeve_budget_after,
+        sleeve_risk_mode=sleeve_risk_mode,
     )
 
 
@@ -146,3 +164,32 @@ def build_audit_context(
         model_version=model_version_label(ai_model_bundle),
         rank_model_version=rank_model_version_label(settings),
     )
+
+
+def sleeve_audit_fields(
+    *,
+    sleeve_id: str = "core",
+    sleeve_strategy: str = "",
+    sleeve_target_weight: Optional[float] = None,
+    sleeve_budget_before: Optional[float] = None,
+    sleeve_budget_after: Optional[float] = None,
+    sleeve_risk_mode: str = "",
+    intent: Optional[OrderIntent] = None,
+) -> dict[str, Any]:
+    if intent is not None:
+        return {
+            "sleeve_id": intent.sleeve_id,
+            "sleeve_strategy": intent.sleeve_strategy,
+            "sleeve_target_weight": intent.sleeve_target_weight,
+            "sleeve_budget_before": intent.sleeve_budget_before,
+            "sleeve_budget_after": intent.sleeve_budget_after,
+            "sleeve_risk_mode": intent.sleeve_risk_mode,
+        }
+    return {
+        "sleeve_id": str(sleeve_id or "core").lower(),
+        "sleeve_strategy": sleeve_strategy,
+        "sleeve_target_weight": sleeve_target_weight,
+        "sleeve_budget_before": sleeve_budget_before,
+        "sleeve_budget_after": sleeve_budget_after,
+        "sleeve_risk_mode": sleeve_risk_mode,
+    }

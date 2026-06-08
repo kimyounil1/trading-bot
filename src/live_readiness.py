@@ -16,6 +16,7 @@ from src.trading_config_guard import (
     resolve_trading_environment,
     validate_live_policies,
 )
+from src.portfolio_sleeves import load_sleeve_definitions
 
 DEFAULT_OUTPUT = Path("logs/live_readiness/latest_summary.json")
 
@@ -113,6 +114,18 @@ def build_live_readiness_report(
         warnings.append("data_health_report_missing (Phase 34-D)")
     elif str(data_health.get("overall", "")).upper() == "NO_GO":
         reasons.append("data_health overall=NO_GO")
+
+    if getattr(profile_settings, "portfolio_sleeves_enabled", False):
+        definitions = load_sleeve_definitions(profile_settings)
+        tournament = definitions.get("tournament")
+        if tournament is not None and tournament.enabled:
+            warnings.append("tournament sleeve enabled (paper-only track)")
+        if env == "live":
+            for sleeve_id, definition in definitions.items():
+                if definition.enabled and definition.paper_only:
+                    reasons.append(
+                        f"tournament/live blocked: sleeve {sleeve_id} is paper_only"
+                    )
 
     deploy = {
         "TRADING_ENV": __import__("os").environ.get("TRADING_ENV", ""),

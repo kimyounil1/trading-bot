@@ -69,6 +69,26 @@ AI may trigger exits in addition to buys. Highest risk; requires Tier 2 plus sel
 | Sell OOS | Rank or champion exit model beats baseline exit policy on gap / DD / turnover |
 | Governance | Explicit operator sign-off; never enable via config alone |
 
+## Tier 4 — Tournament alpha model (sleeve-scoped, paper-only)
+
+**Scope:** `tournament` sleeve via `tournament_alpha_model` adapter. Separate from champion promotion.
+
+| Setting | Default |
+|---------|---------|
+| Sleeve | `tournament` (30% target weight when sleeves enabled) |
+| Profile | `config/profiles/tournament_paper.json` |
+| Model id | `tournament_alpha_model` |
+| Live | **OFF** (`paper_only=true`) |
+
+**Paper validation before live (future, blocked by default):**
+
+1. ≥ **30 calendar days** paper with tournament sleeve enabled.
+2. 21-day rolling return beats best of SPY / QQQ / MTUM / equal-weight universe.
+3. Max drawdown within sleeve limit; turnover and slippage-adjusted edge documented.
+4. Codex scoped review pass (`RUN_ID=phase36_sleeves` or successor).
+
+**Do not:** Enable tournament sleeve on live profile; conflate with champion swap or Rank gate live expansion.
+
 ## Commands
 
 ```bash

@@ -44,6 +44,8 @@ from src.cms_helpers import (
     partition_alpaca_orders,
     pct,
     sort_buy_candidates,
+    build_sleeve_control_panel_rows,
+    validate_sleeve_target_weights,
 )
 from src.cms_reconcile import reconcile_cms_execute_with_alpaca
 
@@ -698,6 +700,7 @@ def render_overview() -> None:
 
     render_live_readiness_panel()
     render_operator_decisions_panel()
+    render_sleeve_control_panel(settings, account, positions)
 
     st.divider()
 
@@ -2499,6 +2502,70 @@ def render_operator_decisions_panel() -> None:
                     blocked[cols] if cols else blocked,
                     use_container_width=True,
                 )
+
+
+def render_sleeve_control_panel(
+    settings,
+    account: dict | None,
+    positions: list[dict] | None,
+) -> None:
+    from src.portfolio_sleeves import PortfolioSleeveAllocator, sleeves_enabled
+
+    st.subheader("Portfolio sleeves (core / tournament / cash)")
+    enabled = sleeves_enabled(settings)
+    st.caption(
+        f"portfolio_sleeves_enabled={enabled} · tournament live enable: 없음 (paper-only)"
+    )
+    if not enabled:
+        st.info("슬리브 비활성 — config에서 portfolio_sleeves_enabled=true 로 켤 수 있습니다.")
+        return
+
+    account = account or {"portfolio_value": 0.0, "cash": 0.0, "buying_power": 0.0}
+    positions = positions or []
+    open_orders: list[dict] = []
+    try:
+        broker = get_broker_adapter(settings.broker_provider)
+        open_orders = broker.get_open_orders()
+    except Exception:
+        open_orders = []
+
+    allocator = PortfolioSleeveAllocator(
+        settings,
+        account=account,
+        positions=positions,
+        open_orders=open_orders,
+    )
+    snapshot = allocator.build_snapshot()
+    tournament_summary = load_json_summary("logs/tournament/latest_summary.json") or {}
+    rows = build_sleeve_control_panel_rows(
+        snapshot=snapshot,
+        tournament_summary=tournament_summary,
+    )
+    if rows:
+        st.dataframe(pd.DataFrame(rows), use_container_width=True)
+
+    raw_weights = {
+        sleeve_id: float(budget.target_weight)
+        for sleeve_id, budget in snapshot.sleeves.items()
+    }
+    with st.expander("슬리브 비중 검증 (읽기 전용)"):
+        edited = {}
+        for sleeve_id, weight in raw_weights.items():
+            edited[sleeve_id] = st.number_input(
+                f"{sleeve_id} target weight",
+                min_value=0.0,
+                max_value=1.0,
+                value=float(weight),
+                step=0.05,
+                key=f"sleeve_weight_{sleeve_id}",
+            )
+        errors = validate_sleeve_target_weights(edited)
+        if errors:
+            st.error("; ".join(errors))
+        elif sum(edited.values()) > 1.0:
+            st.error("target weight 합계가 100%를 초과합니다 — 저장 금지")
+        else:
+            st.success("비중 합계 OK (CMS config 저장은 strategy_config.json 수동 편집)")
 
 
 def load_json_summary(relative_path: str) -> dict | None:

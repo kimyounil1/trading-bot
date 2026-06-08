@@ -188,6 +188,8 @@ class StrategySettings(StrategyProfile):
     extended_hours_limit_slippage_pct: float = 0.005
     day_market_start_kst: str = "10:00"
     day_market_end_kst: str = "18:00"
+    portfolio_sleeves_enabled: bool = False
+    sleeves: Dict[str, Any] = field(default_factory=dict)
 
 
 _STRATEGY_SETTINGS_FIELD_NAMES = {item.name for item in fields(StrategySettings)}
@@ -413,6 +415,20 @@ def validate_settings(settings: StrategySettings) -> StrategySettings:
         if not (0 <= hour <= 23 and 0 <= minute <= 59):
             raise ValueError(f"{field_name} must use a valid 24h clock time")
         setattr(settings, field_name, f"{hour:02d}:{minute:02d}")
+    if getattr(settings, "portfolio_sleeves_enabled", False):
+        from src.portfolio_sleeves import (
+            default_sleeves_config,
+            parse_sleeves_config,
+            validate_sleeves_config,
+        )
+
+        raw_sleeves = settings.sleeves or default_sleeves_config()
+        if not isinstance(raw_sleeves, dict):
+            raise ValueError("sleeves must be a JSON object")
+        parsed = parse_sleeves_config(raw_sleeves)
+        sleeve_errors = validate_sleeves_config(parsed, enabled=True)
+        if sleeve_errors:
+            raise ValueError("; ".join(sleeve_errors))
     return settings
 
 

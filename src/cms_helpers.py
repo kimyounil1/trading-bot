@@ -25,6 +25,8 @@ __all__ = [
     "classify_buy_candidates",
     "reconcile_cms_execute_with_alpaca",
     "sort_buy_candidates",
+    "build_sleeve_control_panel_rows",
+    "validate_sleeve_target_weights",
 ]
 
 
@@ -200,3 +202,49 @@ def sort_buy_candidates(buy_df: pd.DataFrame) -> pd.DataFrame:
     if not sort_cols:
         return buy_df
     return buy_df.sort_values(sort_cols, ascending=[False] * len(sort_cols))
+
+
+def validate_sleeve_target_weights(weights: dict[str, float]) -> list[str]:
+    errors: list[str] = []
+    if not weights:
+        errors.append("sleeve weights must not be empty")
+        return errors
+    total = sum(max(0.0, float(value)) for value in weights.values())
+    if total > 1.0 + 1e-9:
+        errors.append(f"sleeve target weights sum to {total:.4f} (> 1.0)")
+    cash_weight = float(weights.get("cash", 0.0))
+    if cash_weight <= 0:
+        errors.append("cash sleeve weight must be > 0")
+    return errors
+
+
+def build_sleeve_control_panel_rows(
+    *,
+    snapshot: object,
+    tournament_summary: dict | None = None,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    sleeves = getattr(snapshot, "sleeves", {}) or {}
+    tournament_summary = tournament_summary or {}
+    tournament_block = tournament_summary.get("tournament_sleeve") or {}
+    for sleeve_id, budget in sleeves.items():
+        current_weight = (
+            budget.current_notional / snapshot.portfolio_value
+            if getattr(snapshot, "portfolio_value", 0) > 0
+            else 0.0
+        )
+        rows.append(
+            {
+                "sleeve_id": sleeve_id,
+                "target_weight": budget.target_weight,
+                "current_weight": round(current_weight, 4),
+                "drift": round(current_weight - budget.target_weight, 4),
+                "order_budget": budget.order_budget,
+                "available_cash": budget.available_cash,
+                "return_21d": tournament_block.get("return_pct")
+                if sleeve_id == "tournament"
+                else None,
+                "readiness": budget.risk_mode,
+            }
+        )
+    return rows

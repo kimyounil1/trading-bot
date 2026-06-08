@@ -10,6 +10,11 @@ from typing import Any
 
 from src.brokers.base import BrokerAdapter
 from src.settings import StrategySettings, validate_settings
+from src.portfolio_sleeves import (
+    TOURNAMENT_SLEEVE_ID,
+    load_sleeve_definitions,
+    sleeves_enabled,
+)
 
 PROFILES_DIR = Path("config/profiles")
 SCHEMA_PATH = Path("config/schema/trading_config.schema.json")
@@ -33,6 +38,16 @@ def load_profile_overlay(environment: str) -> dict[str, Any]:
         path = PROFILES_DIR / "live_safe.json"
     if not path.is_file():
         return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"{path}: profile must be a JSON object")
+    return {k: v for k, v in payload.items() if k not in {"profile", "description"}}
+
+
+def load_named_profile_overlay(profile_name: str) -> dict[str, Any]:
+    path = PROFILES_DIR / f"{profile_name}.json"
+    if not path.is_file():
+        raise ValueError(f"profile not found: {profile_name}")
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError(f"{path}: profile must be a JSON object")
@@ -145,6 +160,27 @@ def validate_live_policies(
             )
     else:
         reasons.append("live environment requires live_safety_enabled=true")
+
+    if sleeves_enabled(settings):
+        definitions = load_sleeve_definitions(settings)
+        if environment == "live":
+            for sleeve_id, definition in definitions.items():
+                if definition.enabled and definition.paper_only:
+                    reasons.append(
+                        f"sleeve {sleeve_id} is paper_only and cannot run on live"
+                    )
+            tournament = definitions.get(TOURNAMENT_SLEEVE_ID)
+            if tournament is not None and tournament.enabled:
+                reasons.append("tournament sleeve must be disabled on live profile")
+
+    tournament_profile = PROFILES_DIR / "tournament_paper.json"
+    if environment == "live" and tournament_profile.is_file():
+        try:
+            overlay = load_named_profile_overlay("tournament_paper")
+            if str(overlay.get("trading_environment", "paper")).lower() != "paper":
+                reasons.append("tournament_paper profile must stay paper-only")
+        except ValueError:
+            pass
 
     return reasons
 

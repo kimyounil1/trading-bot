@@ -41,6 +41,12 @@ EXECUTION_AUDIT_COLUMNS: tuple[str, ...] = (
     "risk_block_reason",
     "order_intent_id",
     "broker_order_id",
+    "sleeve_id",
+    "sleeve_strategy",
+    "sleeve_target_weight",
+    "sleeve_budget_before",
+    "sleeve_budget_after",
+    "sleeve_risk_mode",
 )
 
 _LEGACY_EXTRA_COLUMNS: tuple[str, ...] = ("rank_ai_score", "rank_ai_percentile")
@@ -55,6 +61,12 @@ _V2_EXTRA_COLUMNS: tuple[str, ...] = (
     "risk_block_reason",
     "order_intent_id",
     "broker_order_id",
+    "sleeve_id",
+    "sleeve_strategy",
+    "sleeve_target_weight",
+    "sleeve_budget_before",
+    "sleeve_budget_after",
+    "sleeve_risk_mode",
 )
 
 
