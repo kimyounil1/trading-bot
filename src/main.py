@@ -671,7 +671,8 @@ def main() -> None:
                     exit_summary_rows.append(
                         f"{ticker}: DUST exit, market_value=${dust_mv:.6f}"
                     )
-                    log_execution_audit(
+                    _audit_log(
+                        audit_ctx,
                         event_type="DUST_EXIT",
                         ticker=ticker,
                         action="CLOSE",
@@ -737,7 +738,8 @@ def main() -> None:
                     exit_summary_rows.append(f"{ticker}: SKIP_EXIT {data_reason}")
                     skipped_reasons[f"exit:{data_reason}"] += 1
                     data_error_count += 1
-                    log_execution_audit(
+                    _audit_log(
+                        audit_ctx,
                         event_type="SKIP_EXIT",
                         ticker=ticker,
                         action="CLOSE",
@@ -871,7 +873,8 @@ def main() -> None:
                                     client_order_id=f"part_{run_id}_{ticker}",
                                 )
                                 live_order_count += 1
-                                log_execution_audit(
+                                _audit_log(
+                                    audit_ctx,
                                     event_type="PARTIAL_EXIT",
                                     ticker=ticker,
                                     action="SELL",
@@ -893,7 +896,8 @@ def main() -> None:
                                     notify_error(f"CRITICAL: Network error during partial exit for {ticker}", e)
                                     raise
                                 api_error_count += 1
-                                log_execution_audit(
+                                _audit_log(
+                                    audit_ctx,
                                     event_type="PARTIAL_EXIT",
                                     ticker=ticker,
                                     action="SELL",
@@ -932,7 +936,8 @@ def main() -> None:
                                     client_order_id=f"trim_{run_id}_{ticker}",
                                 )
                                 live_order_count += 1
-                                log_execution_audit(
+                                _audit_log(
+                                    audit_ctx,
                                     event_type="REBALANCE_TRIM",
                                     ticker=ticker,
                                     action="SELL",
@@ -953,7 +958,8 @@ def main() -> None:
                                     notify_error(f"CRITICAL: Network error during rebalance trim for {ticker}", e)
                                     raise
                                 api_error_count += 1
-                                log_execution_audit(
+                                _audit_log(
+                                    audit_ctx,
                                     event_type="REBALANCE_TRIM",
                                     ticker=ticker,
                                     action="SELL",
@@ -976,7 +982,8 @@ def main() -> None:
                         f"reason='{exit_decision.reason}'"
                     )
                     skipped_reasons[f"exit:{label.lower()}"] += 1
-                    log_execution_audit(
+                    _audit_log(
+                        audit_ctx,
                         event_type="SKIP_EXIT",
                         ticker=ticker,
                         action="CLOSE",
@@ -1017,7 +1024,8 @@ def main() -> None:
                     f"  PAPER_CLOSE_SUBMITTED: {ticker}, "
                     f"order_id={exit_submission.order_id}, status={exit_submission.status}"
                 )
-                log_execution_audit(
+                _audit_log(
+                    audit_ctx,
                     event_type="FULL_EXIT",
                     ticker=ticker,
                     action="SELL",
@@ -1048,7 +1056,8 @@ def main() -> None:
                     f"filled_qty={checked_order['filled_qty']}, "
                     f"filled_avg_price={checked_order['filled_avg_price']}"
                 )
-                log_execution_audit(
+                _audit_log(
+                    audit_ctx,
                     event_type="FULL_EXIT_STATUS",
                     ticker=ticker,
                     action="SELL",
@@ -1087,7 +1096,8 @@ def main() -> None:
                 print(f"{ticker}: EXIT_CHECK_ERROR - {exc}")
                 exit_summary_rows.append(f"{ticker}: EXIT_CHECK_ERROR - {exc}")
                 api_error_count += 1
-                log_execution_audit(
+                _audit_log(
+                    audit_ctx,
                     event_type="EXIT_ERROR",
                     ticker=ticker,
                     action="CLOSE",
@@ -1127,7 +1137,8 @@ def main() -> None:
                 buy_summary_rows.append(f"{ticker}: SKIP_BUY {data_reason}")
                 skipped_reasons[f"buy:{data_reason}"] += 1
                 data_error_count += 1
-                log_execution_audit(
+                _audit_log(
+                    audit_ctx,
                     event_type="SKIP_BUY",
                     ticker=ticker,
                     action="BUY",
@@ -1247,7 +1258,8 @@ def main() -> None:
             if risk_allowed and held_position is None and llm_is_ok is False:
                 llm_advisory_only = bool(getattr(settings, "llm_advisory_only", True))
                 if llm_advisory_only:
-                    log_execution_audit(
+                    _audit_log(
+                        audit_ctx,
                         event_type="LLM_ADVISORY",
                         ticker=ticker,
                         action="BUY",
@@ -1333,7 +1345,8 @@ def main() -> None:
             )
             if not risk_allowed:
                 skipped_reasons[f"buy:{risk_reason}"] += 1
-                log_execution_audit(
+                _audit_log(
+                    audit_ctx,
                     event_type="SKIP_BUY",
                     ticker=ticker,
                     action="BUY",
@@ -1366,7 +1379,8 @@ def main() -> None:
             print(f"{ticker}: ERROR - {exc}")
             buy_summary_rows.append(f"{ticker}: ERROR - {exc}")
             api_error_count += 1
-            log_execution_audit(
+            _audit_log(
+                audit_ctx,
                 event_type="BUY_ERROR",
                 ticker=ticker,
                 action="BUY",
@@ -1423,7 +1437,8 @@ def main() -> None:
                 f"ai_score={ai_score}"
             )
             skipped_reasons["buy:max orders per run reached"] += 1
-            log_execution_audit(
+            _audit_log(
+                audit_ctx,
                 event_type="SKIP_BUY",
                 ticker=ticker,
                 action="BUY",
@@ -1449,7 +1464,8 @@ def main() -> None:
                 f"ai_score={ai_score}"
             )
             skipped_reasons[f"buy:{label.lower()}"] += 1
-            log_execution_audit(
+            _audit_log(
+                audit_ctx,
                 event_type="SKIP_BUY",
                 ticker=ticker,
                 action="BUY",
@@ -1585,7 +1601,8 @@ def main() -> None:
                 f"filled_qty={checked_order['filled_qty']}, "
                 f"filled_avg_price={checked_order['filled_avg_price']}"
             )
-            log_execution_audit(
+            _audit_log(
+                audit_ctx,
                 event_type="BUY_STATUS",
                 ticker=ticker,
                 action="BUY",
@@ -1642,7 +1659,8 @@ def main() -> None:
                 raise
             print(f"  Buy order error for {ticker}: {exc}")
             api_error_count += 1
-            log_execution_audit(
+            _audit_log(
+                audit_ctx,
                 event_type="BUY_ERROR",
                 ticker=ticker,
                 action="BUY",
