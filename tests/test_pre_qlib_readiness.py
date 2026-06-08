@@ -111,9 +111,9 @@ class PreQlibReadinessTest(unittest.TestCase):
         frame = _sample_price_frame(80)
 
         with patch("src.main.parse_args", return_value=Namespace(execute=False)), patch(
-            "src.main.load_settings", return_value=settings
+            "src.trading.run_context.load_settings", return_value=settings
         ), patch(
-            "src.main.get_market_clock",
+            "src.trading.run_context.get_market_clock",
             return_value=SimpleNamespace(
                 is_open=False,
                 orders_allowed=False,
@@ -125,19 +125,19 @@ class PreQlibReadinessTest(unittest.TestCase):
                 extended_hours_enabled=False,
             ),
         ), patch(
-            "src.main.get_broker_adapter"
+            "src.trading.run_context.get_broker_adapter"
         ) as broker_adapter_mock, patch(
-            "src.main.load_price_data_batch", return_value={"AAPL": frame}
+            "src.trading.run_context.load_price_data_batch", return_value={"AAPL": frame, "SPY": frame, "^VIX": frame}
         ), patch(
-            "src.main.get_today_buy_notional", return_value=0.0
+            "src.trading.run_context.get_today_buy_notional", return_value=0.0
         ), patch(
-            "src.main.get_recent_buy_symbols", return_value=set()
+            "src.trading.run_context.get_recent_buy_symbols", return_value=set()
         ), patch(
-            "src.main.log_signal"
+            "src.trading.buy_pipeline.log_signal"
         ) as log_signal_mock, patch(
-            "src.main.notify_error"
+            "src.trading.buy_pipeline.notify_error"
         ) as notify_error_mock, patch(
-            "src.main.notify_run_summary"
+            "src.trading.run_finalize.notify_run_summary"
         ) as notify_summary_mock:
             broker_adapter_mock.return_value.get_account.return_value = {
                 "cash": 1000.0,

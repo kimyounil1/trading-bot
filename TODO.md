@@ -418,11 +418,11 @@
 
 ### B. main.py pipeline split (next)
 
-3. [ ] **`src/trading/run_context.py`** — account, audit_ctx, regime, ticker_data, sleeve_ctx 한 묶음
-4. [ ] **`src/trading/buy_pipeline.py`** — 후보 scan → risk/guards → MVO → submit (sleeve budget 경유)
-5. [ ] **`src/trading/exit_pipeline.py`** — SELL, trailing stop, dust cleanup, rebalance trim
-6. [ ] **`main.py` slim** — parse args, load settings, `run_context` + exit + buy 순 호출 (~500 lines 목표)
-7. [ ] **회귀 테스트** — dry-run smoke + sleeve budget integration + 기존 broker path tests green
+3. [x] **`src/trading/run_context.py`** — account, audit_ctx, regime, ticker_data, sleeve_ctx 한 묶음
+4. [x] **`src/trading/buy_pipeline.py`** — 후보 scan → risk/guards → MVO → submit (sleeve budget 경유)
+5. [x] **`src/trading/exit_pipeline.py`** — SELL, trailing stop, dust cleanup, rebalance trim
+6. [x] **`main.py` slim** — parse args, load settings, `run_context` + exit + buy 순 호출 (61 lines)
+7. [x] **회귀 테스트** — dry-run smoke + sleeve budget integration + 기존 broker path tests green (394 passed)
 
 ### C. Definition of Done
 

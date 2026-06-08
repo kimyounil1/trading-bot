@@ -10,7 +10,7 @@ class MainPeaksTest(unittest.TestCase):
     def test_save_peaks_writes_normalized_payload(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             peaks_path = Path(temp_dir) / "trailing_peaks.json"
-            with patch("src.main.PEAKS_PATH", peaks_path):
+            with patch("src.trading.bot_helpers.PEAKS_PATH", peaks_path):
                 _save_peaks({" aapl ": 123.45, "msft": 456})
                 loaded = _load_peaks()
                 self.assertTrue(peaks_path.exists())
@@ -23,7 +23,7 @@ class MainPeaksTest(unittest.TestCase):
             peaks_path = Path(temp_dir) / "trailing_peaks.json"
             peaks_path.write_text("{bad json", encoding="utf-8")
 
-            with patch("src.main.PEAKS_PATH", peaks_path):
+            with patch("src.trading.bot_helpers.PEAKS_PATH", peaks_path):
                 loaded = _load_peaks()
 
             corrupt_path = peaks_path.with_suffix(".json.corrupt")
@@ -37,7 +37,7 @@ class MainPeaksTest(unittest.TestCase):
             peaks_path = Path(temp_dir) / "trailing_peaks.json"
             peaks_path.write_text('{"AAPL": "oops"}', encoding="utf-8")
 
-            with patch("src.main.PEAKS_PATH", peaks_path):
+            with patch("src.trading.bot_helpers.PEAKS_PATH", peaks_path):
                 loaded = _load_peaks()
 
             corrupt_path = peaks_path.with_suffix(".json.corrupt")

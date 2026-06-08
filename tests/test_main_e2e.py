@@ -89,26 +89,27 @@ class TestMainE2E(unittest.TestCase):
         return mock_adapter
 
     @patch("src.main.parse_args")
-    @patch("src.main.load_settings")
-    @patch("src.main.apply_dynamic_profile")
-    @patch("src.main.get_market_clock")
-    @patch("src.main.get_broker_adapter")
-    @patch("src.main.load_price_data_batch")
-    @patch("src.main.get_signal_for_ticker")
+    @patch("src.trading.run_context.load_settings")
+    @patch("src.trading.run_context.apply_dynamic_profile")
+    @patch("src.trading.run_context.get_market_clock")
+    @patch("src.trading.run_context.get_broker_adapter")
+    @patch("src.trading.run_context.load_price_data_batch")
+    @patch("src.trading.exit_pipeline.get_signal_for_ticker")
+    @patch("src.trading.buy_pipeline.get_signal_for_ticker")
     @patch("src.buy_guards.evaluate_ticker_consensus")
-    @patch("src.main.notify_run_summary")
-    @patch("src.main._load_peaks")
-    @patch("src.main._save_peaks")
-    @patch("src.main.get_position_entry_date")
-    @patch("src.main._check_price_frame_freshness")
+    @patch("src.trading.run_finalize.notify_run_summary")
+    @patch("src.trading.run_context.load_peaks")
+    @patch("src.trading.run_finalize.save_peaks")
+    @patch("src.trading.exit_pipeline.get_position_entry_date")
+    @patch("src.trading.run_context.check_price_frame_freshness")
     @patch("src.buy_guards.is_earnings_window")
     @patch("src.buy_guards.is_sector_allowed")
-    @patch("src.main.get_recent_buy_symbols")
-    @patch("src.main.get_today_buy_notional")
+    @patch("src.trading.run_context.get_recent_buy_symbols")
+    @patch("src.trading.run_context.get_today_buy_notional")
     @patch("src.buy_guards.is_correlation_allowed")
     def test_full_buy_flow(self, mock_corr, mock_today, mock_recent, mock_sector, mock_earnings, mock_fresh, mock_entry, 
                           mock_save_peaks, mock_load_peaks, mock_notify, 
-                          mock_llm, mock_signal, mock_load_data, 
+                          mock_llm, mock_buy_signal, mock_exit_signal, mock_load_data, 
                           mock_broker, mock_clock, 
                           mock_profile, mock_settings, mock_args):
         
@@ -122,7 +123,9 @@ class TestMainE2E(unittest.TestCase):
         mock_load_data.return_value = {"AAPL": pd.DataFrame(), "SPY": pd.DataFrame(), "^VIX": pd.DataFrame()}
         
         # Mock valid BUY signal
-        mock_signal.return_value = ("BUY", {"close": 150.0, "ma20": 140.0, "ma50": 130.0, "rsi": 50.0}, 0.8)
+        buy_signal = ("BUY", {"close": 150.0, "ma20": 140.0, "ma50": 130.0, "rsi": 50.0}, 0.8)
+        mock_buy_signal.return_value = buy_signal
+        mock_exit_signal.return_value = buy_signal
         mock_fresh.return_value = (True, "")
         mock_llm.return_value = (True, "LLM Approved")
         mock_earnings.return_value = (False, "")
@@ -137,18 +140,19 @@ class TestMainE2E(unittest.TestCase):
         print("E2E Buy Flow Verified")
 
     @patch("src.main.parse_args")
-    @patch("src.main.load_settings")
-    @patch("src.main.apply_dynamic_profile")
-    @patch("src.main.get_market_clock")
-    @patch("src.main.get_broker_adapter")
-    @patch("src.main.load_price_data_batch")
-    @patch("src.main.get_signal_for_ticker")
-    @patch("src.main.get_position_entry_date")
-    @patch("src.main._load_peaks")
-    @patch("src.main._check_price_frame_freshness")
-    @patch("src.main.notify_run_summary")
-    def test_exit_by_time_limit(self, mock_notify, mock_fresh, mock_load_peaks, mock_entry, 
-                               mock_signal, mock_load_data, mock_broker, mock_clock, 
+    @patch("src.trading.run_context.load_settings")
+    @patch("src.trading.run_context.apply_dynamic_profile")
+    @patch("src.trading.run_context.get_market_clock")
+    @patch("src.trading.run_context.get_broker_adapter")
+    @patch("src.trading.run_context.load_price_data_batch")
+    @patch("src.trading.exit_pipeline.get_signal_for_ticker")
+    @patch("src.trading.buy_pipeline.get_signal_for_ticker")
+    @patch("src.trading.exit_pipeline.get_position_entry_date")
+    @patch("src.trading.run_context.load_peaks")
+    @patch("src.trading.run_context.check_price_frame_freshness")
+    @patch("src.trading.run_finalize.notify_run_summary")
+    def test_exit_by_time_limit(self, mock_notify, mock_fresh, mock_load_peaks, mock_entry,
+                               mock_buy_signal, mock_exit_signal, mock_load_data, mock_broker, mock_clock, 
                                mock_profile, mock_settings, mock_args):
         
         mock_args.return_value = Namespace(execute=True)
@@ -171,7 +175,9 @@ class TestMainE2E(unittest.TestCase):
         mock_fresh.return_value = (True, "")
         
         # Signal is HOLD but time is up
-        mock_signal.return_value = ("HOLD", {"close": 100.0}, 0.5)
+        hold_signal = ("HOLD", {"close": 100.0}, 0.5)
+        mock_buy_signal.return_value = hold_signal
+        mock_exit_signal.return_value = hold_signal
         
         # 31 days ago (exceeds 30 day limit)
         mock_entry.return_value = datetime.now(timezone.utc) - pd.Timedelta(days=31)
@@ -190,16 +196,17 @@ class TestMainE2E(unittest.TestCase):
         print("E2E Time-based Exit Verified")
 
     @patch("src.main.parse_args")
-    @patch("src.main.load_settings")
-    @patch("src.main.apply_dynamic_profile")
-    @patch("src.main.get_market_clock")
-    @patch("src.main.get_broker_adapter")
-    @patch("src.main.load_price_data_batch")
-    @patch("src.main.get_signal_for_ticker")
-    @patch("src.main._load_peaks")
-    @patch("src.main._check_price_frame_freshness")
-    @patch("src.main.notify_run_summary")
-    def test_simultaneous_exit_and_trim(self, mock_notify, mock_fresh, mock_load_peaks, mock_signal, mock_load_data,
+    @patch("src.trading.run_context.load_settings")
+    @patch("src.trading.run_context.apply_dynamic_profile")
+    @patch("src.trading.run_context.get_market_clock")
+    @patch("src.trading.run_context.get_broker_adapter")
+    @patch("src.trading.run_context.load_price_data_batch")
+    @patch("src.trading.exit_pipeline.get_signal_for_ticker")
+    @patch("src.trading.buy_pipeline.get_signal_for_ticker")
+    @patch("src.trading.run_context.load_peaks")
+    @patch("src.trading.run_context.check_price_frame_freshness")
+    @patch("src.trading.run_finalize.notify_run_summary")
+    def test_simultaneous_exit_and_trim(self, mock_notify, mock_fresh, mock_load_peaks, mock_buy_signal, mock_exit_signal, mock_load_data,
                                        mock_broker, mock_clock, mock_profile, mock_settings, mock_args):
         """Verify that Full Exit (Trailing Stop) takes precedence over Rebalance Trim."""
         mock_args.return_value = Namespace(execute=True)
@@ -223,9 +230,11 @@ class TestMainE2E(unittest.TestCase):
             "buying_power": 8000.0,
         }
         mock_broker.return_value = broker
-        mock_load_data.return_value = {"AAPL": pd.DataFrame()}
+        mock_load_data.return_value = {"AAPL": pd.DataFrame(), "SPY": pd.DataFrame(), "^VIX": pd.DataFrame()}
         mock_fresh.return_value = (True, "")
-        mock_signal.return_value = ("HOLD", {"close": 100.0}, 0.5)
+        hold_signal = ("HOLD", {"close": 100.0}, 0.5)
+        mock_buy_signal.return_value = hold_signal
+        mock_exit_signal.return_value = hold_signal
         mock_load_peaks.return_value = {"AAPL": 110.0}
         broker.wait_for_order_status.return_value = {
             "id": "full_exit_123",

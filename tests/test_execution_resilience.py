@@ -102,13 +102,13 @@ class TestExecutionResilience(unittest.TestCase):
         import tempfile
         from pathlib import Path
         from src.main import _load_peaks
-        import src.main
+        import src.trading.bot_helpers as bot_helpers
         
         with tempfile.TemporaryDirectory() as tmpdir:
             temp_file = Path(tmpdir) / "trailing_peaks.json"
             
-            orig_path = src.main.PEAKS_PATH
-            src.main.PEAKS_PATH = temp_file
+            orig_path = bot_helpers.PEAKS_PATH
+            bot_helpers.PEAKS_PATH = temp_file
             
             try:
                 # Write corrupted JSON
@@ -123,7 +123,7 @@ class TestExecutionResilience(unittest.TestCase):
                 self.assertTrue(corrupt_file.exists())
                 self.assertFalse(temp_file.exists())
             finally:
-                src.main.PEAKS_PATH = orig_path
+                bot_helpers.PEAKS_PATH = orig_path
 
     def test_empty_dataframe_handling(self):
         import pandas as pd
@@ -155,8 +155,8 @@ class TestExecutionResilience(unittest.TestCase):
         self.assertFalse(fresh)
         self.assertEqual(reason, "price data has no valid dates")
 
-    @patch("src.main.get_broker_adapter")
-    @patch("src.main.notify_error")
+    @patch("src.trading.run_context.get_broker_adapter")
+    @patch("src.trading.exit_pipeline.notify_error")
     def test_alpaca_timeout_failure_stops_execution(self, mock_notify, mock_get_broker):
         from src.main import main
         from argparse import Namespace
@@ -167,7 +167,7 @@ class TestExecutionResilience(unittest.TestCase):
         
         # Set execute mode to True so it fails safe instead of fallback
         with patch("src.main.parse_args") as mock_args, \
-             patch("src.main.load_settings") as mock_settings:
+             patch("src.trading.run_context.load_settings") as mock_settings:
             
             mock_args.return_value = Namespace(execute=True)
             mock_settings.return_value = StrategySettings(
