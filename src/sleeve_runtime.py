@@ -174,6 +174,11 @@ class SleeveRunContext:
         tag_symbol(str(ticker).upper(), str(sleeve_id).lower())
         self.sleeve_position_map[str(ticker).upper()] = str(sleeve_id).lower()
 
+    def record_retag(self, ticker: str, *, to_sleeve_id: str) -> None:
+        symbol = str(ticker).upper()
+        tag_symbol(symbol, str(to_sleeve_id).lower())
+        self.sleeve_position_map[symbol] = str(to_sleeve_id).lower()
+
     def record_exit(self, ticker: str) -> None:
         symbol = str(ticker).upper()
         untag_symbol(symbol)

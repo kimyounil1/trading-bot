@@ -37,6 +37,7 @@ from src.cms_sleeve_panel import (
     build_sleeves_config_dict,
     save_sleeve_settings,
     validate_sleeve_target_weights,
+    request_sleeve_allocation_rebalance,
 )
 from src.cms_helpers import (
     cache_age_minutes as _cache_age_minutes,
@@ -597,6 +598,17 @@ def render_overview() -> None:
     col1.metric("현금", money(account["cash"]))
     col2.metric("포트폴리오 가치", money(account["portfolio_value"]))
     col3.metric("보유 포지션", account["positions_count"])
+
+    pnl_summary = load_json_summary("logs/portfolio_pnl/latest_summary.json")
+    if pnl_summary:
+        t = pnl_summary.get("today") or {}
+        st.caption(
+            f"오늘 손익 ${float(t.get('pnl_usd') or 0):+,.2f} "
+            f"({float(t.get('pnl_pct') or 0):+.2f}%) · "
+            "상세는 사이드바 **수익 · 매매**"
+        )
+    else:
+        st.caption("수익 요약은 **수익 · 매매** 페이지에서 새로고침하세요.")
 
     st.divider()
 
@@ -2648,6 +2660,59 @@ def render_sleeve_control_panel(
         st.markdown("**현재 슬리브 상태**")
         st.dataframe(pd.DataFrame(rows), use_container_width=True)
 
+    from src.sleeve_rebalance_state import (
+        allocation_rebalance_pending,
+        max_abs_sleeve_drift,
+        should_run_allocation_rebalance,
+    )
+
+    drift = max_abs_sleeve_drift(snapshot)
+    will_rebalance, rebalance_reason = should_run_allocation_rebalance(snapshot)
+    pending = allocation_rebalance_pending()
+    st.caption(
+        f"슬리브 drift(최대): {drift:.1%} · "
+        f"자동 재배치(drift≥5%): "
+        f"{'예' if will_rebalance else '아니오'} ({rebalance_reason})"
+        + (" · 수동 요청 대기 중" if pending else "")
+    )
+    col_run, col_queue = st.columns(2)
+    with col_run:
+        if st.button(
+            "지금 슬리브 재배치 실행",
+            type="primary",
+            help="즉시 retag + trim 매도 (장 닫힘 시 retag만, 매도는 세션 허용 시).",
+        ):
+            import subprocess
+
+            script = ROOT_DIR / "scripts" / "run_sleeve_rebalance_once.sh"
+            try:
+                proc = subprocess.run(
+                    ["bash", str(script)],
+                    cwd=str(ROOT_DIR),
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                    check=False,
+                )
+                log_tail = (proc.stdout or proc.stderr or "").strip()[-2000:]
+                if proc.returncode == 0:
+                    st.success("슬리브 재배치를 실행했습니다.")
+                else:
+                    st.error(f"재배치 실패 (exit {proc.returncode})")
+                if log_tail:
+                    st.code(log_tail, language="text")
+            except subprocess.TimeoutExpired:
+                st.error("재배치가 5분을 초과했습니다. logs/bot_runs/ 로그를 확인하세요.")
+            st.rerun()
+    with col_queue:
+        if st.button(
+            "다음 봇 execute에 예약",
+            help="다음 scheduled trading-bot 런에서도 allocation rebalance를 실행합니다.",
+        ):
+            request_sleeve_allocation_rebalance(reason="cms_button")
+            st.success("다음 trading-bot execute 런에 예약했습니다.")
+            st.rerun()
+
 
 def load_json_summary(relative_path: str) -> dict | None:
     path = ROOT_DIR / relative_path
@@ -3307,6 +3372,188 @@ python -m src.optimize_ai_threshold""",
         language="bash",
     )
 
+def render_portfolio_pnl() -> None:
+    from src.portfolio_pnl_report import build_portfolio_pnl_snapshot, write_portfolio_pnl_artifacts
+
+    st.title("수익 · 매매")
+    st.caption("Alpaca paper 계좌 기준 · 기간 손익은 Alpaca equity curve + 보유 평가손익")
+
+    settings = load_settings()
+    refresh = st.button("새로고침", type="primary", key="refresh_portfolio_pnl")
+    if refresh:
+        st.cache_data.clear()
+
+    @st.cache_data(ttl=120)
+    def _load_snapshot(provider: str) -> dict:
+        snap = build_portfolio_pnl_snapshot(broker_provider=provider)
+        write_portfolio_pnl_artifacts(snap)
+        return snap.to_dict()
+
+    try:
+        payload = _load_snapshot(settings.broker_provider)
+    except Exception as exc:
+        st.error(f"수익 리포트를 불러오지 못했습니다: {exc}")
+        return
+
+    def _period_block(label: str, block: dict) -> None:
+        pnl = float(block.get("pnl_usd") or 0.0)
+        pct_val = float(block.get("pnl_pct") or 0.0)
+        st.metric(
+            label,
+            f"${pnl:+,.2f}",
+            delta=f"{pct_val:+.2f}%",
+        )
+        st.caption(
+            f"시작 {money(block.get('start_equity', 0))} → "
+            f"현재 {money(block.get('end_equity', 0))}"
+        )
+
+    st.subheader("총 자산")
+    today = payload.get("today") or {}
+    st.metric(
+        "평가금액",
+        money(payload.get("total_equity", 0)),
+        delta=f"{float(today.get('pnl_pct') or 0):+.2f}% (오늘 ${float(today.get('pnl_usd') or 0):+,.0f})",
+    )
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        _period_block("오늘", today)
+    with c2:
+        _period_block("1주", payload.get("week") or {})
+    with c3:
+        _period_block("1개월", payload.get("month") or {})
+    with c4:
+        _period_block("전체", payload.get("all_time") or {})
+
+    s1, s2, s3 = st.columns(3)
+    s1.metric("현금", money(payload.get("cash", 0)))
+    s2.metric("투자 평가액", money(payload.get("invested_value", 0)))
+    s3.metric(
+        "보유 평가손익 (미실현)",
+        f"${float(payload.get('unrealized_total_usd') or 0):+,.2f}",
+        delta=f"{float(payload.get('unrealized_total_pct') or 0):+.2f}%",
+    )
+
+    realized = payload.get("realized") or {}
+    st.subheader("실현 손익 (FIFO)")
+    r1, r2, r3, r4 = st.columns(4)
+    r1.metric("오늘 실현", f"${float(realized.get('today_usd') or 0):+,.2f}")
+    r2.metric("1주 실현", f"${float(realized.get('week_usd') or 0):+,.2f}")
+    r3.metric("1개월 실현", f"${float(realized.get('month_usd') or 0):+,.2f}")
+    r4.metric("누적 실현", f"${float(realized.get('total_usd') or 0):+,.2f}")
+    st.caption("매도 체결을 FIFO(선입선출)로 매칭해 확정 손익을 계산합니다.")
+
+    realized_by_ticker = realized.get("by_ticker") or []
+    if realized_by_ticker:
+        st.markdown("**종목별 실현 손익**")
+        realized_df = pd.DataFrame(realized_by_ticker).rename(
+            columns={
+                "ticker": "종목",
+                "realized_pl": "실현손익($)",
+                "closed_trades": "매도체결",
+            }
+        )
+        st.dataframe(realized_df, use_container_width=True, hide_index=True)
+
+    realized_events = realized.get("events") or []
+    if realized_events:
+        with st.expander("실현 손익 상세 (최근 매도 매칭)", expanded=False):
+            event_df = pd.DataFrame(realized_events).rename(
+                columns={
+                    "timestamp": "체결시각",
+                    "ticker": "종목",
+                    "qty": "수량",
+                    "sell_price": "매도가",
+                    "cost_basis": "매입가(FIFO)",
+                    "realized_pl": "실현손익($)",
+                    "return_pct": "수익률(%)",
+                    "reason": "사유",
+                }
+            )
+            cols = [
+                "체결시각",
+                "종목",
+                "수량",
+                "매도가",
+                "매입가(FIFO)",
+                "실현손익($)",
+                "수익률(%)",
+            ]
+            if event_df["사유"].astype(str).str.strip().any():
+                cols.append("사유")
+            st.dataframe(event_df[cols], use_container_width=True, hide_index=True)
+
+    curve = payload.get("equity_curve") or []
+    if curve:
+        st.subheader("자산 추이")
+        curve_df = pd.DataFrame(curve)
+        curve_df["date"] = pd.to_datetime(curve_df["date"])
+        curve_df = curve_df.set_index("date")
+        st.line_chart(curve_df["equity"])
+
+    positions = payload.get("positions") or []
+    st.subheader("보유 종목")
+    if positions:
+        pos_df = pd.DataFrame(positions)
+        pos_df = pos_df.rename(
+            columns={
+                "ticker": "종목",
+                "qty": "수량",
+                "avg_cost": "평단",
+                "current_price": "현재가",
+                "market_value": "평가금액",
+                "unrealized_pl": "평가손익($)",
+                "unrealized_plpc": "수익률(%)",
+            }
+        )
+        st.dataframe(
+            pos_df[
+                [
+                    "종목",
+                    "수량",
+                    "평단",
+                    "현재가",
+                    "평가금액",
+                    "평가손익($)",
+                    "수익률(%)",
+                ]
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("보유 종목이 없습니다.")
+
+    trades = payload.get("trades") or []
+    st.subheader("최근 체결 내역")
+    if trades:
+        trade_df = pd.DataFrame(trades)
+        trade_df = trade_df.rename(
+            columns={
+                "timestamp": "체결시각",
+                "side_ko": "구분",
+                "ticker": "종목",
+                "qty": "수량",
+                "price": "체결가",
+                "notional": "거래대금",
+                "reason": "사유",
+            }
+        )
+        display_cols = ["체결시각", "구분", "종목", "수량", "체결가", "거래대금"]
+        if "사유" in trade_df.columns and trade_df["사유"].astype(str).str.strip().any():
+            display_cols.append("사유")
+        st.dataframe(trade_df[display_cols], use_container_width=True, hide_index=True)
+    else:
+        st.info("최근 체결 내역이 없습니다.")
+
+    st.caption(
+        f"생성: {payload.get('generated_at', '—')} · "
+        f"broker={payload.get('broker_provider', '—')} · "
+        f"artifact=logs/portfolio_pnl/latest_summary.json"
+    )
+
+
 def main() -> None:
     sidebar_settings_editor()
 
@@ -3314,6 +3561,7 @@ def main() -> None:
         "페이지",
         [
             "개요",
+            "수익 · 매매",
             "로그",
             "백테스트 결과",
             "백테스트 실행",
@@ -3333,6 +3581,8 @@ def main() -> None:
 
     if page == "개요":
         render_overview()
+    elif page == "수익 · 매매":
+        render_portfolio_pnl()
     elif page == "로그":
         render_logs()
     elif page == "백테스트 결과":

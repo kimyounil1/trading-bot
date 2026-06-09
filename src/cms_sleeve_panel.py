@@ -8,6 +8,7 @@ __all__ = [
     "build_sleeves_config_dict",
     "merge_sleeve_settings_into_strategy",
     "save_sleeve_settings",
+    "request_sleeve_allocation_rebalance",
 ]
 
 
@@ -177,6 +178,14 @@ def save_sleeve_settings(
                 "sleeves": sleeves_config,
             }
         )
+        if portfolio_sleeves_enabled:
+            request_sleeve_allocation_rebalance(reason="sleeve_settings_saved")
         return []
     except ValueError as exc:
         return [str(exc)]
+
+
+def request_sleeve_allocation_rebalance(*, reason: str = "cms") -> None:
+    from src.sleeve_rebalance_state import request_allocation_rebalance
+
+    request_allocation_rebalance(reason=reason)

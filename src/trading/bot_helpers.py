@@ -179,7 +179,18 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Submit real paper orders to Alpaca. Without this flag, dry-run only.",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--sleeve-rebalance-only",
+        action="store_true",
+        help=(
+            "Run portfolio sleeve allocation rebalance only (retag + trim sells). "
+            "Implies --execute for order submission when the market allows."
+        ),
+    )
+    args = parser.parse_args()
+    if args.sleeve_rebalance_only:
+        args.execute = True
+    return args
 
 
 def get_signal_for_ticker(

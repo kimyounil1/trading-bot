@@ -25,7 +25,10 @@ from src.trading.bot_helpers import (
 from src.trading.buy_pipeline import run_buy_pipeline
 from src.trading.exit_pipeline import run_exit_pipeline
 from src.trading.sleeve_rebalance_pipeline import run_sleeve_rebalance_pipeline
-from src.trading.run_context import build_trading_run_context
+from src.trading.run_context import (
+    build_sleeve_rebalance_run_context,
+    build_trading_run_context,
+)
 from src.trading.run_finalize import (
     compact_buy_summary,
     compact_exit_summary,
@@ -52,6 +55,12 @@ _check_price_frame_freshness = check_price_frame_freshness
 
 def main() -> None:
     args = parse_args()
+    if args.sleeve_rebalance_only:
+        ctx = build_sleeve_rebalance_run_context(execute_orders=args.execute)
+        run_sleeve_rebalance_pipeline(ctx)
+        finalize_trading_run(ctx)
+        return
+
     ctx = build_trading_run_context(execute_orders=args.execute)
     run_exit_pipeline(ctx)
     run_sleeve_rebalance_pipeline(ctx)

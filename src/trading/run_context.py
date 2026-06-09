@@ -97,6 +97,138 @@ class TradingRunContext:
     api_error_count: int = 0
     live_order_count: int = 0
     positions_count: int = 0
+    force_sleeve_allocation_rebalance: bool = False
+
+
+def build_sleeve_rebalance_run_context(*, execute_orders: bool) -> TradingRunContext:
+    """Lightweight context for immediate sleeve allocation rebalance (no universe scan)."""
+    from collections import Counter
+
+    run_id = datetime.now().strftime("%Y%m%dT%H%M%S")
+    settings = load_settings()
+    broker_adapter = get_broker_adapter(settings.broker_provider)
+    trading_env = resolve_trading_environment(settings)
+    settings = apply_environment_profile(settings, trading_env)
+    validate_trading_config(settings, trading_env, broker_adapter)
+    if execute_orders:
+        assert_live_execution_allowed(
+            execute=True,
+            trading_environment=trading_env,
+        )
+        assert_live_readiness_for_execute(
+            settings=settings,
+            environment=trading_env,
+        )
+
+    audit_ctx = build_audit_context(
+        run_id=run_id,
+        settings=settings,
+        environment=trading_env,
+        ai_model_bundle=None,
+    )
+    account = broker_adapter.get_account()
+    positions = broker_adapter.get_positions()
+    open_symbols = {
+        str(symbol).upper() for symbol in broker_adapter.get_open_symbols()
+    }
+    positions_by_symbol = {
+        str(position["symbol"]).upper(): position for position in positions
+    }
+    sleeve_ctx = init_sleeve_run_context(
+        settings,
+        broker_adapter=broker_adapter,
+        account=account,
+        positions=positions,
+    )
+    settings, profile_name = apply_dynamic_profile(settings, "NEUTRAL")
+    market_clock = get_market_clock(settings)
+    live_safety_guard = LiveSafetyGuard.from_settings(
+        settings,
+        account=account,
+        positions=positions,
+    )
+    dust_min_usd = dust_position_min_usd(settings)
+    cash = float(account["cash"])
+    last_equity = account.get("last_equity", account["portfolio_value"])
+    daily_drawdown = (
+        (account["portfolio_value"] - last_equity) / last_equity
+        if last_equity > 0
+        else 0
+    )
+    max_drawdown_allowed = -float(getattr(settings, "max_portfolio_drawdown_pct", 0.15))
+    circuit_breaker_active = daily_drawdown <= max_drawdown_allowed
+    can_submit_orders = (
+        execute_orders and market_clock.orders_allowed and not circuit_breaker_active
+    )
+
+    print("SLEEVE_REBALANCE_ONLY: account snapshot loaded")
+    print(f"cash={cash:.2f}, positions_count={account['positions_count']}")
+    print(f"execute_orders={execute_orders}")
+    print(
+        f"market_is_open={market_clock.is_open}, "
+        f"orders_allowed={market_clock.orders_allowed}, "
+        f"market_time={market_clock.timestamp}"
+    )
+    if execute_orders and not market_clock.orders_allowed:
+        print(
+            "EXECUTION_BLOCKED: trim sells skipped until session allows orders; "
+            "registry retags still apply."
+        )
+
+    return TradingRunContext(
+        execute_orders=execute_orders,
+        run_id=run_id,
+        settings=settings,
+        profile_name=profile_name,
+        trading_env=trading_env,
+        broker_adapter=broker_adapter,
+        audit_ctx=audit_ctx,
+        sleeve_ctx=sleeve_ctx,
+        account=account,
+        positions=positions,
+        positions_by_symbol=positions_by_symbol,
+        open_symbols=open_symbols,
+        ticker_data={},
+        spy_df=None,
+        vix_df=None,
+        macro_df=None,
+        market_clock=market_clock,
+        live_safety_guard=live_safety_guard,
+        extended_slippage=float(
+            getattr(settings, "extended_hours_limit_slippage_pct", 0.005)
+        ),
+        current_regime="NEUTRAL",
+        can_submit_orders=can_submit_orders,
+        circuit_breaker_active=circuit_breaker_active,
+        dust_min_usd=dust_min_usd,
+        meaningful_positions_count=count_meaningful_positions(
+            positions, min_usd=dust_min_usd
+        ),
+        guard_open_symbols=meaningful_open_symbols(positions, min_usd=dust_min_usd),
+        current_gross_exposure=meaningful_gross_exposure(
+            positions, min_usd=dust_min_usd
+        ),
+        peaks=load_peaks(),
+        price_data_freshness={},
+        market_regime_bullish=True,
+        rank_ai_gate_scores={},
+        ai_model_bundle=None,
+        top_sectors=[],
+        margin_leverage_block_active=False,
+        margin_leverage_block_reason="",
+        cash=cash,
+        orders_submitted=0,
+        submitted_notional_today=0.0,
+        recent_buy_symbols=set(),
+        exit_summary_rows=[],
+        buy_summary_rows=[],
+        skipped_reasons=Counter(),
+        data_error_count=0,
+        api_error_count=0,
+        live_order_count=0,
+        positions_count=int(account["positions_count"]),
+        force_sleeve_allocation_rebalance=True,
+    )
 
 
 def build_trading_run_context(*, execute_orders: bool) -> TradingRunContext:

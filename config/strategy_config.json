@@ -246,7 +246,7 @@
       "target_weight": 0.3,
       "profile": "tournament_paper",
       "strategy": "alpha_tournament",
-      "paper_only": false
+      "paper_only": true
     },
     "cash": {
       "enabled": true,
