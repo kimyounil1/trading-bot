@@ -63,7 +63,7 @@ def default_sleeves_config() -> dict[str, dict[str, Any]]:
             "target_weight": 0.30,
             "profile": "tournament_paper",
             "strategy": "alpha_tournament",
-            "paper_only": True,
+            "paper_only": False,
         },
         CASH_SLEEVE_ID: {
             "enabled": True,
@@ -161,33 +161,62 @@ def _position_market_value(positions: list[dict[str, Any]]) -> float:
     return total
 
 
-def _open_order_notional(open_orders: list[dict[str, Any]]) -> float:
-    reserved = 0.0
-    for order in open_orders:
-        side = str(order.get("side", "")).upper()
-        if side != "BUY":
+def _order_notional(order: dict[str, Any]) -> float:
+    for key in ("notional", "limit_price", "qty"):
+        raw = order.get(key)
+        if raw in (None, "", "None"):
             continue
-        for key in ("notional", "limit_price", "qty"):
-            raw = order.get(key)
-            if raw in (None, "", "None"):
-                continue
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if key == "notional" and value > 0:
+            return value
+        if key == "limit_price":
+            qty_raw = order.get("qty")
             try:
-                value = float(raw)
+                qty = float(qty_raw)
             except (TypeError, ValueError):
-                continue
-            if key == "notional" and value > 0:
-                reserved += value
-                break
-            if key == "limit_price":
-                qty_raw = order.get("qty")
-                try:
-                    qty = float(qty_raw)
-                except (TypeError, ValueError):
-                    qty = 0.0
-                if value > 0 and qty > 0:
-                    reserved += value * qty
-                    break
-    return max(0.0, reserved)
+                qty = 0.0
+            if value > 0 and qty > 0:
+                return value * qty
+    return 0.0
+
+
+def _infer_order_sleeve_id(order: dict[str, Any]) -> str:
+    client_order_id = str(
+        order.get("client_order_id")
+        or order.get("client_orderId")
+        or order.get("id")
+        or ""
+    ).lower()
+    if client_order_id.startswith("tour_"):
+        return TOURNAMENT_SLEEVE_ID
+    return CORE_SLEEVE_ID
+
+
+def _open_order_notional(open_orders: list[dict[str, Any]]) -> float:
+    return sum(
+        _order_notional(order)
+        for order in open_orders
+        if str(order.get("side", "")).upper() == "BUY"
+    )
+
+
+def _open_order_notional_by_sleeve(
+    open_orders: list[dict[str, Any]],
+) -> dict[str, float]:
+    totals = {CORE_SLEEVE_ID: 0.0, TOURNAMENT_SLEEVE_ID: 0.0}
+    for order in open_orders:
+        if str(order.get("side", "")).upper() != "BUY":
+            continue
+        sleeve_id = _infer_order_sleeve_id(order)
+        amount = _order_notional(order)
+        if sleeve_id == TOURNAMENT_SLEEVE_ID:
+            totals[TOURNAMENT_SLEEVE_ID] += amount
+        else:
+            totals[CORE_SLEEVE_ID] += amount
+    return totals
 
 
 class PortfolioSleeveAllocator:
@@ -273,7 +302,9 @@ class PortfolioSleeveAllocator:
                 break
 
         open_buy_reserved = _open_order_notional(self.open_orders)
-        open_core_reserved = open_buy_reserved
+        reserved_by_sleeve = _open_order_notional_by_sleeve(self.open_orders)
+        open_core_reserved = reserved_by_sleeve.get(CORE_SLEEVE_ID, 0.0)
+        open_tournament_reserved = reserved_by_sleeve.get(TOURNAMENT_SLEEVE_ID, 0.0)
 
         sleeves: dict[str, SleeveBudget] = {}
         for definition in enabled_defs:
@@ -283,17 +314,34 @@ class PortfolioSleeveAllocator:
                 available_cash = max(0.0, min(account_cash, target_notional))
                 order_budget = 0.0
                 rebalance_needed = account_cash < target_notional * 0.95
+                sleeve_reserved = 0.0
+            elif definition.sleeve_id == TOURNAMENT_SLEEVE_ID:
+                tradable_cash = max(0.0, account_cash - cash_reserve_target)
+                sleeve_cash_share = tradable_cash * (
+                    definition.target_weight
+                    / max(total_weight - self._cash_weight(enabled_defs), 1e-9)
+                )
+                sleeve_reserved = open_tournament_reserved
+                available_cash = max(0.0, sleeve_cash_share - sleeve_reserved)
+                headroom = max(0.0, target_notional - current_notional - sleeve_reserved)
+                order_budget = max(
+                    0.0,
+                    min(available_cash, headroom, buying_power - cash_reserve_target),
+                )
+                rebalance_needed = current_notional > target_notional * 1.05
             else:
                 tradable_cash = max(0.0, account_cash - cash_reserve_target)
                 sleeve_cash_share = tradable_cash * (
-                    definition.target_weight / max(total_weight - self._cash_weight(enabled_defs), 1e-9)
-                    if definition.sleeve_id != CASH_SLEEVE_ID
-                    else 0.0
+                    definition.target_weight
+                    / max(total_weight - self._cash_weight(enabled_defs), 1e-9)
                 )
-                reserved = open_core_reserved if definition.sleeve_id == CORE_SLEEVE_ID else 0.0
-                available_cash = max(0.0, sleeve_cash_share - reserved)
-                headroom = max(0.0, target_notional - current_notional - reserved)
-                order_budget = max(0.0, min(available_cash, headroom, buying_power - cash_reserve_target))
+                sleeve_reserved = open_core_reserved
+                available_cash = max(0.0, sleeve_cash_share - sleeve_reserved)
+                headroom = max(0.0, target_notional - current_notional - sleeve_reserved)
+                order_budget = max(
+                    0.0,
+                    min(available_cash, headroom, buying_power - cash_reserve_target),
+                )
                 rebalance_needed = current_notional > target_notional * 1.05
 
             sleeves[definition.sleeve_id] = SleeveBudget(
@@ -305,7 +353,7 @@ class PortfolioSleeveAllocator:
                 available_cash=round(available_cash, 2),
                 order_budget=round(order_budget, 2),
                 open_order_reserved=round(
-                    open_core_reserved if definition.sleeve_id == CORE_SLEEVE_ID else 0.0,
+                    sleeve_reserved if definition.sleeve_id != CASH_SLEEVE_ID else 0.0,
                     2,
                 ),
                 rebalance_needed=rebalance_needed,

@@ -469,6 +469,48 @@ def save_settings(settings: StrategySettings, path: Union[str, Path] = CONFIG_PA
     settings_path.write_text(json.dumps(asdict(settings), indent=2), encoding="utf-8")
 
 
+def merge_settings_overlay(
+    settings: StrategySettings,
+    overlay: dict[str, Any],
+) -> StrategySettings:
+    """Return a new StrategySettings with overlay fields applied."""
+    merged = asdict(settings)
+    merged.update(overlay)
+    return validate_settings(StrategySettings(**merged))
+
+
+def patch_strategy_config(
+    updates: Dict[str, Any],
+    *,
+    path: Union[str, Path] = CONFIG_PATH,
+) -> StrategySettings:
+    """Merge updates into strategy_config.json (same merge path as load_settings)."""
+
+    from src.universe_loader import resolve_scan_tickers
+
+    unknown_updates = sorted(set(updates) - _STRATEGY_SETTINGS_FIELD_NAMES)
+    if unknown_updates:
+        raise ValueError(f"Unknown strategy config keys: {unknown_updates}")
+
+    settings_path = Path(path).expanduser().resolve()
+    merged = asdict(DEFAULT_SETTINGS)
+    if settings_path.exists():
+        payload = _validate_strategy_settings_payload(
+            _read_json_object(settings_path),
+            settings_path,
+        )
+        base_tickers = payload.get("tickers", merged.get("tickers"))
+        payload["tickers"] = resolve_scan_tickers(list(base_tickers))
+        merged.update(payload)
+    else:
+        merged["tickers"] = resolve_scan_tickers(list(merged["tickers"]))
+
+    merged.update(updates)
+    settings = validate_settings(StrategySettings(**merged))
+    save_settings(settings, settings_path)
+    return settings
+
+
 def apply_dynamic_profile(
     settings: StrategySettings, 
     current_regime: str,

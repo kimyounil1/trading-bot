@@ -29,6 +29,7 @@ from src.trading.bot_helpers import (
     order_is_filled,
 )
 from src.trading.run_context import TradingRunContext
+from src.trading.tournament_buy_pipeline import run_tournament_buy_pipeline
 
 
 def run_buy_pipeline(ctx: TradingRunContext) -> None:
@@ -621,6 +622,7 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
                     ctx.positions_count += 1
                 ctx.cash -= filled_notional
                 ctx.current_gross_exposure += filled_notional
+                ctx.sleeve_ctx.record_fill(ticker, sleeve_id="core")
         except Exception as exc:
             ctx.live_safety_guard.record_order_failure()
             if isinstance(exc, ConnectionError) and ctx.execute_orders:
@@ -641,4 +643,6 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
                 ai_score=ai_score,
                 notional=order_amount,
             )
-    
+
+    run_tournament_buy_pipeline(ctx)
+

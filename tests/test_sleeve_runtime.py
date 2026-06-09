@@ -37,27 +37,31 @@ class SleeveRuntimeTest(unittest.TestCase):
         )
 
     def test_consume_submit_budget(self) -> None:
+        from src.portfolio_sleeves import CORE_SLEEVE_ID
+
         ctx = SleeveRunContext(
             settings=StrategySettings(),
             allocator=MagicMock(),
             snapshot=MagicMock(),
             open_orders=[],
-            core_budget_remaining=500.0,
+            budget_remaining={CORE_SLEEVE_ID: 500.0},
         )
-        ok, _ = ctx.check_submit_budget(200.0)
+        ok, _ = ctx.check_submit_budget(200.0, sleeve_id=CORE_SLEEVE_ID)
         self.assertTrue(ok)
-        ctx.consume_submit_budget(200.0)
+        ctx.consume_submit_budget(200.0, sleeve_id=CORE_SLEEVE_ID)
         self.assertAlmostEqual(ctx.core_budget_remaining, 300.0)
 
 
 class CmsSleeveSaveTest(unittest.TestCase):
-    def test_build_sleeves_config_dict_marks_tournament_paper_only(self) -> None:
+    def test_build_sleeves_config_dict_tournament_uses_alpha_profile(self) -> None:
         payload = build_sleeves_config_dict(
             core_weight=0.5,
             tournament_weight=0.3,
             cash_weight=0.2,
         )
-        self.assertTrue(payload["tournament"]["paper_only"])
+        self.assertEqual(payload["tournament"]["profile"], "tournament_paper")
+        self.assertEqual(payload["tournament"]["strategy"], "alpha_tournament")
+        self.assertFalse(payload["tournament"]["paper_only"])
 
     def test_save_sleeve_settings_rejects_invalid_total(self) -> None:
         settings = StrategySettings(portfolio_sleeves_enabled=False)

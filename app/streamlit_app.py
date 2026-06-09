@@ -32,6 +32,12 @@ from src.notification_settings import (
 from src.logger import log_order, log_order_status
 from src.data_loader import load_price_data_batch
 from src.candidate_cache import load_latest_candidate_cache_full
+from src.cms_sleeve_panel import (
+    build_sleeve_control_panel_rows,
+    build_sleeves_config_dict,
+    save_sleeve_settings,
+    validate_sleeve_target_weights,
+)
 from src.cms_helpers import (
     cache_age_minutes as _cache_age_minutes,
     classify_buy_candidates,
@@ -43,10 +49,6 @@ from src.cms_helpers import (
     orders_to_frame as _orders_to_frame,
     partition_alpaca_orders,
     pct,
-    build_sleeve_control_panel_rows,
-    build_sleeves_config_dict,
-    save_sleeve_settings,
-    validate_sleeve_target_weights,
 )
 from src.cms_reconcile import reconcile_cms_execute_with_alpaca
 
@@ -2517,7 +2519,9 @@ def render_sleeve_control_panel(
     )
 
     st.subheader("Portfolio sleeves (core / tournament / cash)")
-    st.caption("tournament 슬리브는 paper-only · live ON 버튼 없음")
+    st.caption(
+        "전 슬리브 동일 Alpaca paper 계좌 · tournament는 alpha_tournament 프로필(게이트 더 엄격)"
+    )
 
     raw_sleeves = getattr(settings, "sleeves", None) or default_sleeves_config()
     if not isinstance(raw_sleeves, dict):
@@ -2552,7 +2556,7 @@ def render_sleeve_control_panel(
                 disabled=not sleeves_on,
             )
         with c2:
-            st.markdown("**Tournament** (paper-only)")
+            st.markdown("**Tournament** (alpha track)")
             tournament_on = st.checkbox(
                 "tournament enabled",
                 value=_sleeve_enabled("tournament"),

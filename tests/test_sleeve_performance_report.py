@@ -21,7 +21,13 @@ def test_sleeve_performance_report_writes_structure(tmp_path: Path) -> None:
     assert "sleeves" in report
 
 
-def test_sleeve_report_handles_empty_audit(tmp_path: Path) -> None:
+def test_sleeve_report_handles_empty_audit(tmp_path: Path, monkeypatch) -> None:
+    from src.settings import StrategySettings
+
+    monkeypatch.setattr(
+        "src.sleeve_performance_report.load_settings",
+        lambda: StrategySettings(portfolio_sleeves_enabled=False),
+    )
     audit_path = tmp_path / "empty.csv"
     audit_path.write_text("timestamp,event_type\n", encoding="utf-8")
     report = build_sleeve_performance_report(audit_path=audit_path)

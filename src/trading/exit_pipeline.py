@@ -457,6 +457,7 @@ def run_exit_pipeline(ctx: TradingRunContext) -> None:
                     ctx.open_symbols.remove(ticker)
                     ctx.positions_by_symbol.pop(ticker, None)
                     ctx.positions_count -= 1
+                    ctx.sleeve_ctx.record_exit(ticker)
     
             except Exception as exc:
                 if isinstance(exc, ConnectionError) and ctx.execute_orders:

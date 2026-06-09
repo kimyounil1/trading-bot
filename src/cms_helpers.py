@@ -25,6 +25,17 @@ __all__ = [
     "classify_buy_candidates",
     "reconcile_cms_execute_with_alpaca",
     "sort_buy_candidates",
+]
+
+from src.cms_sleeve_panel import (
+    build_sleeve_control_panel_rows,
+    build_sleeves_config_dict,
+    merge_sleeve_settings_into_strategy,
+    save_sleeve_settings,
+    validate_sleeve_target_weights,
+)
+
+__all__ += [
     "validate_sleeve_target_weights",
     "build_sleeve_control_panel_rows",
     "build_sleeves_config_dict",
@@ -205,145 +216,3 @@ def sort_buy_candidates(buy_df: pd.DataFrame) -> pd.DataFrame:
     if not sort_cols:
         return buy_df
     return buy_df.sort_values(sort_cols, ascending=[False] * len(sort_cols))
-
-
-def validate_sleeve_target_weights(weights: dict[str, float]) -> list[str]:
-    errors: list[str] = []
-    if not weights:
-        errors.append("sleeve weights must not be empty")
-        return errors
-    total = sum(max(0.0, float(value)) for value in weights.values())
-    if total > 1.0 + 1e-9:
-        errors.append(f"sleeve target weights sum to {total:.4f} (> 1.0)")
-    cash_weight = float(weights.get("cash", 0.0))
-    if cash_weight <= 0:
-        errors.append("cash sleeve weight must be > 0")
-    return errors
-
-
-def build_sleeve_control_panel_rows(
-    *,
-    snapshot: object,
-    tournament_summary: dict | None = None,
-) -> list[dict[str, object]]:
-    rows: list[dict[str, object]] = []
-    sleeves = getattr(snapshot, "sleeves", {}) or {}
-    tournament_summary = tournament_summary or {}
-    tournament_block = tournament_summary.get("tournament_sleeve") or {}
-    for sleeve_id, budget in sleeves.items():
-        current_weight = (
-            budget.current_notional / snapshot.portfolio_value
-            if getattr(snapshot, "portfolio_value", 0) > 0
-            else 0.0
-        )
-        rows.append(
-            {
-                "sleeve_id": sleeve_id,
-                "target_weight": budget.target_weight,
-                "current_weight": round(current_weight, 4),
-                "drift": round(current_weight - budget.target_weight, 4),
-                "order_budget": budget.order_budget,
-                "available_cash": budget.available_cash,
-                "return_21d": tournament_block.get("return_pct")
-                if sleeve_id == "tournament"
-                else None,
-                "readiness": budget.risk_mode,
-            }
-        )
-    return rows
-
-
-def build_sleeves_config_dict(
-    *,
-    core_weight: float,
-    tournament_weight: float,
-    cash_weight: float,
-    core_enabled: bool = True,
-    tournament_enabled: bool = True,
-    cash_enabled: bool = True,
-) -> dict[str, dict[str, object]]:
-    return {
-        "core": {
-            "enabled": core_enabled,
-            "target_weight": round(float(core_weight), 4),
-            "profile": "paper",
-            "strategy": "current_core",
-            "paper_only": False,
-        },
-        "tournament": {
-            "enabled": tournament_enabled,
-            "target_weight": round(float(tournament_weight), 4),
-            "profile": "tournament_paper",
-            "strategy": "alpha_tournament",
-            "paper_only": True,
-        },
-        "cash": {
-            "enabled": cash_enabled,
-            "target_weight": round(float(cash_weight), 4),
-            "strategy": "cash_reserve",
-            "paper_only": False,
-        },
-    }
-
-
-def merge_sleeve_settings_into_strategy(
-    settings: object,
-    *,
-    portfolio_sleeves_enabled: bool,
-    sleeves_config: dict[str, dict[str, object]],
-) -> tuple[object | None, list[str]]:
-    from dataclasses import asdict
-
-    from src.settings import StrategySettings, validate_settings
-
-    merged = asdict(settings)  # type: ignore[arg-type]
-    merged["portfolio_sleeves_enabled"] = bool(portfolio_sleeves_enabled)
-    merged["sleeves"] = sleeves_config
-    try:
-        return validate_settings(StrategySettings(**merged)), []
-    except ValueError as exc:
-        return None, [str(exc)]
-
-
-def save_sleeve_settings(
-    settings: object,
-    *,
-    portfolio_sleeves_enabled: bool,
-    core_weight: float,
-    tournament_weight: float,
-    cash_weight: float,
-    core_enabled: bool = True,
-    tournament_enabled: bool = True,
-    cash_enabled: bool = True,
-) -> list[str]:
-    """Validate and persist sleeve fields to strategy_config.json."""
-    from src.settings import save_settings
-
-    weights = {
-        "core": core_weight,
-        "tournament": tournament_weight,
-        "cash": cash_weight,
-    }
-    errors = validate_sleeve_target_weights(weights)
-    if errors:
-        return errors
-
-    sleeves_config = build_sleeves_config_dict(
-        core_weight=core_weight,
-        tournament_weight=tournament_weight,
-        cash_weight=cash_weight,
-        core_enabled=core_enabled,
-        tournament_enabled=tournament_enabled,
-        cash_enabled=cash_enabled,
-    )
-    validated, merge_errors = merge_sleeve_settings_into_strategy(
-        settings,
-        portfolio_sleeves_enabled=portfolio_sleeves_enabled,
-        sleeves_config=sleeves_config,
-    )
-    if merge_errors:
-        return merge_errors
-    if validated is None:
-        return ["failed to validate sleeve settings"]
-    save_settings(validated)
-    return []

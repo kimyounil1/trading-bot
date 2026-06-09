@@ -359,12 +359,10 @@
 
 ### E. Execution integration
 
-13. [x] **main.py 주문 예산을 sleeve allocator 경유로 변경**
+13. [~] **main.py 주문 예산을 sleeve allocator 경유로 변경** *(core만 완료 — tournament/리밸런스는 Phase 38)*
 
-* 기존 `account["portfolio_value"]`, `cash`, `buying_power` 직접 사용을 점진적으로 줄이고, BUY 후보별 `sleeve_order_budget`을 사용.
-* core 후보는 core budget만 사용.
-* tournament 후보는 tournament budget만 사용.
-* cash sleeve는 주문 후보를 만들지 않음.
+* core 후보는 core budget만 사용. ✅
+* tournament / cash / 리밸런싱 / 포지션 태깅 → Phase 38
 * 테스트: `tests/test_sleeve_order_budget_integration.py`
 
 14. [x] **Open order reconciliation에 sleeve 반영**
@@ -433,6 +431,42 @@
 * buy/exit 동작 변경 없이 rename-only 리팩터 금지 — 테스트로 동작 동일성 확인
 * CMS 슬리브 저장 시 tournament `paper_only` 우회 UI 추가 금지
 
+---
+
+## Phase 38 — Sleeve execution completion
+
+**목표:** 슬리브 ON 시 계좌가 실제로 core / tournament / cash 비중·예산·포지션 태깅에 맞게 동작한다.
+
+### A. Position ↔ sleeve registry
+
+1. [x] **`src/sleeve_position_registry.py`** — `data/sleeve_positions.json`에 symbol→sleeve_id 영구 저장
+2. [x] **첫 활성화 bootstrap** — 기존 보유 종목은 core로 태깅 (미태깅 시)
+3. [x] **매수 체결 시 태깅 / 전량 청산 시 해제** — buy/exit pipeline 연동
+4. [x] **allocator에 registry 전달** — `sleeve_position_map`으로 슬리브별 notional 계산
+
+### B. Sleeve drift rebalancing
+
+5. [x] **`src/trading/sleeve_rebalance_pipeline.py`** — core/tournament 과대·cash 부족 시 trim 매도
+6. [x] **main 순서** — `exit_pipeline` → `sleeve_rebalance` → `buy_pipeline`
+7. [x] **테스트** — `tests/test_sleeve_rebalance.py`
+
+### C. Tournament buy path
+
+8. [x] **`src/trading/tournament_buy_pipeline.py`** — `tournament_paper` overlay + `tournament_alpha_model`
+9. [x] **tournament 슬리브 예산만 사용** — `sleeve_id=tournament` audit/intent
+10. [x] **테스트** — `tests/test_tournament_buy_pipeline.py`
+
+### D. Definition of Done
+
+11. [x] **회귀 테스트** — sleeve + tournament + rebalance pytest green
+12. [ ] **Phase 38 Codex pass** — `RUN_ID=phase38_sleeves_exec bash scripts/run_pass_complete.sh`
+
+**하지 말 것**
+
+* live 환경에서 tournament 강제 ON 금지 (`paper_only` 가드 유지)
+* 슬리브 리밸런스가 stop-loss/exit 우선순위를 덮어쓰지 말 것 (exit 먼저)
+
+---
 
 ## Phase 32 — shipped (요약)
 
