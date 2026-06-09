@@ -114,7 +114,15 @@
 | **39-D Tests** | `test_sleeve_rebalance.py` · `test_sleeve_rebalance_state.py` · `test_portfolio_pnl_report.py` |
 | **39-E Review** | Codex `phase39_sleeve_alloc` — clean |
 
-**한계:** cash surplus 강제 매수 없음 · Telegram silent fail · dust close truncation (follow-up backlog).
+**한계 / follow-up:** cash surplus 강제 매수 없음 · Telegram silent fail · dust close truncation.
+
+---
+
+## Follow-up backlog (비 Phase)
+
+- [ ] 현금 과다(cash>target) 시 **강제 배분 매수**
+- [ ] Telegram silent fail — `notifier` 로깅 개선
+- [ ] Dust close `qty must be positive after truncation`
 
 ---
 
