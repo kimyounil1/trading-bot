@@ -36,10 +36,14 @@ def run_tournament_buy_pipeline(ctx: TradingRunContext) -> None:
         return
 
     budget = ctx.sleeve_ctx.snapshot.sleeves.get(TOURNAMENT_SLEEVE_ID)
-    if budget is None or budget.order_budget < 10.0:
-        print(
-            f"Tournament sleeve: skip buys (order_budget=${budget.order_budget if budget else 0:.2f})"
+    tour_budget = float(
+        ctx.sleeve_ctx.budget_remaining.get(
+            TOURNAMENT_SLEEVE_ID,
+            budget.order_budget if budget else 0.0,
         )
+    )
+    if tour_budget < 10.0:
+        print(f"Tournament sleeve: skip buys (order_budget=${tour_budget:.2f})")
         return
 
     tournament_settings = _tournament_settings(ctx)

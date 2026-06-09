@@ -117,6 +117,11 @@ def build_paper_validation_trend_report(
         latest_llm = float(latest["skip_llm_block"])
         if mean_llm > 0 and latest_llm >= mean_llm * 1.5 and latest_llm >= 10:
             alerts.append("skip_llm_block_spike")
+    if rolling["skip_rank_gate_mean"] is not None and pd.notna(latest.get("skip_rank_gate")):
+        mean_rank = float(rolling["skip_rank_gate_mean"])
+        latest_rank = float(latest["skip_rank_gate"])
+        if mean_rank > 0 and latest_rank >= mean_rank * 1.5 and latest_rank >= 20:
+            alerts.append("skip_rank_gate_spike")
 
     return {
         "generated_at": _utc_now_iso(),

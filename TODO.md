@@ -49,7 +49,7 @@
 | # | 항목 | 상태 |
 |---|------|------|
 | 1 | **Rank AI paper 2주** — 매일 bootstrap → `logs/paper_validation` · `rank_gate_ready=true` | [ ] 진행 중 (~8/14 calendar days) |
-| 2 | **Paper validation 추세** — rolling agreement · SKIP 레이어 관찰 (`run_paper_buy_validation.sh`) | [ ] |
+| 2 | **Paper validation 추세** — rolling agreement · SKIP 레이어 관찰 · rank/LLM spike alerts | [x] |
 | 3 | Codex scoped review `phase32_retry` | [x] |
 
 **하지 말 것** ([`docs/ai_authority_gates.md`](docs/ai_authority_gates.md))
@@ -114,15 +114,15 @@
 | **39-D Tests** | `test_sleeve_rebalance.py` · `test_sleeve_rebalance_state.py` · `test_portfolio_pnl_report.py` |
 | **39-E Review** | Codex `phase39_sleeve_alloc` — clean |
 
-**한계 / follow-up:** cash surplus 강제 매수 없음 · Telegram silent fail · dust close truncation.
+**한계 / follow-up:** ~~cash surplus~~ · ~~Telegram silent fail~~ · ~~dust close~~ — resolved in follow-up pass.
 
 ---
 
 ## Follow-up backlog (비 Phase)
 
-- [ ] 현금 과다(cash>target) 시 **강제 배분 매수**
-- [ ] Telegram silent fail — `notifier` 로깅 개선
-- [ ] Dust close `qty must be positive after truncation`
+- [x] 현금 과다(cash>target) 시 **강제 배분 매수** — `compute_sleeve_cash_surplus_deploy` + `apply_cash_surplus_deploy` (main run)
+- [x] Telegram silent fail — `notifier` WARNING 로깅
+- [x] Dust close `qty must be positive after truncation` — `safe_order_qty_or_none` + broker full close fallback
 
 ---
 

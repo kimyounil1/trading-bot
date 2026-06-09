@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import logging
 from datetime import datetime
 
 import requests
@@ -18,6 +19,8 @@ from src.notification_settings import (
     error_notifications_enabled,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def telegram_is_configured() -> bool:
     return bool(
@@ -30,6 +33,7 @@ def telegram_is_configured() -> bool:
 
 def send_telegram_message(message: str, parse_mode: str = "HTML") -> bool:
     if not telegram_is_configured():
+        logger.debug("Telegram skipped: not configured or disabled")
         return False
 
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -46,8 +50,19 @@ def send_telegram_message(message: str, parse_mode: str = "HTML") -> bool:
         response.raise_for_status()
 
         data = response.json()
-        return bool(data.get("ok"))
-    except (RequestException, ValueError):
+        ok = bool(data.get("ok"))
+        if not ok:
+            logger.warning(
+                "Telegram API returned ok=false status=%s body=%s",
+                response.status_code,
+                data,
+            )
+        return ok
+    except RequestException as exc:
+        logger.warning("Telegram send failed (network): %s", exc)
+        return False
+    except ValueError as exc:
+        logger.warning("Telegram send failed (invalid JSON response): %s", exc)
         return False
 
 

@@ -14,6 +14,7 @@ from src.portfolio_sleeves import (
     sleeves_enabled,
     trim_candidates_to_sleeve_budget,
     validate_sleeve_open_order_budget,
+    compute_sleeve_cash_surplus_deploy,
 )
 from src.sleeve_position_registry import (
     bootstrap_open_positions,
@@ -141,6 +142,22 @@ class SleeveRunContext:
             0.0,
             self.budget_remaining[sleeve_key] - order_amount,
         )
+
+    def apply_cash_surplus_deploy(self, *, min_surplus_usd: float = 50.0) -> dict[str, float]:
+        """Boost per-sleeve buy budgets when cash exceeds the cash sleeve target."""
+        if not self.enabled or not self.recon_ok:
+            return {}
+        extras = compute_sleeve_cash_surplus_deploy(
+            self.snapshot,
+            min_surplus_usd=min_surplus_usd,
+        )
+        if not extras:
+            return {}
+        for sleeve_id, amount in extras.items():
+            key = str(sleeve_id).lower()
+            self.budget_remaining[key] = self.budget_remaining.get(key, 0.0) + amount
+        print(f"SLEEVE_CASH_SURPLUS_DEPLOY: boosted budgets {extras}")
+        return extras
 
     def buy_intent_sleeve_kwargs(
         self,

@@ -64,6 +64,8 @@ def main() -> None:
     ctx = build_trading_run_context(execute_orders=args.execute)
     run_exit_pipeline(ctx)
     run_sleeve_rebalance_pipeline(ctx)
+    ctx.sleeve_ctx.refresh_snapshot()
+    ctx.sleeve_ctx.apply_cash_surplus_deploy()
     run_buy_pipeline(ctx)
     finalize_trading_run(ctx)
 

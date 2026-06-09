@@ -15,9 +15,17 @@ from src.config import ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_PAPER
 
 def _safe_order_qty(qty: float) -> float:
     """Truncate qty down to 6 decimals so sell orders never exceed holdings."""
+    safe = safe_order_qty_or_none(qty)
+    if safe is None:
+        raise ValueError("qty must be positive after truncation")
+    return safe
+
+
+def safe_order_qty_or_none(qty: float) -> float | None:
+    """Return truncated qty, or None when dust-sized holdings round to zero."""
     scaled = math.floor(float(qty) * 1_000_000)
     if scaled <= 0:
-        raise ValueError("qty must be positive after truncation")
+        return None
     return scaled / 1_000_000
 
 
@@ -339,9 +347,17 @@ def submit_limit_sell_qty_order(
         raise ValueError("effective limit price must be positive")
 
     client = get_trading_client()
+    safe_qty = safe_order_qty_or_none(qty)
+    if safe_qty is None:
+        return close_position_by_symbol(
+            ticker,
+            qty=None,
+            client_order_id=client_order_id,
+        )
+
     order_request = LimitOrderRequest(
         symbol=ticker,
-        qty=_safe_order_qty(qty),
+        qty=safe_qty,
         limit_price=effective_limit,
         side=OrderSide.SELL,
         time_in_force=TimeInForce.DAY,
@@ -373,18 +389,23 @@ def close_position_by_symbol(
         if client_order_id:
             from alpaca.trading.requests import MarketOrderRequest
             from alpaca.trading.enums import OrderSide, TimeInForce
-            
+
             # If qty is None, we are closing the entire position.
             if qty is None:
                 position = client.get_open_position(ticker)
                 qty = float(position.qty)
-            
+
             if qty <= 0:
                 return None
 
+            safe_qty = safe_order_qty_or_none(qty)
+            if safe_qty is None:
+                # Dust holdings: broker close API avoids sub-minimum qty orders.
+                return client.close_position(ticker)
+
             order_request = MarketOrderRequest(
                 symbol=ticker,
-                qty=_safe_order_qty(qty),
+                qty=safe_qty,
                 side=OrderSide.SELL,
                 time_in_force=TimeInForce.DAY,
                 client_order_id=client_order_id,
@@ -392,7 +413,13 @@ def close_position_by_symbol(
             return client.submit_order(order_data=order_request)
 
         if qty is not None:
-            return client.close_position(ticker, close_options=ClosePositionRequest(qty=str(qty)))
+            safe_qty = safe_order_qty_or_none(qty)
+            if safe_qty is None:
+                return client.close_position(ticker)
+            return client.close_position(
+                ticker,
+                close_options=ClosePositionRequest(qty=str(safe_qty)),
+            )
         return client.close_position(ticker)
     except RequestException as exc:
         raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc

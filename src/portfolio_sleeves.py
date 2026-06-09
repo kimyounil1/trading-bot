@@ -412,6 +412,57 @@ def cap_order_amount_for_sleeve(
     return min(float(order_amount), budget)
 
 
+def compute_sleeve_cash_surplus_deploy(
+    snapshot: PortfolioSleeveSnapshot,
+    *,
+    min_surplus_usd: float = 50.0,
+) -> dict[str, float]:
+    """Extra buy budget per investable sleeve when account cash exceeds cash target."""
+    if not snapshot.enabled:
+        return {}
+
+    cash_budget = snapshot.sleeves.get(CASH_SLEEVE_ID)
+    if cash_budget is None:
+        return {}
+
+    surplus = float(snapshot.account_cash) - float(cash_budget.target_notional)
+    if surplus < min_surplus_usd:
+        return {}
+
+    sleeves: list[tuple[str, float, float]] = []
+    for sleeve_id in (CORE_SLEEVE_ID, TOURNAMENT_SLEEVE_ID):
+        budget = snapshot.sleeves.get(sleeve_id)
+        if budget is None or budget.target_weight <= 0:
+            continue
+        headroom = max(
+            0.0,
+            budget.target_notional - budget.current_notional - budget.open_order_reserved,
+        )
+        if headroom >= 10.0:
+            sleeves.append((sleeve_id, budget.target_weight, headroom))
+
+    if not sleeves:
+        return {}
+
+    total_weight = sum(weight for _, weight, _ in sleeves)
+    if total_weight <= 0:
+        return {}
+
+    deployable = min(surplus, sum(headroom for _, _, headroom in sleeves))
+    if deployable < min_surplus_usd:
+        return {}
+
+    extras: dict[str, float] = {}
+    remaining = deployable
+    for sleeve_id, weight, headroom in sleeves:
+        share = deployable * (weight / total_weight)
+        amount = min(share, headroom, remaining)
+        if amount >= 10.0:
+            extras[sleeve_id] = round(amount, 2)
+            remaining -= amount
+    return extras
+
+
 def trim_candidates_to_sleeve_budget(
     candidates: list[dict[str, Any]],
     budget: float,
