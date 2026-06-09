@@ -459,7 +459,7 @@
 ### D. Definition of Done
 
 11. [x] **회귀 테스트** — sleeve + tournament + rebalance pytest green
-12. [ ] **Phase 38 Codex pass** — `RUN_ID=phase38_sleeves_exec bash scripts/run_pass_complete.sh`
+12. [x] **Phase 38 Codex pass** — `RUN_ID=phase38_sleeves_exec bash scripts/run_pass_complete.sh`
 
 **하지 말 것**
 
