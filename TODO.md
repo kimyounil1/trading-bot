@@ -30,7 +30,8 @@
 | **LLM (paper)** | blocking mode · Gemini free-tier quota 이슈 간헐 (429) |
 | **Rank AI (paper)** | buy/add gate ON · `rank_gate_ready` 아직 false — **2주 관측 진행 중** |
 | **Champion AI** | **유지** — promotion gate 미통과. Rank label research만 paper gate |
-| **Portfolio sleeves** | ON (core 50 / tournament 30 / cash 20) · registry + drift trim + **allocation rebalance** (Phase 39, 로컬) · `trading-bot` / `trading-bot-cms` 별도 서비스 |
+| **Portfolio sleeves** | ON (core 50 / tournament 30 / cash 20) · registry + drift trim + **allocation rebalance** (Phase 39, `82764c6`) · `trading-bot` / `trading-bot-cms` 별도 서비스 |
+| **Portfolio P&L (CMS)** | Toss-style paper snapshot · FIFO realized · CMS **수익 · 매매** (`82764c6`) |
 | **Trading pipeline** | `main.py` orchestration · exit → sleeve_rebalance → buy (+ tournament) |
 
 **Shipped (요약):** Phase 32 코드·Phase 33 검증·Phase 34–38 broker/sleeves — 상세는 아래 **Shipped** 절.
@@ -47,7 +48,7 @@
 
 | # | 항목 | 상태 |
 |---|------|------|
-| 1 | **Rank AI paper 2주** — 매일 bootstrap → `logs/paper_validation` · `rank_gate_ready=true` | [ ] 진행 중 (~4/14 calendar days) |
+| 1 | **Rank AI paper 2주** — 매일 bootstrap → `logs/paper_validation` · `rank_gate_ready=true` | [ ] 진행 중 (~8/14 calendar days) |
 | 2 | **Paper validation 추세** — rolling agreement · SKIP 레이어 관찰 (`run_paper_buy_validation.sh`) | [ ] |
 | 3 | Codex scoped review `phase32_retry` | [x] |
 
@@ -58,35 +59,7 @@
 
 ---
 
-### 2. Phase 39 — Sleeve allocation rebalance
-
-**목표:** 슬리브 ON 시 보유 포지션·registry·trim이 **target weight에 맞게** 재배치된다 (일회/드리프트).
-
-| # | 항목 | 상태 |
-|---|------|------|
-| 1 | **`build_sleeve_retag_actions`** — core-only 보유를 investable book 비율로 tournament 재태깅 | [x] |
-| 2 | **`build_sleeve_allocation_rebalance_plan`** — retag + allocation-mode trim | [x] |
-| 3 | **`src/sleeve_rebalance_state.py`** — pending / drift≥5% 자동 트리거 | [x] |
-| 4 | **Pipeline** — `run_sleeve_rebalance_pipeline` retag→refresh→sell + Telegram 요약 | [x] |
-| 5 | **CMS** — drift 표시 · 「슬리브 재배치 요청」 버튼 · 저장 시 pending | [x] |
-| 6 | **테스트** — `tests/test_sleeve_rebalance.py`, `tests/test_sleeve_rebalance_state.py` | [x] |
-| 7 | **Phase 39 Codex pass** — `RUN_ID=phase39_sleeve_alloc bash scripts/run_pass_complete.sh` | [ ] |
-| 8 | **운영 확인** — CMS에서 재배치 요청 → 다음 `trading-bot` execute 로그에 `SLEEVE_ALLOCATION_REBALANCE` | [ ] |
-
-**알려진 한계 (follow-up backlog)**
-
-- [ ] 현금 과다(cash>target) 시 **강제 배분 매수** 없음 — buy/tournament pipeline + guard에 의존
-- [ ] Telegram 전송 실패 시 로그 미기록 (silent fail) — `notifier` 로깅 개선
-- [ ] Dust close `qty must be positive after truncation` — exit pipeline 별도 수정
-
-**하지 말 것**
-
-- cash sleeve 목표 초과 현금을 **강제 매도**하지 말 것
-- allocation rebalance가 exit/stop 우선순위를 덮어쓰지 말 것
-
----
-
-### 3. Backlog (차단·대기)
+### 2. Backlog (차단·대기)
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
@@ -129,6 +102,22 @@
 
 ---
 
+## Shipped — Phase 39 (Allocation rebalance + P&L)
+
+커밋 `82764c6` @ `main`.
+
+| 슬라이스 | 완료 |
+|----------|------|
+| **39-A Allocation rebalance** | `build_sleeve_retag_actions` · `build_sleeve_allocation_rebalance_plan` · `sleeve_rebalance_state.py` (pending / drift≥5%) · pipeline retag→refresh→sell · `--sleeve-rebalance-only` · `run_sleeve_rebalance_once.sh` |
+| **39-B CMS sleeves** | drift 표시 · 「지금 슬리브 재배치 실행」 / 「다음 execute 예약」 · 저장 시 pending |
+| **39-C Portfolio P&L** | `portfolio_pnl_report.py` — Alpaca equity periods · positions · trades · **FIFO realized** · CMS **수익 · 매매** · `run_portfolio_pnl_report.sh` |
+| **39-D Tests** | `test_sleeve_rebalance.py` · `test_sleeve_rebalance_state.py` · `test_portfolio_pnl_report.py` |
+| **39-E Review** | Codex `phase39_sleeve_alloc` — clean |
+
+**한계:** cash surplus 강제 매수 없음 · Telegram silent fail · dust close truncation (follow-up backlog).
+
+---
+
 ## Shipped — Phase 32 (코드·리포트)
 
 | 슬라이스 | 완료 내용 |
@@ -160,10 +149,11 @@ bash scripts/run_paper_validation_trend.sh
 bash scripts/run_rank_ai_gate_report.sh
 bash scripts/run_rank_gate_forward_return.sh
 
-# Sleeves
+# Sleeves / P&L
 bash scripts/run_sleeve_rebalance_once.sh   # 즉시 allocation rebalance (retag + trim)
 bash scripts/run_sleeve_performance_report.sh
 bash scripts/run_tournament_score_report.sh
+bash scripts/run_portfolio_pnl_report.sh    # paper P&L snapshot → logs/portfolio_pnl/
 
 # Readiness
 bash scripts/run_live_readiness.sh
