@@ -21,6 +21,7 @@ DEFAULT_EXTENDED_FILL_PATH = Path("logs/paper_ops/extended_hours_fill_report.jso
 DEFAULT_RANK_AI_GATE_PATH = Path("logs/rank_ai_gate/latest_summary.json")
 DEFAULT_PAPER_VALIDATION_PATH = Path("logs/paper_validation/latest_summary.json")
 DEFAULT_PAPER_VALIDATION_TREND_PATH = Path("logs/paper_validation/trend_summary.json")
+DEFAULT_GUARD_REGIME_STUDY_PATH = Path("logs/guard_regime_study/latest_summary.json")
 
 
 def _utc_now_iso() -> str:
@@ -46,11 +47,13 @@ def build_paper_ops_summary(
     rank_ai_gate_path: Path = DEFAULT_RANK_AI_GATE_PATH,
     paper_validation_path: Path = DEFAULT_PAPER_VALIDATION_PATH,
     paper_validation_trend_path: Path = DEFAULT_PAPER_VALIDATION_TREND_PATH,
+    guard_regime_study_path: Path = DEFAULT_GUARD_REGIME_STUDY_PATH,
 ) -> dict[str, Any]:
     llm_advisory = _load_json_if_exists(llm_advisory_path) or {}
     rank_ai_gate = _load_json_if_exists(rank_ai_gate_path) or {}
     paper_validation = _load_json_if_exists(paper_validation_path) or {}
     paper_validation_trend = _load_json_if_exists(paper_validation_trend_path) or {}
+    guard_regime_study = _load_json_if_exists(guard_regime_study_path) or {}
     crowding_gate = _load_json_if_exists(crowding_gate_path) or {}
     crowding_live = _load_json_if_exists(crowding_live_path) or {}
     crowding_reassess = _load_json_if_exists(crowding_reassess_path) or {}
@@ -161,11 +164,27 @@ def build_paper_ops_summary(
             "trend_rows": paper_validation_trend.get("rows", 0),
             "trend_alerts": paper_validation_trend.get("alerts", []),
         },
+        "guard_regime_study_path": str(guard_regime_study_path),
+        "guard_regime_study": {
+            "generated_at": guard_regime_study.get("generated_at"),
+            "current_regime_hint": (guard_regime_study.get("recommendations") or {}).get(
+                "current_regime_hint"
+            ),
+            "bull_preferred": (
+                (guard_regime_study.get("recommendations") or {}).get("bull_market") or {}
+            ).get("preferred_scenario"),
+            "bear_preferred": (
+                (guard_regime_study.get("recommendations") or {}).get("bear_market") or {}
+            ).get("preferred_scenario"),
+            "llm_context_ko": guard_regime_study.get("llm_context_ko"),
+            "policy_path": guard_regime_study.get("policy_path"),
+        },
         "notes": [
             "Run via: bash scripts/run_paper_ops_bootstrap.sh",
             "Crowding proposal merges only with: APPLY_CROWDING_CONFIG=1 bash scripts/run_paper_ops_bootstrap.sh",
             "crowding_config_applied reflects strategy_config.json (not stale gate config_apply).",
             "After dry-run: bash scripts/run_crowding_live_impact_report.sh for SKIP_BUY crowding monitoring.",
+            "Guard regime study: bash scripts/run_guard_regime_study.sh (bull/bear guard comparison).",
         ],
     }
 

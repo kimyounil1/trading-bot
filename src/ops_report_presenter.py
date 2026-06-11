@@ -79,6 +79,14 @@ OPS_REPORT_SPECS: tuple[OpsReportSpec, ...] = (
         ("bash", "scripts/run_guard_impact_report.sh"),
     ),
     OpsReportSpec(
+        "guard_regime_study",
+        "가드 × 레짐 (강세/약세)",
+        "섹터·crowding 완화 시나리오를 bull/bear 구간별 비교",
+        ("logs/guard_regime_study/latest_summary.json",),
+        "bash scripts/run_guard_regime_study.sh",
+        ("bash", "scripts/run_guard_regime_study.sh"),
+    ),
+    OpsReportSpec(
         "crowding_live",
         "몰림 가드 — 실제 봇 로그",
         "최근 dry-run/execute에서 '비슷한 종목 너무 많음'으로 막은 횟수",
@@ -216,6 +224,19 @@ def summarize_report(report_id: str, data: dict[str, Any], *, source_path: str) 
             f"차이: 수익 {d.get('total_return_pct', 0):+.1f}%p · 샤프 {d.get('sharpe_ratio', 0):+.2f} · "
             f"낙폭 {d.get('max_drawdown_pct', 0):+.1f}%p",
         )
+    if report_id == "guard_regime_study":
+        rec = data.get("recommendations") or {}
+        lines = [
+            f"현재 레짐 힌트: {rec.get('current_regime_hint', '—')}",
+            f"강세 권장: {(rec.get('bull_market') or {}).get('preferred_scenario', '—')}",
+            f"약세 권장: {(rec.get('bear_market') or {}).get('preferred_scenario', '—')}",
+        ]
+        for regime_id, block in (data.get("regimes") or {}).items():
+            lines.append(
+                f"{block.get('label_ko', regime_id)}: SPY {block.get('spy_return_pct')}% → "
+                f"best {block.get('best_scenario')}"
+            )
+        return _lines(*lines)
     if report_id == "benchmark_gap":
         summary = data.get("summary") or {}
         strategy_return = summary.get("total_return")

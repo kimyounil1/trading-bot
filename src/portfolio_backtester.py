@@ -12,6 +12,8 @@ from src.portfolio_optimizer import compute_candidate_weights
 from src.llm_analyst import evaluate_ticker_consensus
 from src.news_sentiment import get_ticker_sentiment
 from src.risk_manager import apply_factor_crowding_limits
+from src.regime_stop_policy import RegimeStopProfile, resolve_regime_stop_params
+from src.sector import is_sector_allowed
 
 
 @dataclass
@@ -316,6 +318,10 @@ def run_portfolio_backtest(
     evaluation_start_date: str | pd.Timestamp | None = None,
     evaluation_end_date: str | pd.Timestamp | None = None,
     crowding_guard_enabled: bool = False,
+    max_sector_positions: int | None = None,
+    regime_adaptive_stop_enabled: bool = False,
+    regime_stop_spy_df: pd.DataFrame | None = None,
+    regime_stop_profile: RegimeStopProfile | None = None,
     llm_filter_enabled: bool = False,
     llm_cache_only: bool = True,
     news_sentiment_filter_enabled: bool = False,
@@ -479,9 +485,18 @@ def run_portfolio_backtest(
                                 effective_threshold = ai_exit_threshold_bear
                     ai_exit_triggered = float(ai_score_val) < effective_threshold
 
-            if stop_loss_pct > 0 and gross_return_pct <= -stop_loss_pct:
+            day_stop_loss_pct, day_trailing_stop_pct, _ = resolve_regime_stop_params(
+                regime_stop_spy_df,
+                pd.Timestamp(current_date),
+                fallback_stop_loss_pct=stop_loss_pct,
+                fallback_trailing_stop_pct=trailing_stop_pct,
+                enabled=regime_adaptive_stop_enabled,
+                profile=regime_stop_profile,
+            )
+
+            if day_stop_loss_pct > 0 and gross_return_pct <= -day_stop_loss_pct:
                 exit_reason = "STOP_LOSS"
-            elif trailing_stop_pct > 0 and drawdown_from_high <= -trailing_stop_pct:
+            elif day_trailing_stop_pct > 0 and drawdown_from_high <= -day_trailing_stop_pct:
                 exit_reason = "TRAILING_STOP"
             elif ai_exit_triggered:
                 exit_reason = "AI_EXIT"
@@ -600,6 +615,15 @@ def run_portfolio_backtest(
                         ticker_data=ticker_data,
                     )
                     if not crowding.allowed:
+                        continue
+
+                if max_sector_positions is not None and max_sector_positions > 0:
+                    sector_ok, _ = is_sector_allowed(
+                        ticker,
+                        set(positions.keys()),
+                        max_sector_positions=max_sector_positions,
+                    )
+                    if not sector_ok:
                         continue
 
                 entry_day = pd.Timestamp(current_date).strftime("%Y-%m-%d")

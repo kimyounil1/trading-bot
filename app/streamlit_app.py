@@ -43,6 +43,8 @@ from src.cms_helpers import (
     cache_age_minutes as _cache_age_minutes,
     classify_buy_candidates,
     count_filled_today as _count_filled_today,
+    format_audit_skips_for_display,
+    format_buy_candidates_for_display,
     is_executable_buy_row as _is_executable_buy_row,
     money,
     order_display_columns as _order_display_columns,
@@ -50,6 +52,7 @@ from src.cms_helpers import (
     orders_to_frame as _orders_to_frame,
     partition_alpaca_orders,
     pct,
+    sort_buy_candidates,
 )
 from src.cms_reconcile import reconcile_cms_execute_with_alpaca
 
@@ -1414,7 +1417,10 @@ def render_buy_candidate_tabs(buy_df: pd.DataFrame, clock: MarketClock | None = 
         if df.empty:
             st.info("표시할 항목이 없습니다.")
             return
-        st.dataframe(sort_buy_candidates(df), width="stretch")
+        st.dataframe(
+            format_buy_candidates_for_display(sort_buy_candidates(df)),
+            width="stretch",
+        )
 
     with tabs[0]:
         display(executable_df)
@@ -2473,22 +2479,11 @@ def render_operator_decisions_panel() -> None:
         f"source={meta.get('source', '—')}"
     )
     if buy_df is not None and not buy_df.empty:
-        show_cols = [
-            c
-            for c in (
-                "ticker",
-                "signal",
-                "ai_score",
-                "rank_ai_score",
-                "rank_ai_percentile",
-                "llm_verdict",
-                "buy_allowed",
-                "block_reason",
-            )
-            if c in buy_df.columns
-        ]
+        clock = load_trading_clock()
+        _executable_df, blocked_df, _error_df = classify_buy_candidates(buy_df, clock)
+        display_df = blocked_df if not blocked_df.empty else buy_df
         st.dataframe(
-            buy_df[show_cols].head(30) if show_cols else buy_df.head(30),
+            format_buy_candidates_for_display(sort_buy_candidates(display_df.head(30))),
             use_container_width=True,
         )
     audit_path = ROOT_DIR / "logs/execution_audit.csv"
@@ -2499,22 +2494,9 @@ def render_operator_decisions_panel() -> None:
                 audit_df["event_type"].astype(str).str.contains("SKIP", na=False)
             ].tail(40)
             if not blocked.empty:
-                st.markdown("**Recent blocked / skipped (audit tail)**")
-                cols = [
-                    c
-                    for c in (
-                        "timestamp",
-                        "ticker",
-                        "event_type",
-                        "reason",
-                        "risk_block_reason",
-                        "rank_ai_score",
-                        "llm_verdict",
-                    )
-                    if c in blocked.columns
-                ]
+                st.markdown("**최근 차단/스킵 (audit)**")
                 st.dataframe(
-                    blocked[cols] if cols else blocked,
+                    format_audit_skips_for_display(blocked),
                     use_container_width=True,
                 )
 

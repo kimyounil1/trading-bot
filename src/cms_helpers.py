@@ -27,6 +27,10 @@ __all__ = [
     "sort_buy_candidates",
 ]
 
+from src.buy_skip_reason_ko import (
+    explain_buy_skip_reason,
+    explain_execution_label,
+)
 from src.cms_sleeve_panel import (
     build_sleeve_control_panel_rows,
     build_sleeves_config_dict,
@@ -36,6 +40,8 @@ from src.cms_sleeve_panel import (
 )
 
 __all__ += [
+    "format_buy_candidates_for_display",
+    "format_audit_skips_for_display",
     "validate_sleeve_target_weights",
     "build_sleeve_control_panel_rows",
     "build_sleeves_config_dict",
@@ -216,3 +222,109 @@ def sort_buy_candidates(buy_df: pd.DataFrame) -> pd.DataFrame:
     if not sort_cols:
         return buy_df
     return buy_df.sort_values(sort_cols, ascending=[False] * len(sort_cols))
+
+
+def format_buy_candidates_for_display(buy_df: pd.DataFrame) -> pd.DataFrame:
+    """Add Korean skip explanations for CMS tables."""
+    if buy_df.empty:
+        return buy_df
+
+    out = buy_df.copy()
+    reasons = out.get("reason", pd.Series("", index=out.index)).astype(str)
+    explanations = [
+        explain_buy_skip_reason(
+            reason,
+            row=out.iloc[i].to_dict() if i < len(out) else None,
+        )
+        for i, reason in enumerate(reasons)
+    ]
+    out["스킵분류"] = [e.category for e in explanations]
+    out["한글요약"] = [e.summary for e in explanations]
+    out["상세설명"] = [e.detail for e in explanations]
+    if "reason" in out.columns:
+        out["원본사유(영문)"] = out["reason"]
+    if "execution_label" in out.columns:
+        out["실행라벨"] = out["execution_label"].map(explain_execution_label)
+
+    rename = {
+        "ticker": "종목",
+        "signal": "시그널",
+        "ai_score": "AI점수",
+        "rank_ai_score": "Rank점수",
+        "rank_ai_percentile": "Rank백분위",
+        "order_amount": "주문금액",
+        "target_amount": "목표금액",
+        "would_submit_if_execute": "execute시제출",
+        "risk_allowed": "리스크허용",
+        "close": "종가",
+        "rsi": "RSI",
+        "llm_verdict": "LLM판정",
+        "error": "오류",
+    }
+    out = out.rename(columns={k: v for k, v in rename.items() if k in out.columns})
+
+    preferred = [
+        "종목",
+        "시그널",
+        "스킵분류",
+        "한글요약",
+        "상세설명",
+        "실행라벨",
+        "execute시제출",
+        "AI점수",
+        "Rank점수",
+        "Rank백분위",
+        "주문금액",
+        "원본사유(영문)",
+        "오류",
+    ]
+    cols = [c for c in preferred if c in out.columns]
+    rest = [c for c in out.columns if c not in cols]
+    return out[cols + rest]
+
+
+def format_audit_skips_for_display(audit_df: pd.DataFrame) -> pd.DataFrame:
+    """Add Korean explanations for execution audit skip rows."""
+    if audit_df.empty:
+        return audit_df
+
+    out = audit_df.copy()
+    reasons = out.get("reason", pd.Series("", index=out.index)).astype(str)
+    explanations = [
+        explain_buy_skip_reason(reason, row=out.iloc[i].to_dict())
+        for i, reason in enumerate(reasons)
+    ]
+    out["스킵분류"] = [e.category for e in explanations]
+    out["한글요약"] = [e.summary for e in explanations]
+    out["상세설명"] = [e.detail for e in explanations]
+    out["조치힌트"] = [e.action_hint for e in explanations]
+
+    rename = {
+        "timestamp": "시각",
+        "ticker": "종목",
+        "event_type": "이벤트",
+        "reason": "원본사유(영문)",
+        "rank_ai_score": "Rank점수",
+        "rank_ai_percentile": "Rank백분위",
+        "llm_verdict": "LLM판정",
+        "signal": "시그널",
+        "ai_score": "AI점수",
+    }
+    out = out.rename(columns={k: v for k, v in rename.items() if k in out.columns})
+
+    preferred = [
+        "시각",
+        "종목",
+        "이벤트",
+        "스킵분류",
+        "한글요약",
+        "상세설명",
+        "조치힌트",
+        "Rank점수",
+        "Rank백분위",
+        "AI점수",
+        "원본사유(영문)",
+    ]
+    cols = [c for c in preferred if c in out.columns]
+    rest = [c for c in out.columns if c not in cols]
+    return out[cols + rest]
