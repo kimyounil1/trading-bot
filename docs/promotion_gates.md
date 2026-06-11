@@ -48,3 +48,32 @@ PYTHONPATH=. .venv/bin/python -m src.promotion_summary --gates-only
 ```
 
 Report path: `logs/ml/model_promotion_report.json`
+
+## Research artifacts (rank / guard / exit-timing)
+
+Champion promotion is separate from **paper-only** research gates. Consolidated report:
+
+```bash
+bash scripts/run_research_promotion_gates.sh
+# or
+PYTHONPATH=. .venv/bin/python -m src.promotion_summary --research
+```
+
+Output: `logs/research_promotion_gates/latest_summary.json`
+
+| Source | Role |
+|--------|------|
+| `logs/ml/rank_label_experiment*/latest_summary.json` | Rank-label OOS sweep; gate = gap ≥ 0 pp, Sharpe ≥ 1.0, MDD ≥ −20%, turnover ≤ 1.2 |
+| `data/research/guard_regime_policy.json` | Sector/crowding limits by bull/bear; **do not relax** during Rank AI paper observation |
+| `logs/regime_stop_backtest/latest_summary.json` | Regime adaptive stops — **not adopted** (baseline 5%/20% wins) |
+| `logs/intraday_timing_2w/latest_summary.json` | Intraday schedule — **keep 09:35/15:45** |
+
+**Paper Rank AI (Tier 1)** — passed OOS, wired in config, champion swap still blocked:
+
+| Field | Value |
+|-------|-------|
+| Experiment | `rank_label_experiment_h20_top15_q85` |
+| OOS gap | +14.4 pp vs equal-weight |
+| Sharpe | 1.76 |
+| Config | `rank_ai_buy_gate_enabled=true`, model path in `strategy_config.json` |
+| Live default | Blocked until ≥ 2 weeks paper validation (`ai_authority_gates.md`) |

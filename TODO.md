@@ -140,9 +140,11 @@
   - **결론 (2026-06-11, 11거래일):** baseline 09:35/15:45 **-1.88%**. 최선 `5_fade_spike` **-1.71%** (+0.17pp) — 채택 기준 0.5pp 미달.
   - 시그널일 진입엣지: 11:00이 64% 더 저렴(avg +98bps)이나 포트 수익은 오히려 열위 → **스케줄 변경 없음**.
   - 산출물: `logs/intraday_timing_2w/latest_summary.json`
-- [ ] **방향4 — 리서치 산출물 → promotion gate 반영**
-  - 라벨 실험 (`logs/ml/rank_label_experiment_*`) · `data/research/guard_regime_policy.json` 를 관측만 하지 말고 `docs/promotion_gates.md` 기준에 반영
-  - 일회성 스윕: `scripts/exp_alpha_sweep.py` · `exp_crash_bounce_exit_us.py` · `exp_guard_relaxation_2w.py` (untracked)
+- [x] **방향4 — 리서치 산출물 → promotion gate 반영**
+  - `research_promotion_gates.py` · `run_research_promotion_gates.sh` — rank sweep(9건, **2건 OOS 통과**) + guard policy + exit/timing verdict 통합
+  - `promotion_summary --research` · `paper_ops_summary` · `docs/promotion_gates.md` 연동
+  - **결론:** champion 승격 불가 · paper rank `h20_top15_q85` 유지 · guard 완화 금지(관측 중) · regime/intraday 변경 없음
+  - 일회성 스윕 스크립트(`exp_*.py`)는 별도 보관(untracked)
 
 ---
 

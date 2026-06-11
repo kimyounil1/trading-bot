@@ -9,6 +9,10 @@ from typing import Any
 
 from src.ml_quality_report import MlQualityPromotionCriteria, PROMOTION_MAX_OVERALL_BRIER, PROMOTION_MIN_AVG_ROC_AUC
 from src.promotion_thresholds import ci_portfolio_thresholds, promotion_portfolio_thresholds
+from src.research_promotion_gates import (
+    build_research_promotion_gates_report,
+    format_research_promotion_gates_summary,
+)
 
 DEFAULT_REPORT_PATH = Path("logs/ml/model_promotion_report.json")
 
@@ -84,14 +88,27 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Promotion report summary and gate reference")
     parser.add_argument("--report", default=str(DEFAULT_REPORT_PATH))
     parser.add_argument("--gates-only", action="store_true", help="Print threshold reference only")
+    parser.add_argument(
+        "--research",
+        action="store_true",
+        help="Print consolidated research gates (rank sweep, guard policy, exit/timing)",
+    )
     args = parser.parse_args()
 
     if args.gates_only:
         print(json.dumps(promotion_gate_reference(), indent=2, sort_keys=True))
         return
 
+    if args.research:
+        research = build_research_promotion_gates_report()
+        print(format_research_promotion_gates_summary(research))
+        return
+
     report = load_promotion_report(args.report)
     print(format_promotion_summary(report))
+    print("\n--- Research gates (rank / guard / exit-timing) ---")
+    research = build_research_promotion_gates_report()
+    print(format_research_promotion_gates_summary(research))
     print("\n--- Gate reference (code defaults) ---")
     print(json.dumps(promotion_gate_reference(), indent=2, sort_keys=True))
 

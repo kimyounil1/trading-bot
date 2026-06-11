@@ -98,6 +98,14 @@ OPS_REPORT_SPECS: tuple[OpsReportSpec, ...] = (
         ("bash", "scripts/run_regime_stop_backtest.sh"),
     ),
     OpsReportSpec(
+        "research_promotion_gates",
+        "리서치 promotion gates",
+        "rank-label OOS sweep + guard policy + exit/timing verdict 통합",
+        ("logs/research_promotion_gates/latest_summary.json",),
+        "bash scripts/run_research_promotion_gates.sh",
+        ("bash", "scripts/run_research_promotion_gates.sh"),
+    ),
+    OpsReportSpec(
         "intraday_timing_2w",
         "장중 진입/청산 타이밍 (2주)",
         "09:35/15:45 vs 11:00·14:00·dip-buy·spike-fade 시나리오",
@@ -243,6 +251,20 @@ def summarize_report(report_id: str, data: dict[str, Any], *, source_path: str) 
             f"차이: 수익 {d.get('total_return_pct', 0):+.1f}%p · 샤프 {d.get('sharpe_ratio', 0):+.2f} · "
             f"낙폭 {d.get('max_drawdown_pct', 0):+.1f}%p",
         )
+    if report_id == "research_promotion_gates":
+        lines = [data.get("verdict_ko", "—")]
+        sweep = data.get("rank_label_sweep") or {}
+        lines.append(
+            f"Rank OOS: {sweep.get('passed_count', 0)}/{sweep.get('count', 0)} passed"
+        )
+        paper = data.get("paper_rank_gate") or {}
+        lines.append(
+            f"Paper rank: {paper.get('paper_experiment_id')} "
+            f"gate_passed={paper.get('paper_gate_passed')}"
+        )
+        for b in data.get("blockers") or []:
+            lines.append(f"⚠ {b}")
+        return _lines(*lines)
     if report_id == "intraday_timing_2w":
         rec = data.get("recommendations") or {}
         edge = data.get("signal_day_edge") or {}
