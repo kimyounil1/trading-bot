@@ -145,6 +145,8 @@ class StrategySettings(StrategyProfile):
     margin_leverage_paper_enabled: bool = False
     margin_leverage_stress_gate_required: bool = True
     trailing_stop_pct: float = 0.05
+    regime_adaptive_stop_enabled: bool = False
+    regime_stop_profile: str = "bear_only"  # standard | conservative | bear_only
     adaptive_trailing_stop_enabled: bool = False
     atr_multiplier: float = 3.0
     rebalance_threshold_pct: float = 0.20

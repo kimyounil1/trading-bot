@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from src.alpaca_client import get_position_entry_date
 from src.logger import log_order, log_order_status
@@ -16,6 +16,7 @@ from src.trading.bot_helpers import (
     get_signal_for_ticker,
     resolve_full_exit_reason,
 )
+from src.regime_stop_policy import resolve_exit_stop_params_from_settings
 from src.trading.run_context import TradingRunContext
 
 
@@ -167,9 +168,13 @@ def run_exit_pipeline(ctx: TradingRunContext) -> None:
                     if ai_score < exit_thr:
                         ai_exit_triggered = True
     
-                # Trailing Stop (Phase 14-A / Phase 18-C Adaptive)
+                # Stop / trailing (Phase 14-A; optional SPY-regime adaptive; ATR override below)
                 peak_price = ctx.peaks.get(ticker, 0.0)
-                trailing_pct = float(getattr(ctx.settings, "trailing_stop_pct", 0.05))
+                stop_loss_pct, trailing_pct, regime_label = resolve_exit_stop_params_from_settings(
+                    ctx.settings,
+                    ctx.spy_df,
+                    datetime.now(timezone.utc),
+                )
     
                 if getattr(ctx.settings, "adaptive_trailing_stop_enabled", False) and "atr" in latest:
                     atr_val = float(latest["atr"])
@@ -186,7 +191,7 @@ def run_exit_pipeline(ctx: TradingRunContext) -> None:
     
                 full_exit_reason = resolve_full_exit_reason(
                     unrealized_plpc=unrealized_plpc,
-                    stop_loss_pct=float(getattr(ctx.settings, "stop_loss_pct", 0.0)),
+                    stop_loss_pct=stop_loss_pct,
                     take_profit_pct=float(getattr(ctx.settings, "take_profit_pct", 0.0)),
                     trailing_drawdown=trailing_drawdown,
                     trailing_stop_pct=trailing_pct,
@@ -206,12 +211,17 @@ def run_exit_pipeline(ctx: TradingRunContext) -> None:
                 elif full_exit_reason is not None:
                     exit_decision.reason = full_exit_reason
     
+                regime_note = (
+                    f", regime_stop={regime_label}({stop_loss_pct*100:.1f}%/{trailing_pct*100:.1f}%)"
+                    if getattr(ctx.settings, "regime_adaptive_stop_enabled", False)
+                    else ""
+                )
                 print(
                     f"{ticker}: position_qty={position['qty']}, "
                     f"unrealized_plpc={unrealized_plpc * 100:.2f}%, "
                     f"signal={signal}, "
                     f"exit={exit_decision.should_exit}, "
-                    f"reason='{exit_decision.reason}'"
+                    f"reason='{exit_decision.reason}'{regime_note}"
                 )
     
                 ctx.exit_summary_rows.append(

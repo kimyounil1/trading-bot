@@ -129,9 +129,12 @@
 
 엔진 기반(`portfolio_backtester` regime/sector kwargs, `regime_stop_policy`)은 default-off로 이미 머지됨. 아래는 **결론·연결 대기**.
 
-- [ ] **방향2 — 레짐 적응형 손절/트레일링** (alpha 영향 큼)
-  - 하네스: `src/regime_stop_backtest.py` · `scripts/run_regime_stop_backtest.sh` (untracked)
-  - 백테스트 돌려 standard/conservative/bear-only 프로파일 비교 → 우세하면 **live exit 경로 연결** 검토 (`regime_adaptive_stop_enabled`)
+- [x] **방향2 — 레짐 적응형 손절/트레일링** (백테스트 완료 · paper **미채택**)
+  - 하네스: `src/regime_stop_backtest.py` · `scripts/run_regime_stop_backtest.sh`
+  - **결론 (2026-06-11):** 2년 full / bull / bear 구간 모두 **baseline 5%/20%** (실질 stop-only) 우수. 레짐 adaptive(standard/conservative/bear-only)는 수익 열위.
+  - **follow-up:** `9_stop5_trail10` (5%/10%) — full 2y 수익 -0.2pp, MDD -9.4%→-6.3% 개선. 별도 paper trial 후보 (레짐 adaptive와 무관).
+  - **연결:** `exit_pipeline` + `regime_adaptive_stop_enabled` (config **false**). 켜려면 `strategy_config.json` + 관측.
+  - 산출물: `logs/regime_stop_backtest/latest_summary.json`, `followup_latest_summary.json`
 - [ ] **방향3 — 장중 진입/청산 타이밍**
   - 하네스: `src/intraday_timing_backtest.py` · `scripts/run_intraday_timing_2w.sh` (untracked)
   - 09:35/15:45 고정 vs dip-buy / open-spike fade 2주 백테스트 → 채택 여부 결론

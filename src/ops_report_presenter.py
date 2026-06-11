@@ -87,6 +87,17 @@ OPS_REPORT_SPECS: tuple[OpsReportSpec, ...] = (
         ("bash", "scripts/run_guard_regime_study.sh"),
     ),
     OpsReportSpec(
+        "regime_stop_backtest",
+        "레짐 적응형 손절 백테스트",
+        "고정 5%/20% vs 레짐 유동 스탑·트레일 10% 시나리오 비교",
+        (
+            "logs/regime_stop_backtest/latest_summary.json",
+            "logs/regime_stop_backtest/followup_latest_summary.json",
+        ),
+        "bash scripts/run_regime_stop_backtest.sh",
+        ("bash", "scripts/run_regime_stop_backtest.sh"),
+    ),
+    OpsReportSpec(
         "crowding_live",
         "몰림 가드 — 실제 봇 로그",
         "최근 dry-run/execute에서 '비슷한 종목 너무 많음'으로 막은 횟수",
@@ -224,6 +235,16 @@ def summarize_report(report_id: str, data: dict[str, Any], *, source_path: str) 
             f"차이: 수익 {d.get('total_return_pct', 0):+.1f}%p · 샤프 {d.get('sharpe_ratio', 0):+.2f} · "
             f"낙폭 {d.get('max_drawdown_pct', 0):+.1f}%p",
         )
+    if report_id == "regime_stop_backtest":
+        rec = data.get("recommendations") or {}
+        lines = [rec.get("verdict_ko", "—")]
+        winners = rec.get("window_winners") or {}
+        for window_id, block in winners.items():
+            lines.append(
+                f"{window_id}: best={block.get('best_scenario')} "
+                f"({block.get('best_return_pct')}%, Δbaseline {block.get('delta_vs_baseline_pp')}pp)"
+            )
+        return _lines(*lines)
     if report_id == "guard_regime_study":
         rec = data.get("recommendations") or {}
         lines = [

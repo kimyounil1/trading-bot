@@ -2,10 +2,14 @@ import unittest
 
 import pandas as pd
 
+from types import SimpleNamespace
+
 from src.regime_stop_policy import (
     BEAR_ONLY_TIGHT_STOP_PROFILE,
     CONSERVATIVE_REGIME_STOP_PROFILE,
     classify_spy_regime,
+    resolve_exit_stop_params_from_settings,
+    resolve_regime_stop_profile,
     resolve_regime_stop_params,
     spy_return_lookback,
 )
@@ -71,6 +75,36 @@ class RegimeStopPolicyTest(unittest.TestCase):
             profile=BEAR_ONLY_TIGHT_STOP_PROFILE,
         )
         self.assertEqual(regime, "fixed")  # no spy df → fallback
+
+    def test_resolve_regime_stop_profile_names(self) -> None:
+        self.assertIs(resolve_regime_stop_profile("standard"), resolve_regime_stop_profile("STANDARD"))
+        self.assertIs(resolve_regime_stop_profile("bear_only"), BEAR_ONLY_TIGHT_STOP_PROFILE)
+        self.assertIs(resolve_regime_stop_profile("unknown"), resolve_regime_stop_profile("standard"))
+
+    def test_resolve_exit_stop_params_fixed_when_disabled(self) -> None:
+        settings = SimpleNamespace(
+            stop_loss_pct=0.05,
+            trailing_stop_pct=0.2,
+            regime_adaptive_stop_enabled=False,
+        )
+        stop, trail, regime = resolve_exit_stop_params_from_settings(settings, None)
+        self.assertEqual((stop, trail, regime), (0.05, 0.2, "fixed"))
+
+    def test_resolve_exit_stop_params_enabled_uses_spy(self) -> None:
+        settings = SimpleNamespace(
+            stop_loss_pct=0.05,
+            trailing_stop_pct=0.2,
+            regime_adaptive_stop_enabled=True,
+            regime_stop_profile="standard",
+        )
+        stop, trail, regime = resolve_exit_stop_params_from_settings(
+            settings,
+            self._spy_frame(),
+            pd.Timestamp("2026-02-10"),
+        )
+        self.assertEqual(regime, "bull")
+        self.assertAlmostEqual(stop, 0.07)
+        self.assertAlmostEqual(trail, 0.18)
 
     def test_bear_only_classify_at_zero(self) -> None:
         self.assertEqual(

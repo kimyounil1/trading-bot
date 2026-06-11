@@ -22,6 +22,8 @@ class RegimeStopProfile:
     stress_spy_20d_threshold: float = DEFAULT_STRESS_SPY_20D_THRESHOLD
 
 
+REGIME_STOP_PROFILES: dict[str, RegimeStopProfile] = {}
+
 STANDARD_REGIME_STOP_PROFILE = RegimeStopProfile()
 CONSERVATIVE_REGIME_STOP_PROFILE = RegimeStopProfile(
     bull_stop_loss_pct=0.05,
@@ -33,6 +35,11 @@ CONSERVATIVE_REGIME_STOP_PROFILE = RegimeStopProfile(
 )
 
 # SPY 20d >= 0 → baseline 5%/12%; SPY 20d < 0 → tight 3%/10% (no separate stress tier)
+def resolve_regime_stop_profile(name: str) -> RegimeStopProfile:
+    key = str(name or "standard").strip().lower()
+    return REGIME_STOP_PROFILES.get(key, STANDARD_REGIME_STOP_PROFILE)
+
+
 BEAR_ONLY_TIGHT_STOP_PROFILE = RegimeStopProfile(
     bull_stop_loss_pct=0.05,
     bull_trailing_stop_pct=0.12,
@@ -43,6 +50,39 @@ BEAR_ONLY_TIGHT_STOP_PROFILE = RegimeStopProfile(
     bull_spy_20d_threshold=0.0,
     stress_spy_20d_threshold=-0.999,
 )
+
+REGIME_STOP_PROFILES.update(
+    {
+        "standard": STANDARD_REGIME_STOP_PROFILE,
+        "conservative": CONSERVATIVE_REGIME_STOP_PROFILE,
+        "bear_only": BEAR_ONLY_TIGHT_STOP_PROFILE,
+    }
+)
+
+
+def resolve_exit_stop_params_from_settings(
+    settings,
+    spy_df: pd.DataFrame | None,
+    as_of: pd.Timestamp | None = None,
+) -> tuple[float, float, str]:
+    """Resolve live exit stop/trailing pct from settings (regime adaptive optional)."""
+    stop_loss_pct = float(getattr(settings, "stop_loss_pct", 0.0))
+    trailing_pct = float(getattr(settings, "trailing_stop_pct", 0.05))
+    if not getattr(settings, "regime_adaptive_stop_enabled", False):
+        return stop_loss_pct, trailing_pct, "fixed"
+
+    profile = resolve_regime_stop_profile(
+        str(getattr(settings, "regime_stop_profile", "bear_only"))
+    )
+    as_of_ts = as_of if as_of is not None else pd.Timestamp.utcnow()
+    return resolve_regime_stop_params(
+        spy_df,
+        as_of_ts,
+        fallback_stop_loss_pct=stop_loss_pct,
+        fallback_trailing_stop_pct=trailing_pct,
+        enabled=True,
+        profile=profile,
+    )
 
 
 def spy_return_lookback(
