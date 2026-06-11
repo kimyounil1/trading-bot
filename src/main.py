@@ -55,7 +55,7 @@ _check_price_frame_freshness = check_price_frame_freshness
 
 def main() -> None:
     args = parse_args()
-    if args.sleeve_rebalance_only:
+    if getattr(args, "sleeve_rebalance_only", False):
         ctx = build_sleeve_rebalance_run_context(execute_orders=args.execute)
         run_sleeve_rebalance_pipeline(ctx)
         finalize_trading_run(ctx)
