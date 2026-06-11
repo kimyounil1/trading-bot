@@ -123,6 +123,21 @@
 - [x] 현금 과다(cash>target) 시 **강제 배분 매수** — `compute_sleeve_cash_surplus_deploy` + `apply_cash_surplus_deploy` (main run)
 - [x] Telegram silent fail — `notifier` WARNING 로깅
 - [x] Dust close `qty must be positive after truncation` — `safe_order_qty_or_none` + broker full close fallback
+- [x] CMS 한글 스킵 설명 (`buy_skip_reason_ko`) + guard×레짐 스터디 (`guard_regime_study`) — 커밋 `1f696bd`
+
+### Next research directions (커밋 `1f696bd` 기반)
+
+엔진 기반(`portfolio_backtester` regime/sector kwargs, `regime_stop_policy`)은 default-off로 이미 머지됨. 아래는 **결론·연결 대기**.
+
+- [ ] **방향2 — 레짐 적응형 손절/트레일링** (alpha 영향 큼)
+  - 하네스: `src/regime_stop_backtest.py` · `scripts/run_regime_stop_backtest.sh` (untracked)
+  - 백테스트 돌려 standard/conservative/bear-only 프로파일 비교 → 우세하면 **live exit 경로 연결** 검토 (`regime_adaptive_stop_enabled`)
+- [ ] **방향3 — 장중 진입/청산 타이밍**
+  - 하네스: `src/intraday_timing_backtest.py` · `scripts/run_intraday_timing_2w.sh` (untracked)
+  - 09:35/15:45 고정 vs dip-buy / open-spike fade 2주 백테스트 → 채택 여부 결론
+- [ ] **방향4 — 리서치 산출물 → promotion gate 반영**
+  - 라벨 실험 (`logs/ml/rank_label_experiment_*`) · `data/research/guard_regime_policy.json` 를 관측만 하지 말고 `docs/promotion_gates.md` 기준에 반영
+  - 일회성 스윕: `scripts/exp_alpha_sweep.py` · `exp_crash_bounce_exit_us.py` · `exp_guard_relaxation_2w.py` (untracked)
 
 ---
 
