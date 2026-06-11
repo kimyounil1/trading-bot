@@ -98,6 +98,14 @@ OPS_REPORT_SPECS: tuple[OpsReportSpec, ...] = (
         ("bash", "scripts/run_regime_stop_backtest.sh"),
     ),
     OpsReportSpec(
+        "intraday_timing_2w",
+        "장중 진입/청산 타이밍 (2주)",
+        "09:35/15:45 vs 11:00·14:00·dip-buy·spike-fade 시나리오",
+        ("logs/intraday_timing_2w/latest_summary.json",),
+        "bash scripts/run_intraday_timing_2w.sh",
+        ("bash", "scripts/run_intraday_timing_2w.sh"),
+    ),
+    OpsReportSpec(
         "crowding_live",
         "몰림 가드 — 실제 봇 로그",
         "최근 dry-run/execute에서 '비슷한 종목 너무 많음'으로 막은 횟수",
@@ -235,6 +243,22 @@ def summarize_report(report_id: str, data: dict[str, Any], *, source_path: str) 
             f"차이: 수익 {d.get('total_return_pct', 0):+.1f}%p · 샤프 {d.get('sharpe_ratio', 0):+.2f} · "
             f"낙폭 {d.get('max_drawdown_pct', 0):+.1f}%p",
         )
+    if report_id == "intraday_timing_2w":
+        rec = data.get("recommendations") or {}
+        edge = data.get("signal_day_edge") or {}
+        lines = [
+            rec.get("verdict_ko", "—"),
+            f"기간: {data.get('period_start')} → {data.get('period_end')} "
+            f"({data.get('trading_days')}일)",
+            f"baseline: {rec.get('baseline_return_pct')}% · best: {rec.get('best_policy')} "
+            f"({rec.get('best_return_pct')}%, Δ {rec.get('delta_vs_baseline_pp')}pp)",
+        ]
+        if edge:
+            lines.append(
+                f"시그널일 진입엣지: 11:00 {edge.get('pct_1100_cheaper')}% 저렴 "
+                f"({edge.get('mean_bps_0935_vs_1100')}bps)"
+            )
+        return _lines(*lines)
     if report_id == "regime_stop_backtest":
         rec = data.get("recommendations") or {}
         lines = [rec.get("verdict_ko", "—")]

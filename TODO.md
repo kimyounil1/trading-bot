@@ -135,9 +135,11 @@
   - **follow-up:** `9_stop5_trail10` (5%/10%) — full 2y 수익 -0.2pp, MDD -9.4%→-6.3% 개선. 별도 paper trial 후보 (레짐 adaptive와 무관).
   - **연결:** `exit_pipeline` + `regime_adaptive_stop_enabled` (config **false**). 켜려면 `strategy_config.json` + 관측.
   - 산출물: `logs/regime_stop_backtest/latest_summary.json`, `followup_latest_summary.json`
-- [ ] **방향3 — 장중 진입/청산 타이밍**
-  - 하네스: `src/intraday_timing_backtest.py` · `scripts/run_intraday_timing_2w.sh` (untracked)
-  - 09:35/15:45 고정 vs dip-buy / open-spike fade 2주 백테스트 → 채택 여부 결론
+- [x] **방향3 — 장중 진입/청산 타이밍** (백테스트 완료 · 스케줄 **유지**)
+  - 하네스: `src/intraday_timing_backtest.py` · `scripts/run_intraday_timing_2w.sh`
+  - **결론 (2026-06-11, 11거래일):** baseline 09:35/15:45 **-1.88%**. 최선 `5_fade_spike` **-1.71%** (+0.17pp) — 채택 기준 0.5pp 미달.
+  - 시그널일 진입엣지: 11:00이 64% 더 저렴(avg +98bps)이나 포트 수익은 오히려 열위 → **스케줄 변경 없음**.
+  - 산출물: `logs/intraday_timing_2w/latest_summary.json`
 - [ ] **방향4 — 리서치 산출물 → promotion gate 반영**
   - 라벨 실험 (`logs/ml/rank_label_experiment_*`) · `data/research/guard_regime_policy.json` 를 관측만 하지 말고 `docs/promotion_gates.md` 기준에 반영
   - 일회성 스윕: `scripts/exp_alpha_sweep.py` · `exp_crash_bounce_exit_us.py` · `exp_guard_relaxation_2w.py` (untracked)
