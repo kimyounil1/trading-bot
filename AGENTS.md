@@ -104,6 +104,10 @@ Ask the user only before:
 ### Multi-agent working tree rule
 Only one implementation agent may edit the working tree at a time. Default: Cursor edits production code; **AGY edits tests when assigned `[AGY]`**; Codex reviews read-only. AGY or Codex may touch non-test code only when explicitly asked, preferably on a separate branch.
 
+**Cursor sub-agents** (in-session `explore` / `ci-investigator` / read-only `shell`) may run in parallel for investigation only; they must not edit files. See `CURSOR.md` §7.
+
+**Task labels:** `[Cursor]` runtime · `[Research]` (AGY offline) · `[AGY-test]` pytest · `[AGY-risk]` read-only strategy review. See `CURSOR.md` Task Labels and `AGY.md` invocation modes.
+
 ### Codex (review-only)
 When reviewing implementation work:
 1. Read `reports/agent_pipeline/<run_id>/review_packet.md` when available.

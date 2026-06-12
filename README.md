@@ -71,16 +71,17 @@ Champion·rank 모델은 **코드로 재생성** 가능. 바이트 단위 복제
 |------|------|-----------|
 | **Cursor** | 메인 구현 (~60–70%) | [`CURSOR.md`](CURSOR.md) |
 | **Codex** | read-only 리뷰, `NEXT_TODO` (~15–20%) | [`AGENTS.md`](AGENTS.md) |
-| **AGY** | **`[AGY]` 테스트·하네스** + 전략/리스크 검토 (~15–25%) | [`AGY.md`](AGY.md) |
+| **AGY** | **`[Research]`** 오프라인 실험 · **`[AGY-test]`** pytest · **`[AGY-risk]`** 전략 리뷰 (~15–25%) | [`AGY.md`](AGY.md) |
 | **Gemini CLI** | 레거시·문서만 (~0–5%, 테스트 금지) | [`GEMINI.md`](GEMINI.md) |
 
 **평소 흐름**
 
-1. Cursor에서 기능 구현 (핵심 경로)
-2. **AGY**에 `[AGY]` 테스트 슬라이스 위임 → `pytest` green
-3. **패스 마감 (필수):** `RUN_ID=my_feature bash scripts/run_pass_complete.sh`
-4. `reports/agent_pipeline/<run_id>/NEXT_TODO.codex.md` 확인 후 Cursor가 follow-up 반영
-5. 전략/리스크 대형 변경 시 AGY 설계 리뷰 추가
+1. **런타임:** Cursor `[Cursor]` 구현. **리서치(§4–§5):** AGY `[Research]` → Cursor 런타임 연결/채택
+2. 넓은 조사는 Cursor **서브 에이전트**(`explore` 등, read-only) 병렬 탐색 — [`CURSOR.md` §7](CURSOR.md#7-cursor-sub-agents-in-session)
+3. **AGY** `[AGY-test]` pytest 슬라이스 → `pytest` green
+4. **패스 마감 (필수):** `RUN_ID=my_feature bash scripts/run_pass_complete.sh`
+5. `reports/agent_pipeline/<run_id>/NEXT_TODO.codex.md` 확인 후 Cursor follow-up
+6. 전략/리스크 대형 diff → AGY `[AGY-risk]` 리뷰 (Codex 대체 아님)
 
 작업량 비율: `PYTHONPATH=. .venv/bin/python scripts/agent_workload_report.py --record` (커밋 메시지 `[cursor]` / `[agy]` 태그)
 

@@ -30,6 +30,25 @@ Default:
 Codex or AGY may implement fixes only when explicitly asked, and preferably on a separate branch.
 Never let multiple agents edit the same branch concurrently.
 
+### Cursor sub-agents (in-session, read-only)
+
+Inside a Cursor chat, the main agent may spawn **read-only** sub-agents (`explore`, `ci-investigator`, `shell` with `readonly: true`) for parallel investigation. Details: `CURSOR.md` §7.
+
+- Sub-agents **do not** edit the working tree and **do not** count as a second implementer.
+- They **do not** replace **AGY** (`[AGY]` tests) or **Codex** (scoped pass review).
+- Only the main Cursor session produces commits and `review_packet.md` handoff.
+
+### Task labels (who implements what)
+
+| Label | Implementer | Notes |
+|-------|-------------|-------|
+| `[Cursor]` | Cursor | `main.py`, orders, runtime flags |
+| `[Research]` | AGY | Offline sweeps, `logs/ml/`, no champion swap |
+| `[AGY-test]` / `[AGY]` | AGY | pytest after Cursor or Research |
+| `[AGY-risk]` | AGY read-only | Strategy/risk memo; does not replace Codex `NEXT_TODO` |
+
+Details: `CURSOR.md` Task Labels · `AGY.md` invocation modes · `TODO.md` §4–§5 examples.
+
 ## Default Codex Stance
 
 When the user asks Codex to check implementation work, Codex should review first and avoid editing files unless explicitly asked to fix the issues.

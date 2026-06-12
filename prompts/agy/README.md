@@ -1,10 +1,18 @@
 # AGY session prompts
 
-Copy a task file into Antigravity/AGY after **Cursor** commits `[cursor]` implementation.
+Copy a task file into Antigravity/AGY. Label the task header with one mode:
 
-**Do not** implement `src/main.py` or order paths in AGY. Commit results with `[agy]` tag.
+| Mode | When | Commit tag |
+|------|------|------------|
+| **`[Research]`** | Offline sweeps, calibration, `logs/ml/` reports (`TODO.md` §4–§5) | `[agy]` or `[research]` |
+| **`[AGY-test]`** | pytest/fixtures after Cursor or Research lands code | `[agy]` |
+| **`[AGY-risk]`** | Read-only strategy/risk review on a diff | (no commit unless asked) |
 
-After AGY pytest is green:
+**`[Research]` / `[AGY-test]`:** do not edit `src/main.py` or order paths.
+
+**`[Research]` handoff:** AGY experiments → Cursor runtime wiring (if needed) → `[AGY-test]` → pass close.
+
+After `[AGY-test]` pytest is green:
 
 ```bash
 RUN_ID=<same_pass_id> bash scripts/run_pass_complete.sh

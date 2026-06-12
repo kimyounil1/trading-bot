@@ -13,10 +13,16 @@
 
 ## Who owns what
 
-| 문서 | 역할 |
-|------|------|
+| 문서 / 라벨 | 역할 |
+|-------------|------|
 | **`TODO.md`** | 활성 로드맵 (지금 할 일만) |
 | **`docs/TODO_ARCHIVE.md`** | Phase 0–31 요약 |
+| **`[Cursor]`** | `main.py`, 주문·리스크, 런타임 연결, config wiring |
+| **`[Research]`** | 오프라인 실험·스윕·리포트 — **AGY 구현** (`train_ai_model`/`main.py` 주문 경로 미수정) |
+| **`[AGY-test]`** | pytest·fixture·harness (구 `[AGY]`와 동일) |
+| **`[AGY-risk]`** | 전략·승격·게이트 대형 diff — AGY **read-only** 설계/리스크 리뷰 |
+
+상세: [`CURSOR.md`](CURSOR.md) Task Labels · [`AGY.md`](AGY.md) invocation modes
 
 ---
 
@@ -87,13 +93,14 @@
 
 **배경 (2026-06-12 탐색):** 전략 레이어(레짐 스탑·장중 타이밍·할당 방식 MVO/BL·rank label 스윕)는 결론 완료 — 대부분 채택 기준 미달. 남은 헤드룸은 **모델 품질**. 챔피언 ROC-AUC 0.5075(동전 수준)이며, Brier·fold std·약세 레짐 3개 블로커가 champion 승격과 authority 확장을 막고 있음. 오프라인 리서치이므로 paper config 불변 — §2·§3 관측과 병행 가능.
 
-| # | 항목 | 상태 | 작업 내용 |
-|---|------|------|----------|
-| **4-A** | **캘리브레이션 파이프라인 완성** | [ ] | ① `bash scripts/run_retrain.sh` → `ml_quality_report.py`가 `logs/ml/model_calibration_rows.csv` 생성 확인 (미생성 시 원인 수정 — 현재 `calibration_experiment_report.json`이 `missing_data`) ② `python -m src.calibration_experiment` → isotonic/Platt 비교, `model_calibration_bins.csv` 산출 ③ `src/ai_score_calibration.py` `calibrate_ai_score` 오버레이를 런타임 score 경로에 연결 (config flag, **default-off**) ④ 목표: **Brier 0.337 → ≤0.25** (champion 승격 게이트 해소) |
-| **4-B** | **약세 레짐(BULL/NEUTRAL) 피처 실험** | [ ] | `logs/ml/regime_weakness_report.json` watchlist 피처(spy_rel_return_20d, ma_ratio_20_200, vix_percentile_52w, volatility_20d, yield_spread_10y3m) 기반 + 신규 후보(섹터 모멘텀, breadth). **report-only — 챔피언 승격 없음.** 게이트: 해당 레짐 fold AUC ≥ 0.52 |
-| **4-C** | **Fold 안정성 (variance 축소)** | [ ] | BEAR 레짐 정규화 강화(L1/L2), 레짐별 하이퍼파라미터 분리. 게이트: fold AUC std **0.0745 → < 0.05** (`logs/ml/fold_stability_report.json`) |
+| # | Owner | 항목 | 상태 | 작업 내용 |
+|---|-------|------|------|----------|
+| **4-A-R** | `[Research]` | **캘리브레이션 실험·리포트** | [ ] | ① `bash scripts/run_retrain.sh` → `ml_quality_report.py`가 `logs/ml/model_calibration_rows.csv` 생성 (미생성 시 원인 수정 — 현재 `calibration_experiment_report.json`이 `missing_data`) ② `python -m src.calibration_experiment` → isotonic/Platt 비교, `model_calibration_bins.csv` 산출 ④ 목표 검증 리포트: **Brier 0.337 → ≤0.25** + pytest |
+| **4-A-C** | `[Cursor]` | **캘리브레이션 런타임 연결** | [ ] | ③ `src/ai_score_calibration.py` `calibrate_ai_score` 오버레이를 score 경로에 연결 — config flag, **default-off** (4-A-R 산출물 확인 후) |
+| **4-B** | `[Research]` | **약세 레짐(BULL/NEUTRAL) 피처 실험** | [ ] | `logs/ml/regime_weakness_report.json` watchlist + 신규 후보(섹터 모멘텀, breadth). **report-only — 챔피언 승격 없음.** 게이트: 해당 레짐 fold AUC ≥ 0.52 |
+| **4-C** | `[Research]` | **Fold 안정성 (variance 축소)** | [ ] | BEAR 레짐 정규화(L1/L2), 레짐별 하이퍼파라미터 분리. 게이트: fold AUC std **0.0745 → < 0.05** (`logs/ml/fold_stability_report.json`) |
 
-각 항목 DoD 적용: pytest 추가·통과 + 리포트 산출물 + Codex scoped review.
+**순서:** 4-A-R → 4-A-C → `[AGY-test]` (스키마·연결 회귀) → Codex. 각 항목 DoD: pytest + 리포트 산출물 + scoped review.
 
 ---
 
@@ -101,12 +108,13 @@
 
 한 번도 스윕된 적 없는 하드코딩 파라미터. 기존 `portfolio_backtester` 재사용.
 
-| # | 항목 | 상태 | 작업 내용 |
-|---|------|------|----------|
-| **5-A** | **진입 시그널 스윕** | [ ] | `ma_fast`(5–30) × `ma_slow`(30–100) × `rsi_buy_limit`(40–75) 그리드 — `research_promotion_gates.py` OOS 기준(gap≥0pp·Sharpe≥1.0) + 채택 임계 **+0.5pp**(intraday와 동일). 과적합 방지: train/OOS 분리 필수 |
-| **5-B** | **사이징·익절 스윕** | [ ] | `conviction_position_mult_max`(1.0–1.5) · `take_profit_partial_pct`(0.10–0.25) · `partial_exit_ratio` · `max_holding_days`(20–60) — 동일 백테스터·동일 채택 기준 |
+| # | Owner | 항목 | 상태 | 작업 내용 |
+|---|-------|------|------|----------|
+| **5-A** | `[Research]` | **진입 시그널 스윕** | [ ] | `ma_fast`(5–30) × `ma_slow`(30–100) × `rsi_buy_limit`(40–75) 그리드 — `research_promotion_gates.py` OOS 기준(gap≥0pp·Sharpe≥1.0) + 채택 임계 **+0.5pp**. train/OOS 분리 필수 |
+| **5-B** | `[Research]` | **사이징·익절 스윕** | [ ] | `conviction_position_mult_max`(1.0–1.5) · `take_profit_partial_pct`(0.10–0.25) · `partial_exit_ratio` · `max_holding_days`(20–60) — 동일 백테스터·동일 채택 기준 |
+| **5-adopt** | `[Cursor]` | **채택 시 config 반영** | [ ] | 스윕 pass 시에만 — `run_research_promotion_gates.sh` 경로로 paper config 반영 (자동 반영 금지) |
 
-**주의:** 스윕 결과는 paper config 자동 반영 금지 — 기존 promotion gate 경로(`run_research_promotion_gates.sh`)로만 채택.
+**주의:** 5-A/5-B는 AGY `[Research]` 세션. 채택은 5-adopt `[Cursor]`만.
 
 ---
 

@@ -111,7 +111,46 @@ Default:
 Codex or AGY may implement fixes only when explicitly asked, and preferably on a separate branch.
 Never let multiple agents edit the same branch concurrently.
 
-### 7. Automatic Documentation Maintenance
+## 7. Cursor Sub-Agents (In-Session)
+
+Cursor can spawn **read-only sub-agents** inside the same chat to parallelize investigation without polluting the main context. Sub-agents are **not** a replacement for AGY (tests) or Codex (pass review).
+
+### Allowed sub-agent types
+
+| Type | Use when | Mode |
+|------|----------|------|
+| **explore** | Map code paths, find call sites, survey `logs/` artifacts across modules | Read-only; launch **2+ in parallel** for independent questions |
+| **ci-investigator** | One failing PR CI check — root cause + fix hint | Read-only |
+| **shell** | Long `rg`/`find`/log scans, read-only pytest output, compileall | **Read-only** (`readonly: true`) |
+| **generalPurpose** | Multi-step research that does not fit explore | Read-only unless user explicitly asks for a throwaway script |
+
+### Hard rules
+
+1. **Only the main Cursor agent edits the working tree** — sub-agents must not write, patch, or commit files.
+2. **Do not spawn sub-agents for implementation** of `main.py`, orders, risk guards, or config wiring; keep that in the main session.
+3. **Do not use sub-agents instead of AGY** for pytest/harness work, or **instead of Codex** for pass-close review.
+4. **Synthesize before acting** — merge sub-agent findings into a short plan, then implement in the main session.
+5. **Prefer parallel explore** over serial grep when questions are independent (e.g. buy pipeline + `logs/ml/` research).
+
+### When to spawn
+
+- Broad “where does X happen?” across `src/` before touching trading logic.
+- Phase planning: survey completed research vs untried levers in `logs/`.
+- CI failure with a single red check.
+- Large read-only scans that would bloat main context.
+
+### When not to spawn
+
+- Small, localized edits (one file / one function).
+- Every task by default (token cost).
+- Anything that needs coherent cross-cutting changes (risk + orders + gates in one pass).
+
+### Handoff to AGY / Codex
+
+- Sub-agent output is **context for the main agent**, not a review artifact.
+- After implementation, still run **`[AGY]` tests** when behavior changed and **`run_pass_complete.sh`** at phase close per section 5.
+
+## 8. Automatic Documentation Maintenance
 **Keep the entry point (README.md) synchronized with code changes.**
 
 - After completing a feature or changing a workflow, assess if `README.md` needs an update.
@@ -139,9 +178,24 @@ Never let multiple agents edit the same branch concurrently.
 ## Task Ownership Labels
 
 When splitting work across agents, label tasks in `TODO.md` or task files:
-- `[Cursor]` — main integration, `main.py`, orders, portfolio/risk guards, config wiring.
-- `[AGY]` — **pytest**, `tests/harness/`, regression/fault-injection, calibration & backtest report scripts (no live order paths). Invoke AGY explicitly after Cursor lands the feature under test.
+- `[Cursor]` — main integration, `main.py`, orders, portfolio/risk guards, config wiring, runtime feature flags (default-off).
+- `[Research]` — offline ML/backtest sweeps, experiment CLIs, report generators under `src/*_report.py` / `logs/ml/` — **AGY implements**; no `main.py` or live order paths.
+- `[AGY-test]` — **pytest**, `tests/harness/`, regression/fault-injection, golden fixtures. Shorthand: `[AGY]` (same meaning).
+- `[AGY-risk]` — read-only strategy/risk/architecture review on material diffs (buy/sell gates, promotion, leverage). AGY does not edit files unless explicitly asked.
 - `[Gemini]` — **deprecated for tests**; docs-only or mechanical non-trading edits via `--run-gemini` if no AGY session available.
 - `[Either]` — README or non-risk utilities (still only one implementer at a time).
 
-**Suggested split per feature:** Cursor implements → AGY test pass → Codex review → Cursor merge fixes.
+**Suggested split — runtime feature:**
+```
+[Cursor] implement → [AGY-test] pytest → run_pass_complete.sh → Codex
+```
+
+**Suggested split — research track (§4–§5):**
+```
+[Research] (AGY) experiment + reports + pytest
+  → [Cursor] runtime wiring / config adopt (if needed)
+  → [AGY-test] integration regression
+  → run_pass_complete.sh → Codex
+```
+
+Large strategy diffs: add `[AGY-risk]` review before or after Codex (does not replace Codex `NEXT_TODO`).
