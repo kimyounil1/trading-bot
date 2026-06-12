@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
@@ -152,6 +153,37 @@ def _save_cache(cache: Dict[str, dict]) -> None:
     CACHE_PATH.write_text(json.dumps(cache, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+_DECISION_RE = re.compile(r"DECISION:\s*\[?\s*(APPROVE|REJECT)\s*\]?", re.IGNORECASE)
+_CATEGORY_RE = re.compile(r"CATEGORY:\s*\[?\s*([^\]\n]+?)\s*\]?\s*$", re.IGNORECASE | re.MULTILINE)
+_REASON_RE = re.compile(r"REASON:\s*(.+)", re.IGNORECASE)
+
+MAX_LLM_REASON_LEN = 300
+
+
+def parse_llm_decision(text: str) -> tuple[bool | None, str, str]:
+    """Extract the final DECISION/CATEGORY/REASON block from LLM output.
+
+    Thinking-mode responses repeat DECISION/CATEGORY/REASON while reasoning
+    (and echo the prompt template), so only the last occurrence of each field
+    is the model's answer. Reason is clipped to one line for audit logging.
+    """
+    decisions = _DECISION_RE.findall(text)
+    decision = decisions[-1].upper() if decisions else None
+
+    categories = [c.strip() for c in _CATEGORY_RE.findall(text) if "," not in c]
+    category = categories[-1] if categories else "None"
+
+    reasons = [r.strip() for r in _REASON_RE.findall(text)]
+    reason = reasons[-1] if reasons else ""
+    if reason.startswith("[") and reason.endswith("]"):
+        reason = reason[1:-1].strip()
+    if len(reason) > MAX_LLM_REASON_LEN:
+        reason = reason[: MAX_LLM_REASON_LEN].rstrip() + "…"
+
+    is_approved = None if decision is None else decision == "APPROVE"
+    return is_approved, category, reason
+
+
 def evaluate_ticker_consensus(
     ticker: str,
     settings: Optional[Any] = None,
@@ -208,22 +240,11 @@ CATEGORY: [None, Lawsuit, Fraud, Guidance, Financials, Other]
 REASON: [One sentence explanation in Korean]
 """
         text, provider = _generate_llm_text_with_provider(prompt)
-        upper_text = text.upper()
 
-        is_approved = "DECISION: APPROVE" in upper_text or "DECISION: [APPROVE]" in upper_text
-
-        category = "None"
-        if "CATEGORY:" in upper_text:
-            idx = upper_text.find("CATEGORY:")
-            line = text[idx + 9 :].split("\n")[0].strip()
-            category = line.strip("[]")
-
-        reason = "LLM Approved"
-        if "REASON:" in upper_text:
-            idx = upper_text.find("REASON:")
-            reason = text[idx + 7 :].strip()
-        elif not is_approved:
-            reason = "정성적 리스크 감지됨"
+        parsed_approved, category, reason = parse_llm_decision(text)
+        is_approved = bool(parsed_approved)
+        if not reason:
+            reason = "LLM Approved" if is_approved else "정성적 리스크 감지됨"
 
         category_reason = f"[{category}] {reason}" if category != "None" else reason
         if provider == "vllm":

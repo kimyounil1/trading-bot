@@ -190,7 +190,7 @@
   "block_leveraged_etfs_vix_above": 28.0,
   "margin_leverage_paper_enabled": false,
   "margin_leverage_stress_gate_required": true,
-  "trailing_stop_pct": 0.2,
+  "trailing_stop_pct": 0.1,
   "regime_adaptive_stop_enabled": false,
   "regime_stop_profile": "bear_only",
   "adaptive_trailing_stop_enabled": false,

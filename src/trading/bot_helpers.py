@@ -74,10 +74,17 @@ from src.daily_bar_session import check_price_frame_freshness as _check_price_fr
 from src.daily_bar_session import drop_incomplete_session_bar
 
 
+_MAX_LLM_VERDICT_REASON_LEN = 500
+
+
 def format_llm_verdict(is_ok: bool | None, reason: str = "") -> str:
     if is_ok is None:
         return ""
     verdict = "ACCEPT" if is_ok else "REJECT"
+    # Cached pre-fix entries may carry full chain-of-thought; keep audit rows compact.
+    reason = " ".join(str(reason).split())
+    if len(reason) > _MAX_LLM_VERDICT_REASON_LEN:
+        reason = reason[:_MAX_LLM_VERDICT_REASON_LEN].rstrip() + "…"
     return f"{verdict}: {reason}" if reason else verdict
 
 

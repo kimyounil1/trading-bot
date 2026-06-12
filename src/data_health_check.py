@@ -16,12 +16,32 @@ from src.settings import load_settings
 DEFAULT_OUTPUT = Path("logs/data_health/latest_summary.json")
 AI_PERIOD = "2y"
 
+# Volatility indices routinely jump 50-100%+ in a day (e.g. VIX +74% on 2026-04);
+# only flag moves large enough to indicate data corruption, not market stress.
+VOLATILITY_INDEX_TICKERS = {"^VIX", "VIX", "^VVIX", "VVIX", "^VXN", "VXN"}
+DEFAULT_MAX_DAILY_JUMP = 0.35
+VOLATILITY_INDEX_MAX_DAILY_JUMP = 1.5
+
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _check_ticker_frame(ticker: str, df: pd.DataFrame, *, max_stale_days: int = 5) -> dict[str, Any]:
+def _max_daily_jump_threshold(ticker: str) -> float:
+    if ticker.upper() in VOLATILITY_INDEX_TICKERS:
+        return VOLATILITY_INDEX_MAX_DAILY_JUMP
+    return DEFAULT_MAX_DAILY_JUMP
+
+
+def _check_ticker_frame(
+    ticker: str,
+    df: pd.DataFrame,
+    *,
+    max_stale_days: int = 5,
+    max_daily_jump: float | None = None,
+) -> dict[str, Any]:
+    if max_daily_jump is None:
+        max_daily_jump = _max_daily_jump_threshold(ticker)
     issues: list[str] = []
     if df is None or df.empty:
         return {"ticker": ticker, "ok": False, "issues": ["empty_frame"]}
@@ -47,7 +67,7 @@ def _check_ticker_frame(ticker: str, df: pd.DataFrame, *, max_stale_days: int = 
         rets = px.pct_change().dropna()
         if not rets.empty:
             jump = float(rets.abs().max())
-            if jump > 0.35:
+            if jump > max_daily_jump:
                 issues.append(f"max_daily_jump={jump:.2%}")
 
     return {"ticker": ticker, "ok": len(issues) == 0, "issues": issues, "rows": len(work)}

@@ -42,15 +42,16 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 
 def _llm_precision_sample_n(report: dict[str, Any]) -> int:
+    # events_used counts matured forward returns at the report's shortest horizon.
     events = report.get("events_used") or {}
-    reject_n = int(events.get("llm_reject") or 0)
-    accept_n = int(events.get("llm_accept") or 0)
+    reject_n = events.get("llm_reject")
+    accept_n = events.get("llm_accept")
+    if isinstance(reject_n, int) and isinstance(accept_n, int):
+        return reject_n + accept_n
     fwd = report.get("forward_return") or {}
-    reject_fwd = (fwd.get("llm_reject") or {}).get("n")
-    accept_fwd = (fwd.get("llm_accept") or {}).get("n")
-    if isinstance(reject_fwd, int) and isinstance(accept_fwd, int):
-        return reject_fwd + accept_fwd
-    return reject_n + accept_n
+    reject_fwd = int((fwd.get("llm_reject") or {}).get("n") or 0)
+    accept_fwd = int((fwd.get("llm_accept") or {}).get("n") or 0)
+    return reject_fwd + accept_fwd
 
 
 def build_live_readiness_report(

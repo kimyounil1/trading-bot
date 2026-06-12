@@ -13,6 +13,9 @@ bash scripts/run_bot_once.sh dry-run
 echo "=== [2/9] LLM advisory report ==="
 bash scripts/run_llm_advisory_report.sh
 
+echo "=== [2a/9] LLM block precision (forward returns; feeds live readiness) ==="
+bash scripts/run_llm_block_precision.sh || echo "WARN: LLM block precision skipped"
+
 echo "=== [2b/9] Paper buy validation (AI+LLM paths + rank gate tracker) ==="
 bash scripts/run_paper_buy_validation.sh || echo "WARN: paper buy validation skipped"
 
@@ -76,6 +79,9 @@ bash scripts/run_live_readiness.sh || echo "WARN: live readiness skipped"
 echo "=== [8c/9] Sleeve + tournament reports ==="
 bash scripts/run_sleeve_performance_report.sh || echo "WARN: sleeve performance report skipped"
 bash scripts/run_tournament_score_report.sh || echo "WARN: tournament score report skipped"
+
+echo "=== [8d/9] stop5_trail10 trial tracker (no-op until --start) ==="
+bash scripts/run_stop_trail_trial_report.sh || echo "WARN: stop trail trial report skipped"
 
 echo "=== [9/9] Paper ops summary ==="
 .venv/bin/python -m src.paper_ops_summary
