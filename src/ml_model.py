@@ -480,19 +480,44 @@ def _build_regime_feature_dataset(
 def _collect_regime_cv_metrics(
     regime: str,
     regime_data: pd.DataFrame,
+    *,
+    feature_columns: list[str] | None = None,
+    lgbm_params: dict[str, Any] | None = None,
+    xgb_params: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Time-series CV metrics and per-row calibration data for one regime."""
     metrics: list[dict[str, Any]] = []
     calibration_rows: list[dict[str, Any]] = []
-    X_regime = regime_data[FEATURE_COLUMNS]
+    cols = list(FEATURE_COLUMNS) if feature_columns is None else list(feature_columns)
+    available_cols = [c for c in cols if c in regime_data.columns]
+    if not available_cols:
+        return metrics, calibration_rows
+
+    X_regime = regime_data[available_cols]
     y_regime = regime_data["target"]
     tscv = TimeSeriesSplit(n_splits=3)
+    lgbm_defaults: dict[str, Any] = {
+        "n_estimators": 100,
+        "random_state": 42,
+        "verbose": -1,
+    }
+    xgb_defaults: dict[str, Any] = {
+        "n_estimators": 100,
+        "random_state": 42,
+        "n_jobs": -1,
+        "verbosity": 0,
+    }
+    if lgbm_params:
+        lgbm_defaults.update(lgbm_params)
+    if xgb_params:
+        xgb_defaults.update(xgb_params)
+
     for fold, (train_idx, test_idx) in enumerate(tscv.split(X_regime), start=1):
         X_train, X_test = X_regime.iloc[train_idx], X_regime.iloc[test_idx]
         y_train, y_test = y_regime.iloc[train_idx], y_regime.iloc[test_idx]
 
-        f_lgbm = LGBMClassifier(n_estimators=100, random_state=42, verbose=-1)
-        f_xgb = XGBClassifier(n_estimators=100, random_state=42, n_jobs=-1, verbosity=0)
+        f_lgbm = LGBMClassifier(**lgbm_defaults)
+        f_xgb = XGBClassifier(**xgb_defaults)
         f_lgbm.fit(X_train, y_train)
         f_xgb.fit(X_train, y_train)
         proba = (f_lgbm.predict_proba(X_test)[:, 1] + f_xgb.predict_proba(X_test)[:, 1]) / 2.0

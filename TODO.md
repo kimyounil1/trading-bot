@@ -97,8 +97,8 @@
 |---|-------|------|------|----------|
 | **4-A-R** | `[Research]` | **캘리브레이션 실험·리포트** | [x] | `ml_quality_report --rebuild-calibration-rows` → `model_calibration_rows.csv` (70k rows) · `calibration_experiment` **ok** — isotonic OOF Brier **0.244** (base 0.321) · `run_model_quality_report.sh` auto-rebuild if rows missing |
 | **4-A-C** | `[Cursor]` | **캘리브레이션 런타임 연결** | [x] | `predict_ai_score_from_bundle` + `ai_score_calibration_enabled` (**default-off**) · bins `logs/ml/model_calibration_bins.csv` |
-| **4-B** | `[Research]` | **약세 레짐(BULL/NEUTRAL) 피처 실험** | [ ] | `logs/ml/regime_weakness_report.json` watchlist + 신규 후보(섹터 모멘텀, breadth). **report-only — 챔피언 승격 없음.** 게이트: 해당 레짐 fold AUC ≥ 0.52 |
-| **4-C** | `[Research]` | **Fold 안정성 (variance 축소)** | [ ] | BEAR 레짐 정규화(L1/L2), 레짐별 하이퍼파라미터 분리. 게이트: fold AUC std **0.0745 → < 0.05** (`logs/ml/fold_stability_report.json`) |
+| **4-B** | `[Research]` | **약세 레짐 피처 실험** | [x] | `regime_feature_experiment.py` · `run_regime_feature_experiment.sh` — **BULL** weak only · best baseline AUC **0.495** · **게이트 미통과** (≥0.52) · report-only 유지 |
+| **4-C** | `[Research]` | **Fold 안정성 (variance 축소)** | [x] | `fold_stability_experiment.py` · `run_fold_stability_experiment.sh` — BULL `xgb_reg_0.5` std **0.005** (gate pass) · BEAR/NEUTRAL 여전히 >0.05 · label challenger 검토만 |
 
 **순서:** 4-A-R → 4-A-C → `[AGY-test]` (스키마·연결 회귀) → Codex. 각 항목 DoD: pytest + 리포트 산출물 + scoped review.
 
@@ -262,6 +262,8 @@ bash scripts/run_research_promotion_gates.sh
 bash scripts/run_regime_stop_backtest.sh --followup
 PYTHONPATH=. .venv/bin/python -m src.ml_quality_report --rebuild-calibration-rows  # §4-A rows
 bash scripts/run_model_quality_report.sh   # calibration experiment + model_quality summary
+bash scripts/run_regime_feature_experiment.sh   # §4-B
+bash scripts/run_fold_stability_experiment.sh   # §4-C
 
 # Phase pass (Codex)
 RUN_ID=phase39_sleeve_alloc bash scripts/run_pass_complete.sh

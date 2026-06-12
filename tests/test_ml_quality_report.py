@@ -13,6 +13,7 @@ from src.ml_quality_report import (
     evaluate_ml_quality_promotion_gates,
     evaluate_walk_forward_oos_metrics,
     normalize_fold_metrics_df,
+    rebuild_calibration_artifacts_from_training,
     regenerate_reports_from_fold_metrics_csv,
     write_ml_quality_reports,
 )
@@ -80,6 +81,53 @@ def test_regenerate_from_csv_round_trip(tmp_path: Path):
     _sample_metrics_df().to_csv(source, index=False)
     paths = regenerate_reports_from_fold_metrics_csv(source, tmp_path)
     assert paths["fold_stability"].is_file()
+
+
+def test_collect_regime_cv_metrics_honors_empty_feature_list():
+    from src.ml_model import _collect_regime_cv_metrics
+
+    frame = pd.DataFrame(
+        {
+            "target": [0, 1, 0, 1],
+            "return_1d": [0.0, 0.1, -0.1, 0.2],
+        }
+    )
+    metrics, rows = _collect_regime_cv_metrics("BULL", frame, feature_columns=[])
+    assert metrics == []
+    assert rows == []
+
+
+def test_rebuild_calibration_artifacts_from_training(monkeypatch, tmp_path: Path):
+    sample = _sample_metrics_df()
+
+    monkeypatch.setattr(
+        "src.ml_model.collect_regime_cv_metrics_df",
+        lambda *args, **kwargs: sample,
+    )
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        "src.settings.load_settings",
+        lambda: SimpleNamespace(tickers=["AAPL"]),
+    )
+    monkeypatch.setattr(
+        "src.data_loader.load_price_data_batch",
+        lambda tickers, period="5y": {"AAPL": pd.DataFrame()},
+    )
+    monkeypatch.setattr("src.macro_loader.load_macro_data", lambda period="5y": pd.DataFrame())
+    monkeypatch.setattr(
+        "src.retrain_holdout.portfolio_holdout_window",
+        lambda data: (pd.Timestamp("2025-01-01"), pd.Timestamp("2025-06-01")),
+    )
+    monkeypatch.setattr(
+        "src.retrain_holdout.exclude_holdout_from_ticker_data",
+        lambda data, start: data,
+    )
+
+    paths = rebuild_calibration_artifacts_from_training(tmp_path)
+    assert paths["calibration_rows"].is_file()
+    rows = pd.read_csv(paths["calibration_rows"])
+    assert len(rows) >= 1
 
 
 def test_regenerate_from_csv_preserves_existing_calibration_rows(tmp_path: Path):
