@@ -33,9 +33,9 @@
 | **Alpha** | trailing 20% · 전략 **+76.1%** vs EW **+67.1%** (gap **+9.0pp**) · SPY **+28.9pp** (`logs/benchmark_gap/latest_summary.json`) |
 | **Crowding** | config **ON** · reassessment `DISABLE_OR_KEEP_OFF` (blocked_trades=0) |
 | **Paper ops** | daily timer active · `logs/paper_ops/latest_summary.json` |
-| **LLM (paper)** | blocking mode · Gemini 429 간헐 · **precision 리포트 stale** (`precision.json` 6/2 이후 미갱신, `llm_reject n=0` 오탐) |
-| **Rank AI (paper)** | buy/add gate ON · `rank_gate_ready` false — **~10/14일 · ~4일 남음** |
-| **Live readiness** | **블로커 3건** — LLM precision · data_health ^VIX 오탐 · (연쇄) LLM verdict 파싱 |
+| **LLM (paper)** | blocking mode · Gemini 429 간헐 · precision 리포트 §1-A 수리 완료 (일일 bootstrap) |
+| **Rank AI (paper)** | buy/add gate ON · `rank_gate_ready` false — **~11/14일 · ~3일 남음** (`run_live_readiness.sh`) |
+| **Live readiness** | **시간 조건 2건만** — rank 14d · paper_validation 14d (코드 블로커 해소됨) |
 | **Champion AI** | **유지** — promotion gate 미통과. **모델 품질:** Brier **0.323** (CV rebuild) · isotonic OOF **0.244** (`calibration_experiment` ok) · fold std 0.0695 · champion 승격은 여전히 블로커 |
 | **Portfolio sleeves** | ON (core 50 / tournament 30 / cash 20) · registry + drift trim + allocation rebalance |
 | **Research (shipped)** | regime/intraday/guard/rank gates 결론 반영 (`b9f4f6c`) · stop5_trail10 paper trial **대기** · **전략 레이어 연구 소진 → 다음 헤드룸은 모델 품질 (Active §4)** |
@@ -66,7 +66,7 @@
 
 | # | 항목 | 상태 |
 |---|------|------|
-| 1 | **Rank AI paper 2주** — 매일 bootstrap → `logs/paper_validation` · `rank_gate_ready=true` | [ ] 진행 중 (~10/14 calendar days, **~4일 남음**) |
+| 1 | **Rank AI paper 2주** — 매일 bootstrap → `logs/paper_validation` · `rank_gate_ready=true` | [ ] 진행 중 (~11/14 calendar days, **~3일 남음**) |
 | 2 | **Paper validation 추세** — rolling agreement · SKIP 레이어 관찰 · rank/LLM spike alerts | [x] |
 | 3 | Codex scoped review `phase32_retry` | [x] |
 
@@ -110,9 +110,9 @@
 
 | # | Owner | 항목 | 상태 | 작업 내용 |
 |---|-------|------|------|----------|
-| **5-A** | `[Research]` | **진입 시그널 스윕** | [ ] | `ma_fast`(5–30) × `ma_slow`(30–100) × `rsi_buy_limit`(40–75) 그리드 — `research_promotion_gates.py` OOS 기준(gap≥0pp·Sharpe≥1.0) + 채택 임계 **+0.5pp**. train/OOS 분리 필수 |
-| **5-B** | `[Research]` | **사이징·익절 스윕** | [ ] | `conviction_position_mult_max`(1.0–1.5) · `take_profit_partial_pct`(0.10–0.25) · `partial_exit_ratio` · `max_holding_days`(20–60) — 동일 백테스터·동일 채택 기준 |
-| **5-adopt** | `[Cursor]` | **채택 시 config 반영** | [ ] | 스윕 pass 시에만 — `run_research_promotion_gates.sh` 경로로 paper config 반영 (자동 반영 금지) |
+| **5-A** | `[Research]` | **진입 시그널 스윕** | [x] | entry — **17/48 pass** · best OOS **ma5/ma50/rsi75** gap **+21.5pp** (holdout) · `logs/strategy_parameter_sweep/entry_signal_sweep_report.json` |
+| **5-B** | `[Research]` | **사이징·익절 스윕** | [x] | sizing — **32/64 pass** (baseline OOS gap -18pp) · best **pos0.15/tp0.10/hold45** · backtester `max_holding_days` 추가 · `sizing_exit_sweep_report.json` |
+| **5-adopt** | `[Cursor]` | **채택 시 config 반영** | [ ] | 스윕 후보 **수동 검토** — holdout 과최적화 의심 시 보류 · `run_research_promotion_gates.sh` 경로만 (자동 반영 금지) |
 
 **주의:** 5-A/5-B는 AGY `[Research]` 세션. 채택은 5-adopt `[Cursor]`만.
 
@@ -264,6 +264,7 @@ PYTHONPATH=. .venv/bin/python -m src.ml_quality_report --rebuild-calibration-row
 bash scripts/run_model_quality_report.sh   # calibration experiment + model_quality summary
 bash scripts/run_regime_feature_experiment.sh   # §4-B
 bash scripts/run_fold_stability_experiment.sh   # §4-C
+bash scripts/run_strategy_parameter_sweep.sh all  # §5 entry + sizing
 
 # Phase pass (Codex)
 RUN_ID=phase39_sleeve_alloc bash scripts/run_pass_complete.sh

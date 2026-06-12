@@ -288,6 +288,7 @@ def run_portfolio_backtest(
     stop_loss_pct: float = 0.0,
     take_profit_pct: float = 0.0,
     trailing_stop_pct: float = 0.0,
+    max_holding_days: int = 0,
     rank_trend_weight: float = 1.0,
     rank_ai_weight: float = 0.0,
     rank_momentum_weight: float = 0.0,
@@ -344,6 +345,8 @@ def run_portfolio_backtest(
         raise ValueError("take_profit_pct must be non-negative")
     if not 0 <= trailing_stop_pct < 1:
         raise ValueError("trailing_stop_pct must be between 0 and 1")
+    if max_holding_days < 0:
+        raise ValueError("max_holding_days must be non-negative")
 
     ai_model_bundle = None
     if use_ai_score:
@@ -498,6 +501,12 @@ def run_portfolio_backtest(
                 exit_reason = "STOP_LOSS"
             elif day_trailing_stop_pct > 0 and drawdown_from_high <= -day_trailing_stop_pct:
                 exit_reason = "TRAILING_STOP"
+            elif max_holding_days > 0:
+                held_days = (
+                    pd.Timestamp(current_date) - pd.Timestamp(position["entry_date"])
+                ).days
+                if held_days >= max_holding_days:
+                    exit_reason = "MAX_HOLDING"
             elif ai_exit_triggered:
                 exit_reason = "AI_EXIT"
             elif bool(row["sell_signal"]):

@@ -55,6 +55,7 @@ def portfolio_backtest_kwargs(
         "stop_loss_pct": settings.stop_loss_pct,
         "take_profit_pct": settings.take_profit_pct,
         "trailing_stop_pct": settings.trailing_stop_pct,
+        "max_holding_days": getattr(settings, "max_holding_days", 0),
         "allocation_method": allocation_method or getattr(settings, "allocation_method", "equal_weight"),
         "ai_exit_enabled": getattr(settings, "ai_exit_enabled", False),
         "ai_exit_threshold": settings.ai_exit_threshold,
