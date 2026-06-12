@@ -82,6 +82,21 @@ def test_regenerate_from_csv_round_trip(tmp_path: Path):
     assert paths["fold_stability"].is_file()
 
 
+def test_regenerate_from_csv_preserves_existing_calibration_rows(tmp_path: Path):
+    source = tmp_path / "fold_metrics.csv"
+    _sample_metrics_df().to_csv(source, index=False)
+    rows_path = tmp_path / "model_calibration_rows.csv"
+    pd.DataFrame(
+        [{"regime": "BULL", "fold": 1, "y_true": 1, "y_prob": 0.7}]
+    ).to_csv(rows_path, index=False)
+
+    regenerate_reports_from_fold_metrics_csv(source, tmp_path)
+
+    preserved = pd.read_csv(rows_path)
+    assert len(preserved) == 1
+    assert preserved.iloc[0]["y_prob"] == 0.7
+
+
 def test_calibration_report_empty_without_rows():
     report, bins = build_calibration_report(pd.DataFrame())
     assert report["bin_count"] == 0

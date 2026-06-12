@@ -431,8 +431,7 @@ def write_ml_quality_reports(
     calibration_rows = metrics_df.attrs.get("calibration_rows", []) if metrics_df is not None else []
     if calibration_rows:
         pd.DataFrame(calibration_rows).to_csv(rows_path, index=False)
-    elif rows_path.exists():
-        rows_path.unlink()
+    # Preserve existing per-row calibration data when regenerating from fold_metrics.csv only.
 
     return {
         "fold_metrics": fold_metrics_path,
@@ -460,6 +459,51 @@ def regenerate_reports_from_fold_metrics_csv(
     return write_ml_quality_reports(output_dir, metrics_df, file_prefix=file_prefix)
 
 
+def rebuild_calibration_artifacts_from_training(
+    output_dir: str | Path = DEFAULT_ML_OUTPUT_DIR,
+    *,
+    period: str = "5y",
+    prediction_horizon: int = 20,
+    target_return_threshold: float = 0.0,
+) -> dict[str, Path]:
+    """Re-run regime CV to populate model_calibration_rows.csv (no champion retrain)."""
+    from src.data_loader import load_price_data_batch
+    from src.macro_loader import load_macro_data
+    from src.ml_model import collect_regime_cv_metrics_df
+    from src.retrain_holdout import exclude_holdout_from_ticker_data, portfolio_holdout_window
+    from src.settings import load_settings
+
+    settings = load_settings()
+    training_data = load_price_data_batch(settings.tickers, period=period)
+
+    context_tickers = ["^VIX"]
+    if "SPY" not in training_data:
+        context_tickers.append("SPY")
+    context_data = load_price_data_batch(context_tickers, period=period)
+    vix_df = context_data.get("^VIX")
+    spy_df = training_data.get("SPY") if "SPY" in training_data else context_data.get("SPY")
+
+    macro_df = load_macro_data(period=period)
+    if macro_df.empty:
+        macro_df = None
+
+    holdout_start, _holdout_end = portfolio_holdout_window(training_data)
+    training_data_fit = exclude_holdout_from_ticker_data(training_data, holdout_start)
+
+    metrics_df = collect_regime_cv_metrics_df(
+        training_data_fit,
+        prediction_horizon=prediction_horizon,
+        target_return_threshold=target_return_threshold,
+        vix_df=vix_df,
+        spy_df=spy_df,
+        macro_df=macro_df,
+    )
+    if metrics_df.empty:
+        raise ValueError("CV metrics collection produced no rows; check training data.")
+
+    return write_ml_quality_reports(output_dir, metrics_df)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Generate fold stability and calibration reports from fold metrics"
@@ -481,7 +525,29 @@ def main() -> None:
         default="",
         help="Optional filename prefix (e.g. walk_forward)",
     )
+    parser.add_argument(
+        "--rebuild-calibration-rows",
+        action="store_true",
+        help="Re-run regime CV to write model_calibration_rows.csv (no full retrain)",
+    )
+    parser.add_argument(
+        "--period",
+        default="5y",
+        help="Price history period for --rebuild-calibration-rows",
+    )
     args = parser.parse_args()
+
+    if args.rebuild_calibration_rows:
+        output_dir = args.output_dir or DEFAULT_ML_OUTPUT_DIR
+        paths = rebuild_calibration_artifacts_from_training(
+            output_dir,
+            period=args.period,
+        )
+        print(f"Wrote calibration rows: {paths['calibration_rows']}")
+        print(f"Wrote calibration report: {paths['calibration_report']}")
+        if paths["calibration_bins"].is_file():
+            print(f"Wrote calibration bins: {paths['calibration_bins']}")
+        return
 
     output_dir = args.output_dir or args.metrics.parent
     paths = regenerate_reports_from_fold_metrics_csv(

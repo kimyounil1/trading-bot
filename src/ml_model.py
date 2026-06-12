@@ -437,16 +437,16 @@ def build_promotion_report(
     return report
 
 
-def train_ai_score_model(
+def _build_regime_feature_dataset(
     training_data: Dict[str, pd.DataFrame],
-    prediction_horizon: int = 5,
-    target_return_threshold: float = 0.0,
-    vix_df: pd.DataFrame | None = None,
-    spy_df: pd.DataFrame | None = None,
-    macro_df: pd.DataFrame | None = None,
-) -> Tuple[BaseModel, pd.DataFrame]:
+    *,
+    prediction_horizon: int,
+    target_return_threshold: float,
+    vix_df: pd.DataFrame | None,
+    spy_df: pd.DataFrame | None,
+    macro_df: pd.DataFrame | None,
+) -> pd.DataFrame:
     frames = []
-
     for ticker, df in training_data.items():
         try:
             feature_df = build_features(
@@ -462,10 +462,10 @@ def train_ai_score_model(
         feature_df["ticker"] = ticker
         frames.append(feature_df)
 
-    dataset = pd.concat(frames, ignore_index=True)
-    dataset = dataset.sort_values("date").reset_index(drop=True)
+    if not frames:
+        return pd.DataFrame()
 
-    # 시장 레짐 계산 및 병합
+    dataset = pd.concat(frames, ignore_index=True).sort_values("date").reset_index(drop=True)
     if spy_df is not None and vix_df is not None:
         regime_series = compute_daily_regime(spy_df, vix_df)
         dataset = dataset.merge(
@@ -474,6 +474,113 @@ def train_ai_score_model(
         dataset["regime"] = dataset["regime"].fillna("NEUTRAL")
     else:
         dataset["regime"] = "NEUTRAL"
+    return dataset
+
+
+def _collect_regime_cv_metrics(
+    regime: str,
+    regime_data: pd.DataFrame,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Time-series CV metrics and per-row calibration data for one regime."""
+    metrics: list[dict[str, Any]] = []
+    calibration_rows: list[dict[str, Any]] = []
+    X_regime = regime_data[FEATURE_COLUMNS]
+    y_regime = regime_data["target"]
+    tscv = TimeSeriesSplit(n_splits=3)
+    for fold, (train_idx, test_idx) in enumerate(tscv.split(X_regime), start=1):
+        X_train, X_test = X_regime.iloc[train_idx], X_regime.iloc[test_idx]
+        y_train, y_test = y_regime.iloc[train_idx], y_regime.iloc[test_idx]
+
+        f_lgbm = LGBMClassifier(n_estimators=100, random_state=42, verbose=-1)
+        f_xgb = XGBClassifier(n_estimators=100, random_state=42, n_jobs=-1, verbosity=0)
+        f_lgbm.fit(X_train, y_train)
+        f_xgb.fit(X_train, y_train)
+        proba = (f_lgbm.predict_proba(X_test)[:, 1] + f_xgb.predict_proba(X_test)[:, 1]) / 2.0
+
+        try:
+            auc = float(roc_auc_score(y_test, proba))
+        except ValueError:
+            auc = 0.5
+        brier = float(brier_score_loss(y_test, proba))
+        metrics.append(
+            {
+                "regime": regime,
+                "fold": fold,
+                "roc_auc": auc,
+                "brier_score": brier,
+                "test_size": int(len(test_idx)),
+            }
+        )
+        calibration_rows.extend(
+            {
+                "regime": regime,
+                "fold": fold,
+                "y_true": int(y_true),
+                "y_prob": float(y_prob),
+            }
+            for y_true, y_prob in zip(y_test.tolist(), proba.tolist())
+        )
+    return metrics, calibration_rows
+
+
+def collect_regime_cv_metrics_df(
+    training_data: Dict[str, pd.DataFrame],
+    prediction_horizon: int = 5,
+    target_return_threshold: float = 0.0,
+    vix_df: pd.DataFrame | None = None,
+    spy_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """CV fold metrics + calibration rows without training champion models."""
+    dataset = _build_regime_feature_dataset(
+        training_data,
+        prediction_horizon=prediction_horizon,
+        target_return_threshold=target_return_threshold,
+        vix_df=vix_df,
+        spy_df=spy_df,
+        macro_df=macro_df,
+    )
+    if dataset.empty:
+        return pd.DataFrame()
+
+    all_metrics: list[dict[str, Any]] = []
+    calibration_rows: list[dict[str, Any]] = []
+    for regime in ("BULL", "BEAR", "NEUTRAL"):
+        regime_data = dataset[dataset["regime"] == regime]
+        if len(regime_data) < 100:
+            print(
+                f"  WARNING: insufficient data for {regime} regime "
+                f"(rows={len(regime_data)}), skipping CV..."
+            )
+            continue
+        print(f"  Collecting CV metrics for {regime} (rows={len(regime_data)})...")
+        metrics, rows = _collect_regime_cv_metrics(regime, regime_data)
+        all_metrics.extend(metrics)
+        calibration_rows.extend(rows)
+
+    metrics_df = pd.DataFrame(all_metrics)
+    metrics_df.attrs["calibration_rows"] = calibration_rows
+    return metrics_df
+
+
+def train_ai_score_model(
+    training_data: Dict[str, pd.DataFrame],
+    prediction_horizon: int = 5,
+    target_return_threshold: float = 0.0,
+    vix_df: pd.DataFrame | None = None,
+    spy_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
+) -> Tuple[BaseModel, pd.DataFrame]:
+    dataset = _build_regime_feature_dataset(
+        training_data,
+        prediction_horizon=prediction_horizon,
+        target_return_threshold=target_return_threshold,
+        vix_df=vix_df,
+        spy_df=spy_df,
+        macro_df=macro_df,
+    )
+    if dataset.empty:
+        raise ValueError("No training features could be built from input tickers.")
 
     regimes = ["BULL", "BEAR", "NEUTRAL"]
     trained_models = {}
@@ -515,43 +622,9 @@ def train_ai_score_model(
             verbosity=0,
         )
 
-        # 교차 검증 (단순화: 앙상블 효과 확인)
-        tscv = TimeSeriesSplit(n_splits=3)
-        for fold, (train_idx, test_idx) in enumerate(tscv.split(X_regime), start=1):
-            X_train, X_test = X_regime.iloc[train_idx], X_regime.iloc[test_idx]
-            y_train, y_test = y_regime.iloc[train_idx], y_regime.iloc[test_idx]
-            
-            # 검증을 위한 앙상블 확률
-            f_lgbm = LGBMClassifier(n_estimators=100, random_state=42, verbose=-1)
-            f_xgb = XGBClassifier(n_estimators=100, random_state=42, n_jobs=-1, verbosity=0)
-            
-            f_lgbm.fit(X_train, y_train)
-            f_xgb.fit(X_train, y_train)
-            
-            proba = (f_lgbm.predict_proba(X_test)[:, 1] + f_xgb.predict_proba(X_test)[:, 1]) / 2.0
-            
-            try:
-                auc = roc_auc_score(y_test, proba)
-            except ValueError:
-                auc = 0.5
-            brier = brier_score_loss(y_test, proba)
-            
-            all_metrics.append({
-                "regime": regime,
-                "fold": fold,
-                "roc_auc": auc,
-                "brier_score": brier,
-                "test_size": len(test_idx)
-            })
-            calibration_rows.extend(
-                {
-                    "regime": regime,
-                    "fold": fold,
-                    "y_true": int(y_true),
-                    "y_prob": float(y_prob),
-                }
-                for y_true, y_prob in zip(y_test.tolist(), proba.tolist())
-            )
+        fold_metrics, fold_rows = _collect_regime_cv_metrics(regime, regime_data)
+        all_metrics.extend(fold_metrics)
+        calibration_rows.extend(fold_rows)
 
         lgbm.fit(X_regime, y_regime)
         xgb.fit(X_regime, y_regime)

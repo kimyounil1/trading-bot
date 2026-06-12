@@ -36,7 +36,7 @@
 | **LLM (paper)** | blocking mode · Gemini 429 간헐 · **precision 리포트 stale** (`precision.json` 6/2 이후 미갱신, `llm_reject n=0` 오탐) |
 | **Rank AI (paper)** | buy/add gate ON · `rank_gate_ready` false — **~10/14일 · ~4일 남음** |
 | **Live readiness** | **블로커 3건** — LLM precision · data_health ^VIX 오탐 · (연쇄) LLM verdict 파싱 |
-| **Champion AI** | **유지** — promotion gate 미통과. **모델 품질 블로커:** ROC-AUC 0.5075 · Brier 0.337(>0.25) · fold std 0.0745(>0.05) · BULL/NEUTRAL AUC<0.50. Rank label research만 paper gate |
+| **Champion AI** | **유지** — promotion gate 미통과. **모델 품질:** Brier **0.323** (CV rebuild) · isotonic OOF **0.244** (`calibration_experiment` ok) · fold std 0.0695 · champion 승격은 여전히 블로커 |
 | **Portfolio sleeves** | ON (core 50 / tournament 30 / cash 20) · registry + drift trim + allocation rebalance |
 | **Research (shipped)** | regime/intraday/guard/rank gates 결론 반영 (`b9f4f6c`) · stop5_trail10 paper trial **대기** · **전략 레이어 연구 소진 → 다음 헤드룸은 모델 품질 (Active §4)** |
 
@@ -95,8 +95,8 @@
 
 | # | Owner | 항목 | 상태 | 작업 내용 |
 |---|-------|------|------|----------|
-| **4-A-R** | `[Research]` | **캘리브레이션 실험·리포트** | [ ] | ① `bash scripts/run_retrain.sh` → `ml_quality_report.py`가 `logs/ml/model_calibration_rows.csv` 생성 (미생성 시 원인 수정 — 현재 `calibration_experiment_report.json`이 `missing_data`) ② `python -m src.calibration_experiment` → isotonic/Platt 비교, `model_calibration_bins.csv` 산출 ④ 목표 검증 리포트: **Brier 0.337 → ≤0.25** + pytest |
-| **4-A-C** | `[Cursor]` | **캘리브레이션 런타임 연결** | [ ] | ③ `src/ai_score_calibration.py` `calibrate_ai_score` 오버레이를 score 경로에 연결 — config flag, **default-off** (4-A-R 산출물 확인 후) |
+| **4-A-R** | `[Research]` | **캘리브레이션 실험·리포트** | [x] | `ml_quality_report --rebuild-calibration-rows` → `model_calibration_rows.csv` (70k rows) · `calibration_experiment` **ok** — isotonic OOF Brier **0.244** (base 0.321) · `run_model_quality_report.sh` auto-rebuild if rows missing |
+| **4-A-C** | `[Cursor]` | **캘리브레이션 런타임 연결** | [x] | `predict_ai_score_from_bundle` + `ai_score_calibration_enabled` (**default-off**) · bins `logs/ml/model_calibration_bins.csv` |
 | **4-B** | `[Research]` | **약세 레짐(BULL/NEUTRAL) 피처 실험** | [ ] | `logs/ml/regime_weakness_report.json` watchlist + 신규 후보(섹터 모멘텀, breadth). **report-only — 챔피언 승격 없음.** 게이트: 해당 레짐 fold AUC ≥ 0.52 |
 | **4-C** | `[Research]` | **Fold 안정성 (variance 축소)** | [ ] | BEAR 레짐 정규화(L1/L2), 레짐별 하이퍼파라미터 분리. 게이트: fold AUC std **0.0745 → < 0.05** (`logs/ml/fold_stability_report.json`) |
 
@@ -260,6 +260,8 @@ bash scripts/run_llm_block_precision.sh   # → logs/llm_advisory/precision.json
 # Research gates
 bash scripts/run_research_promotion_gates.sh
 bash scripts/run_regime_stop_backtest.sh --followup
+PYTHONPATH=. .venv/bin/python -m src.ml_quality_report --rebuild-calibration-rows  # §4-A rows
+bash scripts/run_model_quality_report.sh   # calibration experiment + model_quality summary
 
 # Phase pass (Codex)
 RUN_ID=phase39_sleeve_alloc bash scripts/run_pass_complete.sh
