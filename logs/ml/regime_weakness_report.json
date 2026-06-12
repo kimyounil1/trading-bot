@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-02T09:22:38Z",
+  "generated_at": "2026-06-12T03:45:41Z",
   "status": "ok",
   "fold_metrics_path": "logs/ml/fold_metrics.csv",
   "feature_stats_path": "models/ai_feature_stats.json",
@@ -10,29 +10,28 @@
   "regimes": {
     "BEAR": {
       "folds": 3,
-      "roc_auc_mean": 0.5499764837112684,
-      "roc_auc_std": 0.08657682235613834,
+      "roc_auc_mean": 0.6122289559280844,
+      "roc_auc_std": 0.04885579717813042,
       "weak_regime": false,
-      "high_variance": true
+      "high_variance": false
     },
     "BULL": {
       "folds": 3,
-      "roc_auc_mean": 0.49286740953770564,
-      "roc_auc_std": 0.006372584802194666,
+      "roc_auc_mean": 0.49450231510807613,
+      "roc_auc_std": 0.01212611455788044,
       "weak_regime": true,
       "high_variance": false
     },
     "NEUTRAL": {
       "folds": 3,
-      "roc_auc_mean": 0.48545624682795846,
-      "roc_auc_std": 0.08139948457214617,
-      "weak_regime": true,
+      "roc_auc_mean": 0.5504258608274127,
+      "roc_auc_std": 0.07096264760609076,
+      "weak_regime": false,
       "high_variance": true
     }
   },
   "weak_regimes": [
-    "BULL",
-    "NEUTRAL"
+    "BULL"
   ],
   "feature_watchlist": [
     "spy_rel_return_20d",
@@ -84,7 +83,7 @@
     }
   },
   "recommendations": [
-    "Weak regimes detected: BULL, NEUTRAL (mean ROC-AUC < 0.50).",
+    "Weak regimes detected: BULL (mean ROC-AUC < 0.50).",
     "Run targeted feature experiments for weak regimes only (report-only; do not promote champion).",
     "Fold variance is high in at least one regime; prioritize stability before any authority expansion."
   ]

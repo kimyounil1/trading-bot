@@ -22,7 +22,7 @@
     }
   ],
   "decision": "NO_GO",
-  "generated_at": "2026-06-02T09:06:08Z",
+  "generated_at": "2026-06-12T01:47:21Z",
   "guard_impact_path": "logs/guard_impact/latest_summary.json",
   "metrics": {
     "baseline": {

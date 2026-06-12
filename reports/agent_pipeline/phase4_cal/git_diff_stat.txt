@@ -1,0 +1,13 @@
+ logs/crowding_paper/go_no_go_checklist.json        |   2 +-
+ logs/crowding_paper/reassessment.json              |   6 +-
+ logs/llm_advisory/latest_summary.json              | 168 ++++++-
+ logs/llm_advisory/precision.json                   |  42 +-
+ logs/ml/regime_weakness_report.json                |  23 +-
+ logs/paper_validation/history.jsonl                |   8 +
+ logs/paper_validation/latest_summary.json          | 513 ++++++++++++++-------
+ logs/paper_validation/trend_summary.json           |  91 +++-
+ src/ml_model.py                                    |  31 +-
+ .../ml_quality/golden_fold_stability_report.json   |   2 +-
+ .../golden_model_calibration_report.json           |   2 +-
+ tests/test_ml_quality_report.py                    |  34 ++
+ 12 files changed, 710 insertions(+), 212 deletions(-)

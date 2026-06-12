@@ -1,0 +1,12 @@
+logs/crowding_paper/go_no_go_checklist.json
+logs/crowding_paper/reassessment.json
+logs/llm_advisory/latest_summary.json
+logs/llm_advisory/precision.json
+logs/ml/regime_weakness_report.json
+logs/paper_validation/history.jsonl
+logs/paper_validation/latest_summary.json
+logs/paper_validation/trend_summary.json
+src/ml_model.py
+tests/fixtures/ml_quality/golden_fold_stability_report.json
+tests/fixtures/ml_quality/golden_model_calibration_report.json
+tests/test_ml_quality_report.py

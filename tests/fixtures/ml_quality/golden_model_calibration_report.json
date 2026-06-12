@@ -1,6 +1,6 @@
 {
   "bin_count": 20,
-  "generated_at": "2026-06-02T07:21:26Z",
+  "generated_at": "2026-06-12T00:42:07Z",
   "overall_avg_brier_score": 0.25,
   "regimes": {
     "BEAR": {

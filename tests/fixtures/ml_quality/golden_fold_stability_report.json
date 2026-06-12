@@ -20,7 +20,7 @@
     }
   },
   "fold_count": 4,
-  "generated_at": "2026-06-02T07:21:26Z",
+  "generated_at": "2026-06-12T00:42:07Z",
   "high_variance_warning": false,
   "roc_auc": {
     "coefficient_of_variation": 0.01359820733051054,

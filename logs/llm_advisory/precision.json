@@ -1,12 +1,18 @@
 {
-  "generated_at": "2026-06-02T09:14:58Z",
+  "generated_at": "2026-06-12T01:46:13Z",
   "lookback_days": 90,
   "horizon_days": 20,
+  "short_horizon_days": 5,
   "price_period": "2y",
-  "audit_rows": 4486,
+  "audit_rows": 8268,
   "events_used": {
-    "llm_reject": 0,
-    "llm_accept": 0
+    "llm_reject": 16,
+    "llm_accept": 96
+  },
+  "events_by_type": {
+    "SKIP_BUY": 220,
+    "BUY_SUBMITTED": 12,
+    "LLM_ADVISORY": 9
   },
   "forward_return": {
     "llm_reject": {
@@ -24,13 +30,35 @@
     "delta_mean_accept_minus_reject": null,
     "delta_hit_rate_accept_minus_reject": null
   },
+  "forward_return_short": {
+    "llm_reject": {
+      "n": 16,
+      "mean_return": -0.021341407105715297,
+      "median_return": -0.028863523192168672,
+      "hit_rate": 0.4375
+    },
+    "llm_accept": {
+      "n": 96,
+      "mean_return": -0.012157764027584275,
+      "median_return": 0.007641977086173868,
+      "hit_rate": 0.5729166666666666
+    },
+    "delta_mean_accept_minus_reject": 0.009183643078131022,
+    "delta_hit_rate_accept_minus_reject": 0.13541666666666663
+  },
   "excluded_rows": {
     "missing_price_data": 0,
-    "insufficient_forward_bars": 29,
-    "other": 7
+    "insufficient_forward_bars": 217,
+    "other": 24
+  },
+  "excluded_rows_short": {
+    "missing_price_data": 0,
+    "insufficient_forward_bars": 105,
+    "other": 24
   },
   "sample": [],
   "notes": [
-    "One side has zero usable forward returns; increase lookback or accumulate more advisory decisions."
+    "events_used counts matured forward returns at the 5d horizon (shortest configured); primary-horizon stats fill in as events age.",
+    "One side has zero usable forward returns at the primary horizon; increase lookback or accumulate more advisory decisions."
   ]
 }

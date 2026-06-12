@@ -1,33 +1,84 @@
 {
-  "generated_at": "2026-06-02T09:16:13Z",
+  "generated_at": "2026-06-12T03:58:39Z",
   "history_path": "logs/paper_validation/history.jsonl",
-  "rows": 1,
+  "rows": 9,
   "rolling_days": 7,
   "latest": {
-    "date": "2026-06-02",
-    "agreement_pct": 74.7,
-    "skip_ai_score": 18,
-    "skip_llm_block": 14,
-    "skip_rank_gate": 47,
-    "buy_submitted": 44,
-    "rank_calendar_days": 4,
+    "date": "2026-06-12",
+    "agreement_pct": 62.0,
+    "skip_ai_score": 80,
+    "skip_llm_block": 44,
+    "skip_rank_gate": 363,
+    "buy_submitted": 69,
+    "rank_calendar_days": 11,
     "rank_gate_ready": false
   },
   "rolling": {
-    "agreement_pct_mean": 74.7,
-    "skip_ai_score_mean": 18.0,
-    "skip_llm_block_mean": 14.0,
-    "skip_rank_gate_mean": 47.0,
-    "buy_submitted_mean": 44.0
+    "agreement_pct_mean": 66.14285714285714,
+    "skip_ai_score_mean": 35.142857142857146,
+    "skip_llm_block_mean": 27.571428571428573,
+    "skip_rank_gate_mean": 183.42857142857142,
+    "buy_submitted_mean": 57.285714285714285
   },
-  "alerts": [],
+  "alerts": [
+    "skip_llm_block_spike",
+    "skip_rank_gate_spike"
+  ],
   "tail": [
     {
-      "date": "2026-06-02",
-      "agreement_pct": 74.7,
-      "skip_llm_block": 14,
-      "skip_rank_gate": 47,
-      "buy_submitted": 44,
+      "date": "2026-06-04",
+      "agreement_pct": 69.2,
+      "skip_llm_block": 15,
+      "skip_rank_gate": 67,
+      "buy_submitted": 48,
+      "rank_gate_ready": false
+    },
+    {
+      "date": "2026-06-05",
+      "agreement_pct": 69.2,
+      "skip_llm_block": 15,
+      "skip_rank_gate": 67,
+      "buy_submitted": 48,
+      "rank_gate_ready": false
+    },
+    {
+      "date": "2026-06-06",
+      "agreement_pct": 69.2,
+      "skip_llm_block": 15,
+      "skip_rank_gate": 67,
+      "buy_submitted": 53,
+      "rank_gate_ready": false
+    },
+    {
+      "date": "2026-06-09",
+      "agreement_pct": 64.5,
+      "skip_llm_block": 34,
+      "skip_rank_gate": 175,
+      "buy_submitted": 61,
+      "rank_gate_ready": false
+    },
+    {
+      "date": "2026-06-10",
+      "agreement_pct": 64.4,
+      "skip_llm_block": 34,
+      "skip_rank_gate": 241,
+      "buy_submitted": 61,
+      "rank_gate_ready": false
+    },
+    {
+      "date": "2026-06-11",
+      "agreement_pct": 64.5,
+      "skip_llm_block": 36,
+      "skip_rank_gate": 304,
+      "buy_submitted": 61,
+      "rank_gate_ready": false
+    },
+    {
+      "date": "2026-06-12",
+      "agreement_pct": 62.0,
+      "skip_llm_block": 44,
+      "skip_rank_gate": 363,
+      "buy_submitted": 69,
       "rank_gate_ready": false
     }
   ]

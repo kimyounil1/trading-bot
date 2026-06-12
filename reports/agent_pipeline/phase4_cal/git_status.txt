@@ -1,0 +1,63 @@
+On branch main
+Your branch is ahead of 'origin/main' by 2 commits.
+  (use "git push" to publish your local commits)
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   logs/crowding_paper/go_no_go_checklist.json
+	modified:   logs/crowding_paper/reassessment.json
+	modified:   logs/llm_advisory/latest_summary.json
+	modified:   logs/llm_advisory/precision.json
+	modified:   logs/ml/regime_weakness_report.json
+	modified:   logs/paper_validation/history.jsonl
+	modified:   logs/paper_validation/latest_summary.json
+	modified:   logs/paper_validation/trend_summary.json
+	modified:   src/ml_model.py
+	modified:   tests/fixtures/ml_quality/golden_fold_stability_report.json
+	modified:   tests/fixtures/ml_quality/golden_model_calibration_report.json
+	modified:   tests/test_ml_quality_report.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	.claude-account-2/
+	.envrc
+	logs/ml/calibration_experiment_report.json
+	logs/ml/feature_drift_report.json
+	logs/ml/fold_metrics.csv
+	logs/ml/fold_stability_experiment_report.json
+	logs/ml/fold_stability_report.json
+	logs/ml/label_challenger/
+	logs/ml/label_challenger_sweep_force_train.log
+	logs/ml/label_challenger_sweep_report.json
+	logs/ml/label_horizon_report.json
+	logs/ml/model_calibration_bins.csv
+	logs/ml/model_calibration_report.json
+	logs/ml/model_calibration_rows.csv
+	logs/ml/model_promotion_report.json
+	logs/ml/model_rollback_report.json
+	logs/ml/rank_label_experiment/
+	logs/ml/rank_label_experiment_h10_top20_q80/
+	logs/ml/rank_label_experiment_h20_top10_q90/
+	logs/ml/rank_label_experiment_h20_top15_q85/
+	logs/ml/rank_label_experiment_h20_top20_q80/
+	logs/ml/rank_label_experiment_h20_top20_q85/
+	logs/ml/rank_label_experiment_h40_top20_q80/
+	logs/ml/rank_label_experiment_top20/
+	logs/ml/rank_label_experiment_top40/
+	logs/ml/regime_feature_experiment_report.json
+	logs/ml/threshold_retune_report.json
+	logs/ml/threshold_retune_results.csv
+	prompts/agy/phase4_fold_stability_research.md
+	prompts/agy/phase4_regime_feature_research.md
+	scripts/exp_alpha_sweep.py
+	scripts/exp_crash_bounce_exit_us.py
+	scripts/exp_guard_relaxation_2w.py
+	scripts/run_fold_stability_experiment.sh
+	scripts/run_regime_feature_experiment.sh
+	src/fold_stability_experiment.py
+	src/regime_feature_experiment.py
+	tests/test_fold_stability_experiment.py
+	tests/test_regime_feature_experiment.py
+
+no changes added to commit (use "git add" and/or "git commit -a")

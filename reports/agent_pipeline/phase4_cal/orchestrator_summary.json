@@ -1,0 +1,10 @@
+{
+  "run_id": "phase4_cal",
+  "output_dir": "/home/kimyo/trading-bot/reports/agent_pipeline/phase4_cal",
+  "gemini_exit_code": null,
+  "post_workflow_exit_code": 0,
+  "codex_review_exit_code": 0,
+  "review_packet": "/home/kimyo/trading-bot/reports/agent_pipeline/phase4_cal/review_packet.md",
+  "draft_todo": "/home/kimyo/trading-bot/reports/agent_pipeline/phase4_cal/NEXT_TODO.md",
+  "codex_todo": "/home/kimyo/trading-bot/reports/agent_pipeline/phase4_cal/NEXT_TODO.codex.md"
+}

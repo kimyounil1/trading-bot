@@ -1,0 +1,3066 @@
+$ codex --ask-for-approval never --sandbox read-only review /home/kimyo/trading-bot/reports/agent_pipeline/phase4_cal/review_packet.md -c 'model_reasoning_effort="low"'
+exit_code=0
+
+## stdout
+The new optional feature-column support mishandles an explicit empty list, which can make experiment reports evaluate the wrong feature set. I could not run focused pytest locally because the read-only sandbox has no usable temporary directory.
+
+Review comment:
+
+- [P2] Preserve explicit empty feature lists — /home/kimyo/trading-bot/src/ml_model.py:491-491
+  When a report-only experiment passes an explicit empty `feature_columns` list (for example, a bundle whose requested columns are absent), this falls back to the full `FEATURE_COLUMNS` set instead of returning no metrics. That makes `_evaluate_bundle` report a usable baseline-like result rather than the intended "no usable features" path, so sparse/custom datasets can produce misleading regime/fold experiment reports.
+
+
+## stderr
+OpenAI Codex v0.137.0
+--------
+workdir: /home/kimyo/trading-bot
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: low
+reasoning summaries: none
+session id: 019eb9f1-6437-7b22-b847-ba384346438c
+--------
+user
+/home/kimyo/trading-bot/reports/agent_pipeline/phase4_cal/review_packet.md
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+exec
+/bin/bash -lc "sed -n '1,240p' reports/agent_pipeline/phase4_cal/review_packet.md && git diff --stat && git diff -- . ':(exclude)reports/agent_pipeline/phase4_cal/review_packet.md'" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+# Agent Review Packet - Run: phase4_cal
+
+## Implementation Agent
+cursor
+
+## Task Description
+phase4 calibration + regime/fold research experiments
+
+## Changed Files
+- logs/crowding_paper/go_no_go_checklist.json
+- logs/crowding_paper/reassessment.json
+- logs/llm_advisory/latest_summary.json
+- logs/llm_advisory/precision.json
+- logs/ml/regime_weakness_report.json
+- logs/paper_validation/history.jsonl
+- logs/paper_validation/latest_summary.json
+- logs/paper_validation/trend_summary.json
+- src/ml_model.py
+- tests/fixtures/ml_quality/golden_fold_stability_report.json
+- tests/fixtures/ml_quality/golden_model_calibration_report.json
+- tests/test_ml_quality_report.py
+
+## Git Diff Summary
+```
+ logs/crowding_paper/go_no_go_checklist.json        |   2 +-
+ logs/crowding_paper/reassessment.json              |   6 +-
+ logs/llm_advisory/latest_summary.json              | 168 ++++++-
+ logs/llm_advisory/precision.json                   |  42 +-
+ logs/ml/regime_weakness_report.json                |  23 +-
+ logs/paper_validation/history.jsonl                |   8 +
+ logs/paper_validation/latest_summary.json          | 513 ++++++++++++++-------
+ logs/paper_validation/trend_summary.json           |  91 +++-
+ src/ml_model.py                                    |  31 +-
+ .../ml_quality/golden_fold_stability_report.json   |   2 +-
+ .../golden_model_calibration_report.json           |   2 +-
+ tests/test_ml_quality_report.py                    |  34 ++
+ 12 files changed, 710 insertions(+), 212 deletions(-)
+```
+
+## Test Execution Results (runtime_harness.log)
+```
+============================= test session starts ==============================
+platform linux -- Python 3.12.8, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/kimyo/trading-bot
+plugins: anyio-4.13.0
+collected 45 items
+
+tests/test_report_performance.py .....                                   [ 11%]
+tests/test_reappraise_regime.py ...                                      [ 17%]
+tests/test_portfolio_backtest_golden.py ...                              [ 24%]
+tests/test_portfolio_backtest_gate.py .....                              [ 35%]
+tests/test_daily_audit_summary.py ....                                   [ 44%]
+tests/test_daily_audit_summary_schema.py ....                            [ 53%]
+tests/test_retrain_notifications.py ....                                 [ 62%]
+tests/test_llm_cache_report_schema.py ..                                 [ 66%]
+tests/test_leverage_stress_report.py ...                                 [ 73%]
+tests/test_guard_impact_report.py ..                                     [ 77%]
+tests/test_check_audit_daily_summary.py ...                              [ 84%]
+tests/test_fold_variance_report.py .                                     [ 86%]
+tests/test_promotion_summary.py ..                                       [ 91%]
+tests/test_benchmark_gap_report.py .                                     [ 93%]
+tests/test_champion_promotion_governance.py ...                          [100%]
+
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6
+  /home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 45 passed, 1 warning in 4.63s =========================
+```
+
+## Git Patch
+```diff
+diff --git a/logs/crowding_paper/go_no_go_checklist.json b/logs/crowding_paper/go_no_go_checklist.json
+index 601e55f..201a788 100644
+--- a/logs/crowding_paper/go_no_go_checklist.json
++++ b/logs/crowding_paper/go_no_go_checklist.json
+@@ -22,7 +22,7 @@
+     }
+   ],
+   "decision": "NO_GO",
+-  "generated_at": "2026-06-02T09:06:08Z",
++  "generated_at": "2026-06-12T01:47:21Z",
+   "guard_impact_path": "logs/guard_impact/latest_summary.json",
+   "metrics": {
+     "baseline": {
+diff --git a/logs/crowding_paper/reassessment.json b/logs/crowding_paper/reassessment.json
+index ab48000..4146181 100644
+--- a/logs/crowding_paper/reassessment.json
++++ b/logs/crowding_paper/reassessment.json
+@@ -1,5 +1,5 @@
+ {
+-  "generated_at": "2026-06-02T09:29:52Z",
++  "generated_at": "2026-06-12T01:47:21Z",
+   "go_no_go_path": "logs/crowding_paper/go_no_go_checklist.json",
+   "live_impact_path": "logs/crowding_live/latest_summary.json",
+   "decision": "NO_GO",
+@@ -8,8 +8,8 @@
+     "blocked_trades": 0,
+     "sharpe_delta": -0.7253,
+     "total_return_delta_pct": -58.3771,
+-    "live_crowding_skip_count": 287,
+-    "live_crowding_skip_rate_of_skips": 0.071
++    "live_crowding_skip_count": 347,
++    "live_crowding_skip_rate_of_skips": 0.1318
+   },
+   "criteria": {
+     "min_live_skip_rate": 0.01,
+diff --git a/logs/llm_advisory/latest_summary.json b/logs/llm_advisory/latest_summary.json
+index 663eeef..3c5bf1a 100644
+--- a/logs/llm_advisory/latest_summary.json
++++ b/logs/llm_advisory/latest_summary.json
+@@ -1,12 +1,12 @@
+ {
+-  "generated_at": "2026-06-02T09:05:50Z",
++  "generated_at": "2026-06-12T01:46:11Z",
+   "audit_path": "logs/execution_audit.csv",
+   "lookback_days": 90,
+-  "rows": 4486,
++  "rows": 8268,
+   "advisory_would_reject": 53,
+-  "buy_submitted": 44,
++  "buy_submitted": 69,
+   "buy_submitted_despite_llm_reject": 0,
+-  "buy_blocked_by_llm": 14,
++  "buy_blocked_by_llm": 44,
+   "sample_would_reject": [
+     {
+       "timestamp": "2026-06-01T12:32:18",
+@@ -29,6 +29,22 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
++      "sleeve_id": NaN,
++      "sleeve_strategy": NaN,
++      "sleeve_target_weight": NaN,
++      "sleeve_budget_before": NaN,
++      "sleeve_budget_after": NaN,
++      "sleeve_risk_mode": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -52,6 +68,22 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
++      "sleeve_id": NaN,
++      "sleeve_strategy": NaN,
++      "sleeve_target_weight": NaN,
++      "sleeve_budget_before": NaN,
++      "sleeve_budget_after": NaN,
++      "sleeve_risk_mode": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -75,6 +107,22 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
++      "sleeve_id": NaN,
++      "sleeve_strategy": NaN,
++      "sleeve_target_weight": NaN,
++      "sleeve_budget_before": NaN,
++      "sleeve_budget_after": NaN,
++      "sleeve_risk_mode": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -98,6 +146,22 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
++      "sleeve_id": NaN,
++      "sleeve_strategy": NaN,
++      "sleeve_target_weight": NaN,
++      "sleeve_budget_before": NaN,
++      "sleeve_budget_after": NaN,
++      "sleeve_risk_mode": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -121,6 +185,22 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
++      "sleeve_id": NaN,
++      "sleeve_strategy": NaN,
++      "sleeve_target_weight": NaN,
++      "sleeve_budget_before": NaN,
+ logs/crowding_paper/go_no_go_checklist.json        |   2 +-
+ logs/crowding_paper/reassessment.json              |   6 +-
+ logs/llm_advisory/latest_summary.json              | 168 ++++++-
+ logs/llm_advisory/precision.json                   |  42 +-
+ logs/ml/regime_weakness_report.json                |  23 +-
+ logs/paper_validation/history.jsonl                |   8 +
+ logs/paper_validation/latest_summary.json          | 513 ++++++++++++++-------
+ logs/paper_validation/trend_summary.json           |  91 +++-
+ reports/agent_pipeline/phase30/TASK.md             |   2 +-
+ reports/agent_pipeline/phase30/changed_files.txt   |   6 -
+ reports/agent_pipeline/phase30/git_diff.patch      | 179 -------
+ reports/agent_pipeline/phase30/git_diff_stat.txt   |   7 -
+ reports/agent_pipeline/phase30/git_status.txt      |  22 +-
+ reports/agent_pipeline/phase30/review_harness.log  |   8 +-
+ reports/agent_pipeline/phase30/review_packet.md    | 201 +-------
+ reports/agent_pipeline/phase30/runtime_harness.log |   4 +-
+ src/ml_model.py                                    |  31 +-
+ .../ml_quality/golden_fold_stability_report.json   |   2 +-
+ .../golden_model_calibration_report.json           |   2 +-
+ tests/test_ml_quality_report.py                    |  34 ++
+ 20 files changed, 724 insertions(+), 627 deletions(-)
+diff --git a/logs/crowding_paper/go_no_go_checklist.json b/logs/crowding_paper/go_no_go_checklist.json
+index 601e55f..201a788 100644
+--- a/logs/crowding_paper/go_no_go_checklist.json
++++ b/logs/crowding_paper/go_no_go_checklist.json
+@@ -22,7 +22,7 @@
+     }
+   ],
+   "decision": "NO_GO",
+-  "generated_at": "2026-06-02T09:06:08Z",
++  "generated_at": "2026-06-12T01:47:21Z",
+   "guard_impact_path": "logs/guard_impact/latest_summary.json",
+   "metrics": {
+     "baseline": {
+diff --git a/logs/crowding_paper/reassessment.json b/logs/crowding_paper/reassessment.json
+index ab48000..4146181 100644
+--- a/logs/crowding_paper/reassessment.json
++++ b/logs/crowding_paper/reassessment.json
+@@ -1,5 +1,5 @@
+ {
+-  "generated_at": "2026-06-02T09:29:52Z",
++  "generated_at": "2026-06-12T01:47:21Z",
+   "go_no_go_path": "logs/crowding_paper/go_no_go_checklist.json",
+   "live_impact_path": "logs/crowding_live/latest_summary.json",
+   "decision": "NO_GO",
+@@ -8,8 +8,8 @@
+     "blocked_trades": 0,
+     "sharpe_delta": -0.7253,
+     "total_return_delta_pct": -58.3771,
+-    "live_crowding_skip_count": 287,
+-    "live_crowding_skip_rate_of_skips": 0.071
++    "live_crowding_skip_count": 347,
++    "live_crowding_skip_rate_of_skips": 0.1318
+   },
+   "criteria": {
+     "min_live_skip_rate": 0.01,
+diff --git a/logs/llm_advisory/latest_summary.json b/logs/llm_advisory/latest_summary.json
+index 663eeef..3c5bf1a 100644
+--- a/logs/llm_advisory/latest_summary.json
++++ b/logs/llm_advisory/latest_summary.json
+@@ -1,12 +1,12 @@
+ {
+-  "generated_at": "2026-06-02T09:05:50Z",
++  "generated_at": "2026-06-12T01:46:11Z",
+   "audit_path": "logs/execution_audit.csv",
+   "lookback_days": 90,
+-  "rows": 4486,
++  "rows": 8268,
+   "advisory_would_reject": 53,
+-  "buy_submitted": 44,
++  "buy_submitted": 69,
+   "buy_submitted_despite_llm_reject": 0,
+-  "buy_blocked_by_llm": 14,
++  "buy_blocked_by_llm": 44,
+   "sample_would_reject": [
+     {
+       "timestamp": "2026-06-01T12:32:18",
+@@ -29,6 +29,22 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
++      "sleeve_id": NaN,
++      "sleeve_strategy": NaN,
++      "sleeve_target_weight": NaN,
++      "sleeve_budget_before": NaN,
++      "sleeve_budget_after": NaN,
++      "sleeve_risk_mode": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -52,6 +68,22 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
++      "sleeve_id": NaN,
++      "sleeve_strategy": NaN,
++      "sleeve_target_weight": NaN,
++      "sleeve_budget_before": NaN,
++      "sleeve_budget_after": NaN,
++      "sleeve_risk_mode": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -75,6 +107,22 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
++      "sleeve_id": NaN,
++      "sleeve_strategy": NaN,
++      "sleeve_target_weight": NaN,
++      "sleeve_budget_before": NaN,
++      "sleeve_budget_after": NaN,
++      "sleeve_risk_mode": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -98,6 +146,22 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
++      "sleeve_id": NaN,
++      "sleeve_strategy": NaN,
++      "sleeve_target_weight": NaN,
++      "sleeve_budget_before": NaN,
++      "sleeve_budget_after": NaN,
++      "sleeve_risk_mode": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -121,6 +185,22 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
++      "sleeve_id": NaN,
++      "sleeve_strategy": NaN,
++      "sleeve_target_weight": NaN,
++      "sleeve_budget_before": NaN,
++      "sleeve_budget_after": NaN,
++      "sleeve_risk_mode": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -144,6 +224,22 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
++      "sleeve_id": NaN,
++      "sleeve_strategy": NaN,
++      "sleeve_target_weight": NaN,
++      "sleeve_budget_before": NaN,
++      "sleeve_budget_after": NaN,
++      "sleeve_risk_mode": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -167,6 +263,22 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
++      "sleeve_id": NaN,
++      "sleeve_strategy": NaN,
++      "sleeve_target_weight": NaN,
++      "sleeve_budget_before": NaN,
++      "sleeve_budget_after": NaN,
++      "sleeve_risk_mode": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -190,6 +302,22 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
++      "sleeve_id": NaN,
++      "sleeve_strategy": NaN,
++      "sleeve_target_weight": NaN,
++      "sleeve_budget_before": NaN,
++      "sleeve_budget_after": NaN,
++      "sleeve_risk_mode": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -213,6 +341,22 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
++      "sleeve_id": NaN,
++      "sleeve_strategy": NaN,
++      "sleeve_target_weight": NaN,
++      "sleeve_budget_before": NaN,
++      "sleeve_budget_after": NaN,
++      "sleeve_risk_mode": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -236,6 +380,22 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
++      "sleeve_id": NaN,
++      "sleeve_strategy": NaN,
++      "sleeve_target_weight": NaN,
++      "sleeve_budget_before": NaN,
++      "sleeve_budget_after": NaN,
++      "sleeve_risk_mode": NaN,
+       "llm_side": "REJECT"
+     }
+   ],
+diff --git a/logs/llm_advisory/precision.json b/logs/llm_advisory/precision.json
+index c575d64..2ec8688 100644
+--- a/logs/llm_advisory/precision.json
++++ b/logs/llm_advisory/precision.json
+@@ -1,12 +1,18 @@
+ {
+-  "generated_at": "2026-06-02T09:14:58Z",
++  "generated_at": "2026-06-12T01:46:13Z",
+   "lookback_days": 90,
+   "horizon_days": 20,
++  "short_horizon_days": 5,
+   "price_period": "2y",
+-  "audit_rows": 4486,
++  "audit_rows": 8268,
+   "events_used": {
+-    "llm_reject": 0,
+-    "llm_accept": 0
++    "llm_reject": 16,
++    "llm_accept": 96
++  },
++  "events_by_type": {
++    "SKIP_BUY": 220,
++    "BUY_SUBMITTED": 12,
++    "LLM_ADVISORY": 9
+   },
+   "forward_return": {
+     "llm_reject": {
+@@ -24,13 +30,35 @@
+     "delta_mean_accept_minus_reject": null,
+     "delta_hit_rate_accept_minus_reject": null
+   },
++  "forward_return_short": {
++    "llm_reject": {
++      "n": 16,
++      "mean_return": -0.021341407105715297,
++      "median_return": -0.028863523192168672,
++      "hit_rate": 0.4375
++    },
++    "llm_accept": {
++      "n": 96,
++      "mean_return": -0.012157764027584275,
++      "median_return": 0.007641977086173868,
++      "hit_rate": 0.5729166666666666
++    },
++    "delta_mean_accept_minus_reject": 0.009183643078131022,
++    "delta_hit_rate_accept_minus_reject": 0.13541666666666663
++  },
+   "excluded_rows": {
+     "missing_price_data": 0,
+-    "insufficient_forward_bars": 29,
+-    "other": 7
++    "insufficient_forward_bars": 217,
++    "other": 24
++  },
++  "excluded_rows_short": {
++    "missing_price_data": 0,
++    "insufficient_forward_bars": 105,
++    "other": 24
+   },
+   "sample": [],
+   "notes": [
+-    "One side has zero usable forward returns; increase lookback or accumulate more advisory decisions."
++    "events_used counts matured forward returns at the 5d horizon (shortest configured); primary-horizon stats fill in as events age.",
++    "One side has zero usable forward returns at the primary horizon; increase lookback or accumulate more advisory decisions."
+   ]
+ }
+\ No newline at end of file
+diff --git a/logs/ml/regime_weakness_report.json b/logs/ml/regime_weakness_report.json
+index ace2fbe..d267f7e 100644
+--- a/logs/ml/regime_weakness_report.json
++++ b/logs/ml/regime_weakness_report.json
+@@ -1,5 +1,5 @@
+ {
+-  "generated_at": "2026-06-02T09:22:38Z",
++  "generated_at": "2026-06-12T03:45:41Z",
+   "status": "ok",
+   "fold_metrics_path": "logs/ml/fold_metrics.csv",
+   "feature_stats_path": "models/ai_feature_stats.json",
+@@ -10,29 +10,28 @@
+   "regimes": {
+     "BEAR": {
+       "folds": 3,
+-      "roc_auc_mean": 0.5499764837112684,
+-      "roc_auc_std": 0.08657682235613834,
++      "roc_auc_mean": 0.6122289559280844,
++      "roc_auc_std": 0.04885579717813042,
+       "weak_regime": false,
+-      "high_variance": true
++      "high_variance": false
+     },
+     "BULL": {
+       "folds": 3,
+-      "roc_auc_mean": 0.49286740953770564,
+-      "roc_auc_std": 0.006372584802194666,
++      "roc_auc_mean": 0.49450231510807613,
++      "roc_auc_std": 0.01212611455788044,
+       "weak_regime": true,
+       "high_variance": false
+     },
+     "NEUTRAL": {
+       "folds": 3,
+-      "roc_auc_mean": 0.48545624682795846,
+-      "roc_auc_std": 0.08139948457214617,
+-      "weak_regime": true,
++      "roc_auc_mean": 0.5504258608274127,
++      "roc_auc_std": 0.07096264760609076,
++      "weak_regime": false,
+       "high_variance": true
+     }
+   },
+   "weak_regimes": [
+-    "BULL",
+-    "NEUTRAL"
++    "BULL"
+   ],
+   "feature_watchlist": [
+     "spy_rel_return_20d",
+@@ -84,7 +83,7 @@
+     }
+   },
+   "recommendations": [
+-    "Weak regimes detected: BULL, NEUTRAL (mean ROC-AUC < 0.50).",
++    "Weak regimes detected: BULL (mean ROC-AUC < 0.50).",
+     "Run targeted feature experiments for weak regimes only (report-only; do not promote champion).",
+     "Fold variance is high in at least one regime; prioritize stability before any authority expansion."
+   ]
+diff --git a/logs/paper_validation/history.jsonl b/logs/paper_validation/history.jsonl
+index 9db4b3e..6f3a5db 100644
+--- a/logs/paper_validation/history.jsonl
++++ b/logs/paper_validation/history.jsonl
+@@ -1 +1,9 @@
+ {"agreement_pct": 74.7, "buy_submitted": 44, "date": "2026-06-02", "generated_at": "2026-06-02T09:05:51Z", "rank_calendar_days": 4, "rank_gate_ready": false, "skip_ai_score": 18, "skip_llm_block": 14, "skip_rank_gate": 47}
++{"agreement_pct": 74.7, "buy_submitted": 44, "date": "2026-06-03", "generated_at": "2026-06-03T01:45:39Z", "rank_calendar_days": 4, "rank_gate_ready": false, "skip_ai_score": 18, "skip_llm_block": 14, "skip_rank_gate": 47}
++{"agreement_pct": 69.2, "buy_submitted": 48, "date": "2026-06-04", "generated_at": "2026-06-04T01:45:41Z", "rank_calendar_days": 5, "rank_gate_ready": false, "skip_ai_score": 18, "skip_llm_block": 15, "skip_rank_gate": 67}
++{"agreement_pct": 69.2, "buy_submitted": 48, "date": "2026-06-05", "generated_at": "2026-06-05T01:45:55Z", "rank_calendar_days": 5, "rank_gate_ready": false, "skip_ai_score": 18, "skip_llm_block": 15, "skip_rank_gate": 67}
++{"agreement_pct": 69.2, "buy_submitted": 53, "date": "2026-06-06", "generated_at": "2026-06-06T01:45:48Z", "rank_calendar_days": 6, "rank_gate_ready": false, "skip_ai_score": 18, "skip_llm_block": 15, "skip_rank_gate": 67}
++{"agreement_pct": 64.5, "buy_submitted": 61, "date": "2026-06-09", "generated_at": "2026-06-09T05:27:02Z", "rank_calendar_days": 8, "rank_gate_ready": false, "skip_ai_score": 26, "skip_llm_block": 34, "skip_rank_gate": 175}
++{"agreement_pct": 64.4, "buy_submitted": 61, "date": "2026-06-10", "generated_at": "2026-06-10T01:46:08Z", "rank_calendar_days": 9, "rank_gate_ready": false, "skip_ai_score": 28, "skip_llm_block": 34, "skip_rank_gate": 241}
++{"agreement_pct": 64.5, "buy_submitted": 61, "date": "2026-06-11", "generated_at": "2026-06-11T01:46:24Z", "rank_calendar_days": 10, "rank_gate_ready": false, "skip_ai_score": 58, "skip_llm_block": 36, "skip_rank_gate": 304}
++{"agreement_pct": 62.0, "buy_submitted": 69, "date": "2026-06-12", "generated_at": "2026-06-12T01:46:14Z", "rank_calendar_days": 11, "rank_gate_ready": false, "skip_ai_score": 80, "skip_llm_block": 44, "skip_rank_gate": 363}
+diff --git a/logs/paper_validation/latest_summary.json b/logs/paper_validation/latest_summary.json
+index 4e4306b..abf5a57 100644
+--- a/logs/paper_validation/latest_summary.json
++++ b/logs/paper_validation/latest_summary.json
+@@ -1,199 +1,199 @@
+ {
+-  "generated_at": "2026-06-02T09:05:51Z",
++  "generated_at": "2026-06-12T01:46:14Z",
+   "lookback_days": 90,
+   "llm_advisory_only": false,
+   "rank_ai_buy_gate_enabled": true,
+   "llm_ai_agreement": {
+-    "generated_at": "2026-06-02T09:05:51Z",
++    "generated_at": "2026-06-12T01:46:14Z",
+     "ai_score_buy_threshold": 0.4,
+     "llm_cache_path": "data/llm_cache.json",
+-    "llm_cache_entries": 88,
+-    "comparable_with_ai_score": 87,
+-    "agreement_rate": 0.7471264367816092,
+-    "agreement_pct": 74.7,
+-    "score_llm_corr": 0.04115883088749699,
++    "llm_cache_entries": 186,
++    "comparable_with_ai_score": 184,
++    "agreement_rate": 0.6195652173913043,
++    "agreement_pct": 62.0,
++    "score_llm_corr": -0.09841380779514758,
+     "confusion": {
+-      "both_pass": 65,
++      "both_pass": 114,
+       "both_fail": 0,
+-      "ai_pass_llm_reject": 19,
+-      "ai_fail_llm_pass": 3
++      "ai_pass_llm_reject": 66,
++      "ai_fail_llm_pass": 4
+     },
+     "disagreements_sample": [
+       {
+-        "ticker": "UNH",
+-        "date": "2026-06-01",
+-        "ai_score": 0.9256,
++        "ticker": "WFC",
++        "date": "2026-06-11",
++        "ai_score": 0.9918,
+         "ai_ok": true,
+         "llm_ok": false,
+         "agree": false,
+-        "llm_category": "Fraud"
++        "llm_category": "Lawsuit"
+       },
+       {
+-        "ticker": "MRK",
+-        "date": "2026-06-02",
+-        "ai_score": 0.7978,
++        "ticker": "ONDS",
++        "date": "2026-06-08",
++        "ai_score": 0.98,
+         "ai_ok": true,
+         "llm_ok": false,
+         "agree": false,
+-        "llm_category": "Other"
++        "llm_category": "Guidance"
+       },
+       {
+-        "ticker": "QQQ",
+-        "date": "2026-06-01",
+-        "ai_score": 0.7855,
++        "ticker": "SMR",
++        "date": "2026-06-08",
++        "ai_score": 0.945,
+         "ai_ok": true,
+         "llm_ok": false,
+         "agree": false,
+-        "llm_category": "Other (Concentration risk/Correlation)."
++        "llm_category": "Guidance"
+       },
+       {
+-        "ticker": "CVS",
++        "ticker": "UNH",
+         "date": "2026-06-01",
+-        "ai_score": 0.6722,
++        "ai_score": 0.9256,
+         "ai_ok": true,
+         "llm_ok": false,
+         "agree": false,
+-        "llm_category": "None, Lawsuit, Fraud, Guidance, Financials, Other"
++        "llm_category": "Fraud"
+       },
+       {
+-        "ticker": "DIS",
+-        "date": "2026-06-02",
+-        "ai_score": 0.6674,
++        "ticker": "CRM",
++        "date": "2026-06-11",
++        "ai_score": 0.921,
+         "ai_ok": true,
+         "llm_ok": false,
+         "agree": false,
+         "llm_category": "Guidance"
+       },
+       {
+-        "ticker": "META",
+-        "date": "2026-06-02",
+-        "ai_score": 0.6615,
++        "ticker": "UPS",
++        "date": "2026-06-11",
++        "ai_score": 0.9161,
+         "ai_ok": true,
+         "llm_ok": false,
+         "agree": false,
+-        "llm_category": "Financials"
++        "llm_category": "Guidance"
+       },
+       {
+-        "ticker": "GM",
+-        "date": "2026-06-01",
+-        "ai_score": 0.6414,
++        "ticker": "ANET",
++        "date": "2026-06-11",
++        "ai_score": 0.8941,
+         "ai_ok": true,
+         "llm_ok": false,
+         "agree": false,
+-        "llm_category": "* Financials (the most direct impact mentioned is the loss of money from a product line). Alternatively, \"Other\" for the strike. Let's go with \"Financials\" as the underperforming SUV and labor issues "
++        "llm_category": "Other (Operational/Supply Chain)"
+       },
+       {
+-        "ticker": "HOOD",
+-        "date": "2026-06-01",
+-        "ai_score": 0.6369,
++        "ticker": "PLTR",
++        "date": "2026-06-11",
++        "ai_score": 0.8854,
+         "ai_ok": true,
+         "llm_ok": false,
+         "agree": false,
+-        "llm_category": "None, Lawsuit, Fraud, Guidance, Financials, Other"
++        "llm_category": "Product Failure"
+       },
+       {
+-        "ticker": "PATH",
+-        "date": "2026-06-01",
+-        "ai_score": 0.6153,
++        "ticker": "FCX",
++        "date": "2026-06-08",
++        "ai_score": 0.8854,
+         "ai_ok": true,
+         "llm_ok": false,
+         "agree": false,
+-        "llm_category": "**Guidance** (or Financials, but 'Weak earnings' usually implies guidance in market terms) or **Other** (Sentiment). However, \"Weak earnings\" often translates to poor forward guidance. Let's go with *"
++        "llm_category": "Guidance"
+       },
+       {
+-        "ticker": "SMCI",
+-        "date": "2026-06-01",
+-        "ai_score": 0.612,
++        "ticker": "HD",
++        "date": "2026-06-08",
++        "ai_score": 0.8846,
+         "ai_ok": true,
+         "llm_ok": false,
+         "agree": false,
+-        "llm_category": "* Other (specifically regulatory/governance risk). *Note: While \"Fraud\" is a possibility, the headline doesn't prove fraud, it just suggests a need for better regulation/compliance. \"Other\" or \"Guidan"
++        "llm_category": "Guidance"
+       },
+       {
+-        "ticker": "NKE",
+-        "date": "2026-06-01",
+-        "ai_score": 0.6085,
++        "ticker": "WFC",
++        "date": "2026-06-08",
++        "ai_score": 0.8623,
+         "ai_ok": true,
+         "llm_ok": false,
+         "agree": false,
+-        "llm_category": "* Other (Tariffs/Geopolitical risk doesn't fit Lawsuit, Fraud, Guidance, or Financials perfectly, though \"Other\" covers it. Actually, \"Guidance\" is about what the company says, \"Financials\" is about t"
++        "llm_category": "Other"
+       },
+       {
+         "ticker": "NKE",
+-        "date": "2026-06-02",
+-        "ai_score": 0.6085,
++        "date": "2026-06-11",
++        "ai_score": 0.8124,
+         "ai_ok": true,
+         "llm_ok": false,
+         "agree": false,
+-        "llm_category": "Financials"
++        "llm_category": "Guidance"
+       },
+       {
+-        "ticker": "PLD",
++        "ticker": "MRK",
+         "date": "2026-06-02",
+-        "ai_score": 0.588,
++        "ai_score": 0.7978,
+         "ai_ok": true,
+         "llm_ok": false,
+         "agree": false,
+-        "llm_category": "Guidance"
++        "llm_category": "Other"
+       },
+       {
+-        "ticker": "ORCL",
+-        "date": "2026-06-01",
+-        "ai_score": 0.5217,
++        "ticker": "TSLA",
++        "date": "2026-06-11",
++        "ai_score": 0.795,
+         "ai_ok": true,
+         "llm_ok": false,
+         "agree": false,
+-        "llm_category": "* Other (or Financials/Guidance, but \"Other\" fits the combination of competitive risk and CapEx risk better). Let's look at \"Other\" for general sentiment/competitive/macro-sector risks. Actually, the "
++        "llm_category": "Guidance"
+       },
+       {
+-        "ticker": "UNP",
+-        "date": "2026-06-02",
+-        "ai_score": 0.5191,
++        "ticker": "TGT",
++        "date": "2026-06-08",
++        "ai_score": 0.7943,
+         "ai_ok": true,
+         "llm_ok": false,
+         "agree": false,
+         "llm_category": "Other"
+       },
+       {
+-        "ticker": "VZ",
+-        "date": "2026-06-02",
+-        "ai_score": 0.4855,
++        "ticker": "ONDS",
++        "date": "2026-06-10",
++        "ai_score": 0.7864,
+         "ai_ok": true,
+         "llm_ok": false,
+         "agree": false,
+-        "llm_category": "Guidance"
++        "llm_category": "Financials"
+       },
+       {
+-        "ticker": "AAL",
++        "ticker": "QQQ",
+         "date": "2026-06-01",
+-        "ai_score": 0.4848,
++        "ai_score": 0.7855,
+         "ai_ok": true,
+         "llm_ok": false,
+         "agree": false,
+-        "llm_category": "Guidance (as the company is warning about future costs) or Financials. \"Guidance\" fits best as it is a warning about future performance/costs."
++        "llm_category": "Other (Concentration risk/Correlation)."
+       },
+       {
+-        "ticker": "AMT",
+-        "date": "2026-06-01",
+-        "ai_score": 0.3332,
+-        "ai_ok": false,
+-        "llm_ok": true,
++        "ticker": "LYG",
++        "date": "2026-06-11",
++        "ai_score": 0.7827,
++        "ai_ok": true,
++        "llm_ok": false,
+         "agree": false,
+-        "llm_category": "None, Lawsuit, Fraud, Guidance, Financials, Other"
++        "llm_category": "Other"
+       },
+       {
+-        "ticker": "SBUX",
+-        "date": "2026-06-01",
+-        "ai_score": 0.4612,
++        "ticker": "IWM",
++        "date": "2026-06-08",
++        "ai_score": 0.7476,
+         "ai_ok": true,
+         "llm_ok": false,
+         "agree": false,
+-        "llm_category": "Financials"
++        "llm_category": "Other"
+       },
+       {
+-        "ticker": "SNAP",
+-        "date": "2026-06-01",
+-        "ai_score": 0.4529,
++        "ticker": "SOFI",
++        "date": "2026-06-08",
++        "ai_score": 0.7474,
+         "ai_ok": true,
+         "llm_ok": false,
+         "agree": false,
+@@ -207,52 +207,20 @@
+     ],
+     "candidate_buy": {
+       "path": "logs/candidate_cache/latest_buy.csv",
+-      "as_of_date": "2026-06-02",
+-      "buy_signal_rows": 47,
+-      "in_llm_cache": 8,
+-      "agreement_rate": 0.375,
++      "as_of_date": "2026-06-12",
++      "buy_signal_rows": 74,
++      "in_llm_cache": 4,
++      "agreement_rate": 0.75,
+       "confusion": {
+         "both_pass": 3,
+         "both_fail": 0,
+-        "ai_pass_llm_reject": 5,
++        "ai_pass_llm_reject": 1,
+         "ai_fail_llm_pass": 0
+       },
+       "disagreements": [
+         {
+-          "ticker": "VZ",
+-          "ai_score": 0.4855356898045359,
+-          "ai_ok": true,
+-          "llm_ok": false,
+-          "agree": false,
+-          "in_llm_cache": true
+-        },
+-        {
+-          "ticker": "UNP",
+-          "ai_score": 0.4585588340252279,
+-          "ai_ok": true,
+-          "llm_ok": false,
+-          "agree": false,
+-          "in_llm_cache": true
+-        },
+-        {
+-          "ticker": "MRK",
+-          "ai_score": 0.6360055686297328,
+-          "ai_ok": true,
+-          "llm_ok": false,
+-          "agree": false,
+-          "in_llm_cache": true
+-        },
+-        {
+-          "ticker": "DIS",
+-          "ai_score": 0.5716816403618814,
+-          "ai_ok": true,
+-          "llm_ok": false,
+-          "agree": false,
+-          "in_llm_cache": true
+-        },
+-        {
+-          "ticker": "PLD",
+-          "ai_score": 0.5473124393095616,
++          "ticker": "LYG",
++          "ai_score": 0.6569835277327515,
+           "ai_ok": true,
+           "llm_ok": false,
+           "agree": false,
+@@ -262,14 +230,14 @@
+     }
+   },
+   "llm_advisory_impact": {
+-    "generated_at": "2026-06-02T09:05:51Z",
++    "generated_at": "2026-06-12T01:46:14Z",
+     "audit_path": "logs/execution_audit.csv",
+     "lookback_days": 90,
+-    "rows": 4486,
++    "rows": 8268,
+     "advisory_would_reject": 53,
+-    "buy_submitted": 44,
++    "buy_submitted": 69,
+     "buy_submitted_despite_llm_reject": 0,
+-    "buy_blocked_by_llm": 14,
++    "buy_blocked_by_llm": 44,
+     "sample_would_reject": [
+       {
+         "timestamp": "2026-06-01T12:32:18",
+@@ -292,6 +260,22 @@
+         "quantity": NaN,
+         "filled_qty": NaN,
+         "filled_avg_price": NaN,
++        "decision_id": NaN,
++        "run_id": NaN,
++        "broker": NaN,
++        "environment": NaN,
++        "config_hash": NaN,
++        "model_version": NaN,
++        "rank_model_version": NaN,
++        "risk_block_reason": NaN,
++        "order_intent_id": NaN,
++        "broker_order_id": NaN,
++        "sleeve_id": NaN,
++        "sleeve_strategy": NaN,
++        "sleeve_target_weight": NaN,
++        "sleeve_budget_before": NaN,
++        "sleeve_budget_after": NaN,
++        "sleeve_risk_mode": NaN,
+         "llm_side": "REJECT"
+       },
+       {
+@@ -315,6 +299,22 @@
+         "quantity": NaN,
+         "filled_qty": NaN,
+         "filled_avg_price": NaN,
++        "decision_id": NaN,
++        "run_id": NaN,
++        "broker": NaN,
++        "environment": NaN,
++        "config_hash": NaN,
++        "model_version": NaN,
++        "rank_model_version": NaN,
++        "risk_block_reason": NaN,
++        "order_intent_id": NaN,
++        "broker_order_id": NaN,
++        "sleeve_id": NaN,
++        "sleeve_strategy": NaN,
++        "sleeve_target_weight": NaN,
++        "sleeve_budget_before": NaN,
++        "sleeve_budget_after": NaN,
++        "sleeve_risk_mode": NaN,
+         "llm_side": "REJECT"
+       },
+       {
+@@ -338,6 +338,22 @@
+         "quantity": NaN,
+         "filled_qty": NaN,
+         "filled_avg_price": NaN,
++        "decision_id": NaN,
++        "run_id": NaN,
++        "broker": NaN,
++        "environment": NaN,
++        "config_hash": NaN,
++        "model_version": NaN,
++        "rank_model_version": NaN,
++        "risk_block_reason": NaN,
++        "order_intent_id": NaN,
++        "broker_order_id": NaN,
++        "sleeve_id": NaN,
++        "sleeve_strategy": NaN,
++        "sleeve_target_weight": NaN,
++        "sleeve_budget_before": NaN,
++        "sleeve_budget_after": NaN,
++        "sleeve_risk_mode": NaN,
+         "llm_side": "REJECT"
+       },
+       {
+@@ -361,6 +377,22 @@
+         "quantity": NaN,
+         "filled_qty": NaN,
+         "filled_avg_price": NaN,
++        "decision_id": NaN,
++        "run_id": NaN,
++        "broker": NaN,
++        "environment": NaN,
++        "config_hash": NaN,
++        "model_version": NaN,
++        "rank_model_version": NaN,
++        "risk_block_reason": NaN,
++        "order_intent_id": NaN,
++        "broker_order_id": NaN,
++        "sleeve_id": NaN,
++        "sleeve_strategy": NaN,
++        "sleeve_target_weight": NaN,
++        "sleeve_budget_before": NaN,
++        "sleeve_budget_after": NaN,
++        "sleeve_risk_mode": NaN,
+         "llm_side": "REJECT"
+       },
+       {
+@@ -384,6 +416,22 @@
+         "quantity": NaN,
+         "filled_qty": NaN,
+         "filled_avg_price": NaN,
++        "decision_id": NaN,
++        "run_id": NaN,
++        "broker": NaN,
++        "environment": NaN,
++        "config_hash": NaN,
++        "model_version": NaN,
++        "rank_model_version": NaN,
++        "risk_block_reason": NaN,
++        "order_intent_id": NaN,
++        "broker_order_id": NaN,
++        "sleeve_id": NaN,
++        "sleeve_strategy": NaN,
++        "sleeve_target_weight": NaN,
++        "sleeve_budget_before": NaN,
++        "sleeve_budget_after": NaN,
++        "sleeve_risk_mode": NaN,
+         "llm_side": "REJECT"
+       },
+       {
+@@ -407,6 +455,22 @@
+         "quantity": NaN,
+         "filled_qty": NaN,
+         "filled_avg_price": NaN,
++        "decision_id": NaN,
++        "run_id": NaN,
++        "broker": NaN,
++        "environment": NaN,
++        "config_hash": NaN,
++        "model_version": NaN,
++        "rank_model_version": NaN,
++        "risk_block_reason": NaN,
++        "order_intent_id": NaN,
++        "broker_order_id": NaN,
++        "sleeve_id": NaN,
++        "sleeve_strategy": NaN,
++        "sleeve_target_weight": NaN,
++        "sleeve_budget_before": NaN,
++        "sleeve_budget_after": NaN,
++        "sleeve_risk_mode": NaN,
+         "llm_side": "REJECT"
+       },
+       {
+@@ -430,6 +494,22 @@
+         "quantity": NaN,
+         "filled_qty": NaN,
+         "filled_avg_price": NaN,
++        "decision_id": NaN,
++        "run_id": NaN,
++        "broker": NaN,
++        "environment": NaN,
++        "config_hash": NaN,
++        "model_version": NaN,
++        "rank_model_version": NaN,
++        "risk_block_reason": NaN,
++        "order_intent_id": NaN,
++        "broker_order_id": NaN,
++        "sleeve_id": NaN,
++        "sleeve_strategy": NaN,
++        "sleeve_target_weight": NaN,
++        "sleeve_budget_before": NaN,
++        "sleeve_budget_after": NaN,
++        "sleeve_risk_mode": NaN,
+         "llm_side": "REJECT"
+       },
+       {
+@@ -453,6 +533,22 @@
+         "quantity": NaN,
+         "filled_qty": NaN,
+         "filled_avg_price": NaN,
++        "decision_id": NaN,
++        "run_id": NaN,
++        "broker": NaN,
++        "environment": NaN,
++        "config_hash": NaN,
++        "model_version": NaN,
++        "rank_model_version": NaN,
++        "risk_block_reason": NaN,
++        "order_intent_id": NaN,
++        "broker_order_id": NaN,
++        "sleeve_id": NaN,
++        "sleeve_strategy": NaN,
++        "sleeve_target_weight": NaN,
++        "sleeve_budget_before": NaN,
++        "sleeve_budget_after": NaN,
++        "sleeve_risk_mode": NaN,
+         "llm_side": "REJECT"
+       },
+       {
+@@ -476,6 +572,22 @@
+         "quantity": NaN,
+         "filled_qty": NaN,
+         "filled_avg_price": NaN,
++        "decision_id": NaN,
++        "run_id": NaN,
++        "broker": NaN,
++        "environment": NaN,
++        "config_hash": NaN,
++        "model_version": NaN,
++        "rank_model_version": NaN,
++        "risk_block_reason": NaN,
++        "order_intent_id": NaN,
++        "broker_order_id": NaN,
++        "sleeve_id": NaN,
++        "sleeve_strategy": NaN,
++        "sleeve_target_weight": NaN,
++        "sleeve_budget_before": NaN,
++        "sleeve_budget_after": NaN,
++        "sleeve_risk_mode": NaN,
+         "llm_side": "REJECT"
+       },
+       {
+@@ -499,6 +611,22 @@
+         "quantity": NaN,
+         "filled_qty": NaN,
+         "filled_avg_price": NaN,
++        "decision_id": NaN,
++        "run_id": NaN,
++        "broker": NaN,
++        "environment": NaN,
++        "config_hash": NaN,
++        "model_version": NaN,
++        "rank_model_version": NaN,
++        "risk_block_reason": NaN,
++        "order_intent_id": NaN,
++        "broker_order_id": NaN,
++        "sleeve_id": NaN,
++        "sleeve_strategy": NaN,
++        "sleeve_target_weight": NaN,
++        "sleeve_budget_before": NaN,
++        "sleeve_budget_after": NaN,
++        "sleeve_risk_mode": NaN,
+         "llm_side": "REJECT"
+       }
+     ],
+@@ -509,49 +637,42 @@
+     ]
+   },
+   "audit_buy_paths": {
+-    "rows": 4486,
++    "rows": 8268,
+     "llm_advisory_only": false,
+     "ai_score_buy_threshold": 0.4,
+-    "skip_buy_total": 4043,
++    "skip_buy_total": 7544,
+     "skip_by_layer": {
+-      "other": 3964,
+-      "ai_score": 18,
+-      "llm_block": 14,
+-      "rank_gate": 47
++      "other": 7056,
++      "ai_score": 80,
++      "llm_block": 44,
++      "rank_gate": 363,
++      "rank_missing": 1
+     },
+-    "skip_ai_score_layer": 18,
+-    "skip_llm_block_layer": 14,
+-    "skip_rank_gate_layer": 47,
+-    "skip_rank_missing_layer": 0,
+-    "skip_other_layer": 3964,
+-    "ai_pass_llm_block": 14,
+-    "ai_fail_or_low_score": 387,
+-    "buy_submitted": 44,
+-    "buy_submitted_llm_accept": 36,
++    "skip_ai_score_layer": 80,
++    "skip_llm_block_layer": 44,
++    "skip_rank_gate_layer": 363,
++    "skip_rank_missing_layer": 1,
++    "skip_other_layer": 7056,
++    "ai_pass_llm_block": 44,
++    "ai_fail_or_low_score": 595,
++    "buy_submitted": 69,
++    "buy_submitted_llm_accept": 40,
+     "buy_submitted_llm_reject_verdict": 0,
+-    "buy_submitted_no_llm_verdict": 8,
++    "buy_submitted_no_llm_verdict": 29,
+     "llm_advisory_would_reject_ai_passed": 53,
+     "interpretation": "Blocking mode (llm_advisory_only=false): ai_pass_llm_block counts SKIP_BUY where AI score passed but LLM blocked. submitted_llm_reject_verdict should be ~0."
+   },
+   "rank_gate_paper_tracker": {
+     "min_calendar_days_required": 14,
+-    "calendar_days_with_rank_events": 4,
+-    "audit_span_calendar_days": 7,
++    "calendar_days_with_rank_events": 11,
++    "audit_span_calendar_days": 17,
+     "first_date": "2026-05-27",
+-    "last_date": "2026-06-02",
+-    "total_skip_buy_rank_blocked": 47,
+-    "total_skip_buy_rank_missing": 0,
+-    "total_buy_submitted": 44,
++    "last_date": "2026-06-12",
++    "total_skip_buy_rank_blocked": 363,
++    "total_skip_buy_rank_missing": 1,
++    "total_buy_submitted": 69,
+     "gate_ready": false,
+     "daily_tail": [
+-      {
+-        "date": "2026-05-27",
+-        "events": 152,
+-        "skip_buy": 125,
+-        "rank_blocked": 0,
+-        "rank_missing": 0,
+-        "buy_submitted": 2
+-      },
+       {
+         "date": "2026-05-28",
+         "events": 652,
+@@ -586,11 +707,83 @@
+       },
+       {
+         "date": "2026-06-02",
+-        "events": 837,
+-        "skip_buy": 764,
++        "events": 961,
++        "skip_buy": 883,
+         "rank_blocked": 47,
+         "rank_missing": 0,
+         "buy_submitted": 15
++      },
++      {
++        "date": "2026-06-03",
++        "events": 390,
++        "skip_buy": 380,
++        "rank_blocked": 0,
++        "rank_missing": 0,
++        "buy_submitted": 0
++      },
++      {
++        "date": "2026-06-04",
++        "events": 382,
++        "skip_buy": 370,
++        "rank_blocked": 20,
++        "rank_missing": 0,
++        "buy_submitted": 4
++      },
++      {
++        "date": "2026-06-05",
++        "events": 411,
++        "skip_buy": 373,
++        "rank_blocked": 0,
++        "rank_missing": 0,
++        "buy_submitted": 5
++      },
++      {
++        "date": "2026-06-06",
++        "events": 262,
++        "skip_buy": 254,
++        "rank_blocked": 0,
++        "rank_missing": 0,
++        "buy_submitted": 0
++      },
++      {
++        "date": "2026-06-08",
++        "events": 612,
++        "skip_buy": 511,
++        "rank_blocked": 35,
++        "rank_missing": 0,
++        "buy_submitted": 8
++      },
++      {
++        "date": "2026-06-09",
++        "events": 523,
++        "skip_buy": 495,
++        "rank_blocked": 92,
++        "rank_missing": 0,
++        "buy_submitted": 0
++      },
++      {
++        "date": "2026-06-10",
++        "events": 372,
++        "skip_buy": 371,
++        "rank_blocked": 67,
++        "rank_missing": 0,
++        "buy_submitted": 0
++      },
++      {
++        "date": "2026-06-11",
++        "events": 439,
++        "skip_buy": 371,
++        "rank_blocked": 53,
++        "rank_missing": 1,
++        "buy_submitted": 7
++      },
++      {
++        "date": "2026-06-12",
++        "events": 267,
++        "skip_buy": 257,
++        "rank_blocked": 49,
++        "rank_missing": 0,
++        "buy_submitted": 1
+       }
+     ],
+     "notes": [
+diff --git a/logs/paper_validation/trend_summary.json b/logs/paper_validation/trend_summary.json
+index fbcb41f..af148b1 100644
+--- a/logs/paper_validation/trend_summary.json
++++ b/logs/paper_validation/trend_summary.json
+@@ -1,33 +1,84 @@
+ {
+-  "generated_at": "2026-06-02T09:16:13Z",
++  "generated_at": "2026-06-12T01:46:15Z",
+   "history_path": "logs/paper_validation/history.jsonl",
+-  "rows": 1,
++  "rows": 9,
+   "rolling_days": 7,
+   "latest": {
+-    "date": "2026-06-02",
+-    "agreement_pct": 74.7,
+-    "skip_ai_score": 18,
+-    "skip_llm_block": 14,
+-    "skip_rank_gate": 47,
+-    "buy_submitted": 44,
+-    "rank_calendar_days": 4,
++    "date": "2026-06-12",
++    "agreement_pct": 62.0,
++    "skip_ai_score": 80,
++    "skip_llm_block": 44,
++    "skip_rank_gate": 363,
++    "buy_submitted": 69,
++    "rank_calendar_days": 11,
+     "rank_gate_ready": false
+   },
+   "rolling": {
+-    "agreement_pct_mean": 74.7,
+-    "skip_ai_score_mean": 18.0,
+-    "skip_llm_block_mean": 14.0,
+-    "skip_rank_gate_mean": 47.0,
+-    "buy_submitted_mean": 44.0
++    "agreement_pct_mean": 66.14285714285714,
++    "skip_ai_score_mean": 35.142857142857146,
++    "skip_llm_block_mean": 27.571428571428573,
++    "skip_rank_gate_mean": 183.42857142857142,
++    "buy_submitted_mean": 57.285714285714285
+   },
+-  "alerts": [],
++  "alerts": [
++    "skip_llm_block_spike",
++    "skip_rank_gate_spike"
++  ],
+   "tail": [
+     {
+-      "date": "2026-06-02",
+-      "agreement_pct": 74.7,
+-      "skip_llm_block": 14,
+-      "skip_rank_gate": 47,
+-      "buy_submitted": 44,
++      "date": "2026-06-04",
++      "agreement_pct": 69.2,
++      "skip_llm_block": 15,
++      "skip_rank_gate": 67,
++      "buy_submitted": 48,
++      "rank_gate_ready": false
++    },
++    {
++      "date": "2026-06-05",
++      "agreement_pct": 69.2,
++      "skip_llm_block": 15,
++      "skip_rank_gate": 67,
++      "buy_submitted": 48,
++      "rank_gate_ready": false
++    },
++    {
++      "date": "2026-06-06",
++      "agreement_pct": 69.2,
++      "skip_llm_block": 15,
++      "skip_rank_gate": 67,
++      "buy_submitted": 53,
++      "rank_gate_ready": false
++    },
++    {
++      "date": "2026-06-09",
++      "agreement_pct": 64.5,
++      "skip_llm_block": 34,
++      "skip_rank_gate": 175,
++      "buy_submitted": 61,
++      "rank_gate_ready": false
++    },
++    {
++      "date": "2026-06-10",
++      "agreement_pct": 64.4,
++      "skip_llm_block": 34,
++      "skip_rank_gate": 241,
++      "buy_submitted": 61,
++      "rank_gate_ready": false
++    },
++    {
++      "date": "2026-06-11",
++      "agreement_pct": 64.5,
++      "skip_llm_block": 36,
++      "skip_rank_gate": 304,
++      "buy_submitted": 61,
++      "rank_gate_ready": false
++    },
++    {
++      "date": "2026-06-12",
++      "agreement_pct": 62.0,
++      "skip_llm_block": 44,
++      "skip_rank_gate": 363,
++      "buy_submitted": 69,
+       "rank_gate_ready": false
+     }
+   ]
+diff --git a/reports/agent_pipeline/phase30/TASK.md b/reports/agent_pipeline/phase30/TASK.md
+index 4dfff8a..7818d36 100644
+--- a/reports/agent_pipeline/phase30/TASK.md
++++ b/reports/agent_pipeline/phase30/TASK.md
+@@ -1 +1 @@
+-Pass phase30: Cursor implementation + AGY tests complete. Request Codex review.
++Phase 30 paper ops — Codex scoped review
+diff --git a/reports/agent_pipeline/phase30/changed_files.txt b/reports/agent_pipeline/phase30/changed_files.txt
+index 00b4e49..e69de29 100644
+--- a/reports/agent_pipeline/phase30/changed_files.txt
++++ b/reports/agent_pipeline/phase30/changed_files.txt
+@@ -1,6 +0,0 @@
+-.gitignore
+-TODO.md
+-config/strategy_config.json
+-docs/TODO_ARCHIVE.md
+-docs/runbook.md
+-logs/portfolio_backtest/portfolio_summary.csv
+diff --git a/reports/agent_pipeline/phase30/git_diff.patch b/reports/agent_pipeline/phase30/git_diff.patch
+index 4139cf7..e69de29 100644
+--- a/reports/agent_pipeline/phase30/git_diff.patch
++++ b/reports/agent_pipeline/phase30/git_diff.patch
+@@ -1,179 +0,0 @@
+-diff --git a/.gitignore b/.gitignore
+-index c4cf60c..bd00ba7 100644
+---- a/.gitignore
+-+++ b/.gitignore
+-@@ -1,4 +1,5 @@
+- .env
+-+.antigravitycli/
+- .venv/
+- __pycache__/
+- *.pyc
+-@@ -29,6 +30,21 @@ logs/*
+- !logs/allocation_compare/*/*summary*.csv
+- !logs/portfolio_backtest/
+- !logs/portfolio_backtest/*summary*.csv
+-+!logs/benchmark_gap/
+-+!logs/benchmark_gap/latest_summary.json
+-+!logs/operational_alpha/
+-+!logs/operational_alpha/latest_summary.json
+-+!logs/llm_cache_warmup/
+-+!logs/llm_cache_warmup/latest_summary.json
+-+!logs/llm_advisory/
+-+!logs/llm_advisory/latest_summary.json
+-+!logs/guard_impact/
+-+!logs/guard_impact/latest_summary.json
+-+!logs/crowding_paper/
+-+!logs/crowding_paper/go_no_go_checklist.json
+-+
+-+# Pytest regenerates these from golden_execution_audit.csv
+-+tests/fixtures/audit_daily/golden_output/
+- 
+- # Champion model binaries are local-only (retrain + promotion); never commit ad-hoc retrains.
+- models/*
+-diff --git a/TODO.md b/TODO.md
+-index 607f3e6..70e5dd2 100644
+---- a/TODO.md
+-+++ b/TODO.md
+-@@ -3,14 +3,9 @@
+- ## Definition of Done (완료 기준)
+- 항목을 `[x]`로 두려면 다음을 **모두** 충족:
+- 1. **코드** — 요구사항 반영, 프로젝트 스타일 준수
+--2. **테스트** — 관련 pytest 추가·통과 (기본: `run_pass_complete.sh` subset 또는 명시한 경로)
+-+2. **테스트** — 관련 pytest 추가·통과
+- 3. **운영** — 필요 시 백테스트/리포트·runbook 반영
+--4. **리뷰** — pytest 필수; **Codex는 고위험·Phase 마감 시만** ([`docs/codex_review_policy.md`](docs/codex_review_policy.md)):
+--
+--```bash
+--RUN_ID=<pass_id> SKIP_CODEX=1 bash scripts/run_pass_complete.sh
+--RUN_ID=phase29_final bash scripts/run_pass_complete.sh "Phase 29 alpha"
+--```
+-+4. **리뷰** — `RUN_ID=<pass> SKIP_CODEX=1 bash scripts/run_pass_complete.sh` ([`docs/codex_review_policy.md`](docs/codex_review_policy.md))
+- 
+- ---
+- 
+-@@ -18,10 +13,8 @@ RUN_ID=phase29_final bash scripts/run_pass_complete.sh "Phase 29 alpha"
+- 
+- | 문서 | 역할 |
+- |------|------|
+--| **`TODO.md`** | 활성 로드맵 |
+--| **`docs/TODO_ARCHIVE.md`** | Phase 0–28 + 백로그 요약 |
+--
+--**루프:** Cursor 구현 → `[AGY]` 테스트 → `SKIP_CODEX=1` pytest → Codex (마감) → 반영.
+-+| **`TODO.md`** | 활성 로드맵 (다음 Phase만) |
+-+| **`docs/TODO_ARCHIVE.md`** | Phase 0–29 요약 |
+- 
+- ---
+- 
+-@@ -29,37 +22,28 @@ RUN_ID=phase29_final bash scripts/run_pass_complete.sh "Phase 29 alpha"
+- 
+- | 영역 | 상태 |
+- |------|------|
+--| **알파 목표** | 승격 시 **벤치마크 이상** 필수 (`promotion_portfolio_thresholds`, excess ≥ 0 pp) |
+--| **랭킹** | `rank_ai_weight=1.0`, `rank_trend_weight=0.5`, RS 필터 ON |
+--| **포트폴리오 백테스트** | **+96.8%** vs equal-weight B&H **+65.0%** (gap **+31.8pp**), MDD **-7.3%**, Sharpe **3.15** |
+--| **챔피언** | LGBM+XGB; retrain은 PROMOTE 게이트 통과 시만 교체 |
+-+| **ML 백테스트** | **+96.8%** vs B&H **+65.0%** (gap +31.8pp), `beats_benchmark` |
+-+| **LLM** | `llm_advisory_only: true` — 주문 차단 없음, audit만 |
+-+| **Crowding** | `crowding_guard_enabled: false` — paper gate **NO_GO** (Sharpe Δ) |
+-+| **챔피언** | 로컬 `models/`; 승격 시 벤치 이상 필수 |
+- 
+--**완료:** Phase 0–28, 백로그 → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
+-+**Phase 29 완료** → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
+- 
+- ---
+- 
+--## Phase 29 — Beat benchmark (알파) ← **진행 중**
+-+## Phase 30 — Paper ops (유지보수)
+- 
+--- [x] `[Cursor]` 승격 OOS: `min_return_vs_benchmark=0`, `min_sharpe=1.0` (`src/promotion_thresholds.py`)
+--- [x] `[Cursor]` `config/strategy_config.json` — AI 랭킹·RS 필터로 후보 품질 상향
+--- [x] `[Cursor]` `benchmark_gap` 리포트 — `beats_benchmark`, `recommendations`
+--- [x] `[AGY]` `tests/test_promotion_beat_benchmark.py`
+--- [x] `[Cursor]` equal-weight 벤치마크 NaN 버그 수정 (`_build_equal_weight_benchmark_values`)
+--- [x] `[Cursor]` `run_portfolio_backtest` ↔ config 정합 (`portfolio_backtest_settings.py`, 손절/익절 전달)
+--- [x] `[Cursor]` `volume_filter_enabled=false`, `max_position_pct=0.11`, AI·RS 랭킹 유지
+--- [x] `[AGY]` `bash scripts/run_alpha_pipeline.sh` — **+96.8% vs bench +65.0%** (`beats_benchmark=true`, gap +31.8pp)
+--- [x] `[AGY]` LLM/뉴스 필터 impact — `python -m src.llm_backtest_impact_report` (`run_alpha_pipeline` 포함)
+--- [x] `[Cursor]` in-loop 운영 검증 — `bash scripts/run_operational_alpha_validation.sh` (baseline vs LLM+news)
+--- [x] `[Cursor]` 백테스트 진입 141키 `data/llm_cache.json` 워밍업 (`scripts/warm_llm_cache_from_backtest.sh`)
+--- [ ] `[Cursor]` paper `main.py`로 캐시·`execution_audit.csv` 운영 중 갱신
+--- [ ] `[Cursor]` 벤치 초과 유지 시 paper `crowding_guard_enabled` 점진 활성화 검토
+-+- [ ] 주기: `bash scripts/run_paper_ops_bootstrap.sh` (dry-run + 리포트)
+-+- [ ] paper에서 `execution_audit`·`data/llm_cache.json` 누적 후 `run_llm_advisory_report.sh`로 따름/무시 비교
+-+- [ ] Crowding: `bash scripts/run_crowding_paper_gate.sh` 재실행 후 **GO**일 때만 `config/crowding_paper_proposal.json` 값을 `strategy_config`에 반영
+- 
+- ---
+- 
+- ## Quick commands
+- 
+- ```bash
+-+bash scripts/run_paper_ops_bootstrap.sh
+- bash scripts/run_alpha_pipeline.sh
+--bash scripts/run_ops_reports.sh --weekly
+--RUN_ID=phase29 SKIP_CODEX=1 bash scripts/run_pass_complete.sh
+-+bash scripts/warm_llm_cache_from_backtest.sh   # 선택: 캐시 재충전
+-+RUN_ID=phase30 SKIP_CODEX=1 bash scripts/run_pass_complete.sh
+- ```
+-diff --git a/config/strategy_config.json b/config/strategy_config.json
+-index 5ae7ecc..050ed83 100644
+---- a/config/strategy_config.json
+-+++ b/config/strategy_config.json
+-@@ -168,5 +168,6 @@
+-   "margin_leverage_stress_gate_required": true,
+-   "trailing_stop_pct": 0.05,
+-   "rebalance_threshold_pct": 0.20,
+--  "sector_rotation_enabled": true
+-+  "sector_rotation_enabled": true,
+-+  "crowding_guard_enabled": false
+- }
+-diff --git a/docs/TODO_ARCHIVE.md b/docs/TODO_ARCHIVE.md
+-index 0893900..63d0699 100644
+---- a/docs/TODO_ARCHIVE.md
+-+++ b/docs/TODO_ARCHIVE.md
+-@@ -27,6 +27,7 @@
+- | 26 | Live alignment (paper) | Crowding go/no-go, execution vs slippage diff, leverage/LLM cache alerts |
+- | 27 | Universe + instrument meta | Master CSV, UNIVERSE_PROFILE, leveraged ETF registry and buy gates |
+- | 28 | Margin leverage paper | Stress go/no-go gate, proposal caps, main buy block |
+-+| 29 | Beat benchmark (alpha) | Promotion ≥ bench, EW benchmark fix, alpha/operational pipelines, LLM advisory-only, cache warmup |
+- 
+- **Milestones**
+- - **2026-05-27:** Phase 0–19 closed (code + pytest + runbook).
+-@@ -36,3 +37,4 @@
+- - **2026-05-30:** Phase 26 closed; paper crowding gate, execution alignment, stress/cache Telegram alerts.
+- - **2026-05-30:** Phase 27 closed; universe master/smoke/research profiles, instrument registry, leverage ETF gates.
+- - **2026-05-30:** Phase 28 closed; margin leverage paper gate wired to leverage stress + main.
+-+- **2026-05-31:** Phase 29 closed; +96.8% vs B&H +65%, LLM advisory (no block), crowding paper gate NO_GO.
+-diff --git a/docs/runbook.md b/docs/runbook.md
+-index 10b7eea..61d7e2e 100644
+---- a/docs/runbook.md
+-+++ b/docs/runbook.md
+-@@ -83,6 +83,21 @@ LIVE_LLM=1 bash scripts/run_operational_alpha_validation.sh   # cache miss 시 G
+- 산출물: `data/llm_cache.json`, `logs/llm_cache_warmup/latest_summary.json`, `logs/operational_alpha/latest_summary.json`  
+- 워밍업은 진입일 키(`{티커}_{YYYY-MM-DD}`)로 저장. 당일 yfinance에 기사가 없으면 **현재 헤드라인 fallback**으로 Gemini 호출(완전한 과거 뉴스 아카이브는 아님). paper `main.py` 실행 시 같은 키로 캐시가 계속 쌓임.
+- 
+-+```bash
+-+bash scripts/run_paper_ops_bootstrap.sh   # dry-run + advisory + alpha + operational summaries
+-+```
+-+
+-+### 2.3.2 Crowding guard (paper)
+-+
+-+`strategy_config.json` 기본: **`crowding_guard_enabled: false`**. Paper 실험 값은 `config/crowding_paper_proposal.json`만.
+-+
+-+```bash
+-+bash scripts/run_guard_impact_report.sh
+-+bash scripts/run_crowding_paper_gate.sh   # writes logs/crowding_paper/go_no_go_checklist.json
+-+```
+-+
+-+2026-05-31 gate 결과: **NO_GO** (Sharpe delta below floor). **GO** 전까지 prod config에 crowding 켜지 않음.
+-+
+- ### 2.4 유니버스 프로필 (`UNIVERSE_PROFILE`)
+- 
+- | 프로필 | 스캔 풀 | 용도 |
+-diff --git a/logs/portfolio_backtest/portfolio_summary.csv b/logs/portfolio_backtest/portfolio_summary.csv
+-index fcc8c9b..840ffc9 100644
+---- a/logs/portfolio_backtest/portfolio_summary.csv
+-+++ b/logs/portfolio_backtest/portfolio_summary.csv
+-@@ -1,2 +1,2 @@
+- initial_cash,final_equity,total_return,benchmark_return,max_drawdown,sharpe_ratio,trades,win_rate
+--10000.0,15072.372552764085,0.5072372552764086,0.5823625689672778,-0.10211053509473034,1.5211408575289322,42,0.5714285714285714
+-+10000.0,19681.309045199054,0.9681309045199054,0.6504853238288733,-0.0731374832818028,3.1519064349744568,141,0.6028368794326241
+diff --git a/reports/agent_pipeline/phase30/git_diff_stat.txt b/reports/agent_pipeline/phase30/git_diff_stat.txt
+index 99851c3..e69de29 100644
+--- a/reports/agent_pipeline/phase30/git_diff_stat.txt
++++ b/reports/agent_pipeline/phase30/git_diff_stat.txt
+@@ -1,7 +0,0 @@
+- .gitignore                                    | 16 +++++++++
+- TODO.md                                       | 48 +++++++++------------------
+- config/strategy_config.json                   |  3 +-
+- docs/TODO_ARCHIVE.md                          |  2 ++
+- docs/runbook.md                               | 15 +++++++++
+- logs/portfolio_backtest/portfolio_summary.csv |  2 +-
+- 6 files changed, 52 insertions(+), 34 deletions(-)
+diff --git a/reports/agent_pipeline/phase30/git_status.txt b/reports/agent_pipeline/phase30/git_status.txt
+index 6e78f1c..90d5deb 100644
+--- a/reports/agent_pipeline/phase30/git_status.txt
++++ b/reports/agent_pipeline/phase30/git_status.txt
+@@ -1,24 +1,4 @@
+ On branch main
+ Your branch is up to date with 'origin/main'.
+ 
+-Changes not staged for commit:
+-  (use "git add <file>..." to update what will be committed)
+-  (use "git restore <file>..." to discard changes in working directory)
+-	modified:   .gitignore
+-	modified:   TODO.md
+-	modified:   config/strategy_config.json
+-	modified:   docs/TODO_ARCHIVE.md
+-	modified:   docs/runbook.md
+-	modified:   logs/portfolio_backtest/portfolio_summary.csv
+-
+-Untracked files:
+-  (use "git add <file>..." to include in what will be committed)
+-	logs/benchmark_gap/
+-	logs/crowding_paper/
+-	logs/guard_impact/
+-	logs/llm_advisory/
+-	logs/llm_cache_warmup/
+-	logs/operational_alpha/
+-	scripts/run_paper_ops_bootstrap.sh
+-
+-no changes added to commit (use "git add" and/or "git commit -a")
++nothing to commit, working tree clean
+diff --git a/reports/agent_pipeline/phase30/review_harness.log b/reports/agent_pipeline/phase30/review_harness.log
+index 29f3a99..2782344 100644
+--- a/reports/agent_pipeline/phase30/review_harness.log
++++ b/reports/agent_pipeline/phase30/review_harness.log
+@@ -8,7 +8,7 @@ Traceback (most recent call last):
+   File "/home/kimyo/trading-bot/src/portfolio_backtest_validation.py", line 225, in check_portfolio_backtest_thresholds
+     result = validate_portfolio_backtest_dir(output_dir, min_equity_rows=2)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+-  File "/home/kimyo/trading-bot/src/portfolio_backtest_validation.py", line 112, in validate_portfolio_backtest_dir
+-    raise ValueError("portfolio_equity: NaN in equity column")
+-ValueError: portfolio_equity: NaN in equity column
+-audit daily summary ok: rows=0 api_errors=0 stale=0
++  File "/home/kimyo/trading-bot/src/portfolio_backtest_validation.py", line 122, in validate_portfolio_backtest_dir
++    raise ValueError(
++ValueError: summary trades=141 != trades rows=51
++skip: logs/audit_daily/latest_summary.json not found
+diff --git a/reports/agent_pipeline/phase30/review_packet.md b/reports/agent_pipeline/phase30/review_packet.md
+index 9b1f587..b883670 100644
+--- a/reports/agent_pipeline/phase30/review_packet.md
++++ b/reports/agent_pipeline/phase30/review_packet.md
+@@ -4,31 +4,20 @@
+ cursor
+ 
+ ## Task Description
+-Pass phase30: Cursor implementation + AGY tests complete. Request Codex review.
++Phase 30 paper ops — Codex scoped review
+ 
+ ## Changed Files
+-- .gitignore
+-- TODO.md
+-- config/strategy_config.json
+-- docs/TODO_ARCHIVE.md
+-- docs/runbook.md
+-- logs/portfolio_backtest/portfolio_summary.csv
++
+ 
+ ## Git Diff Summary
+ ```
+- .gitignore                                    | 16 +++++++++
+- TODO.md                                       | 48 +++++++++------------------
+- config/strategy_config.json                   |  3 +-
+- docs/TODO_ARCHIVE.md                          |  2 ++
+- docs/runbook.md                               | 15 +++++++++
+- logs/portfolio_backtest/portfolio_summary.csv |  2 +-
+- 6 files changed, 52 insertions(+), 34 deletions(-)
++
+ ```
+ 
+ ## Test Execution Results (runtime_harness.log)
+ ```
+ ============================= test session starts ==============================
+-platform linux -- Python 3.12.3, pytest-9.0.3, pluggy-1.6.0
++platform linux -- Python 3.12.8, pytest-9.0.3, pluggy-1.6.0
+ rootdir: /home/kimyo/trading-bot
+ plugins: anyio-4.13.0
+ collected 45 items
+@@ -55,188 +44,10 @@ tests/test_champion_promotion_governance.py ...                          [100%]
+     warnings.warn(  # deprecated in 14.0 - 2024-11-09
+ 
+ -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+-======================== 45 passed, 1 warning in 2.44s =========================
++======================== 45 passed, 1 warning in 3.03s =========================
+ ```
+ 
+ ## Git Patch
+ ```diff
+-diff --git a/.gitignore b/.gitignore
+-index c4cf60c..bd00ba7 100644
+---- a/.gitignore
+-+++ b/.gitignore
+-@@ -1,4 +1,5 @@
+- .env
+-+.antigravitycli/
+- .venv/
+- __pycache__/
+- *.pyc
+-@@ -29,6 +30,21 @@ logs/*
+- !logs/allocation_compare/*/*summary*.csv
+- !logs/portfolio_backtest/
+- !logs/portfolio_backtest/*summary*.csv
+-+!logs/benchmark_gap/
+-+!logs/benchmark_gap/latest_summary.json
+-+!logs/operational_alpha/
+-+!logs/operational_alpha/latest_summary.json
+-+!logs/llm_cache_warmup/
+-+!logs/llm_cache_warmup/latest_summary.json
+-+!logs/llm_advisory/
+-+!logs/llm_advisory/latest_summary.json
+-+!logs/guard_impact/
+-+!logs/guard_impact/latest_summary.json
+-+!logs/crowding_paper/
+-+!logs/crowding_paper/go_no_go_checklist.json
+-+
+-+# Pytest regenerates these from golden_execution_audit.csv
+-+tests/fixtures/audit_daily/golden_output/
+- 
+- # Champion model binaries are local-only (retrain + promotion); never commit ad-hoc retrains.
+- models/*
+-diff --git a/TODO.md b/TODO.md
+-index 607f3e6..70e5dd2 100644
+---- a/TODO.md
+-+++ b/TODO.md
+-@@ -3,14 +3,9 @@
+- ## Definition of Done (완료 기준)
+- 항목을 `[x]`로 두려면 다음을 **모두** 충족:
+- 1. **코드** — 요구사항 반영, 프로젝트 스타일 준수
+--2. **테스트** — 관련 pytest 추가·통과 (기본: `run_pass_complete.sh` subset 또는 명시한 경로)
+-+2. **테스트** — 관련 pytest 추가·통과
+- 3. **운영** — 필요 시 백테스트/리포트·runbook 반영
+--4. **리뷰** — pytest 필수; **Codex는 고위험·Phase 마감 시만** ([`docs/codex_review_policy.md`](docs/codex_review_policy.md)):
+--
+--```bash
+--RUN_ID=<pass_id> SKIP_CODEX=1 bash scripts/run_pass_complete.sh
+--RUN_ID=phase29_final bash scripts/run_pass_complete.sh "Phase 29 alpha"
+--```
+-+4. **리뷰** — `RUN_ID=<pass> SKIP_CODEX=1 bash scripts/run_pass_complete.sh` ([`docs/codex_review_policy.md`](docs/codex_review_policy.md))
+- 
+- ---
+- 
+-@@ -18,10 +13,8 @@ RUN_ID=phase29_final bash scripts/run_pass_complete.sh "Phase 29 alpha"
+- 
+- | 문서 | 역할 |
+- |------|------|
+--| **`TODO.md`** | 활성 로드맵 |
+--| **`docs/TODO_ARCHIVE.md`** | Phase 0–28 + 백로그 요약 |
+--
+--**루프:** Cursor 구현 → `[AGY]` 테스트 → `SKIP_CODEX=1` pytest → Codex (마감) → 반영.
+-+| **`TODO.md`** | 활성 로드맵 (다음 Phase만) |
+-+| **`docs/TODO_ARCHIVE.md`** | Phase 0–29 요약 |
+- 
+- ---
+- 
+-@@ -29,37 +22,28 @@ RUN_ID=phase29_final bash scripts/run_pass_complete.sh "Phase 29 alpha"
+- 
+- | 영역 | 상태 |
+- |------|------|
+--| **알파 목표** | 승격 시 **벤치마크 이상** 필수 (`promotion_portfolio_thresholds`, excess ≥ 0 pp) |
+--| **랭킹** | `rank_ai_weight=1.0`, `rank_trend_weight=0.5`, RS 필터 ON |
+--| **포트폴리오 백테스트** | **+96.8%** vs equal-weight B&H **+65.0%** (gap **+31.8pp**), MDD **-7.3%**, Sharpe **3.15** |
+--| **챔피언** | LGBM+XGB; retrain은 PROMOTE 게이트 통과 시만 교체 |
+-+| **ML 백테스트** | **+96.8%** vs B&H **+65.0%** (gap +31.8pp), `beats_benchmark` |
+-+| **LLM** | `llm_advisory_only: true` — 주문 차단 없음, audit만 |
+-+| **Crowding** | `crowding_guard_enabled: false` — paper gate **NO_GO** (Sharpe Δ) |
+-+| **챔피언** | 로컬 `models/`; 승격 시 벤치 이상 필수 |
+- 
+--**완료:** Phase 0–28, 백로그 → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
+-+**Phase 29 완료** → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
+- 
+- ---
+- 
+--## Phase 29 — Beat benchmark (알파) ← **진행 중**
+-+## Phase 30 — Paper ops (유지보수)
+- 
+--- [x] `[Cursor]` 승격 OOS: `min_return_vs_benchmark=0`, `min_sharpe=1.0` (`src/promotion_thresholds.py`)
+--- [x] `[Cursor]` `config/strategy_config.json` — AI 랭킹·RS 필터로 후보 품질 상향
+--- [x] `[Cursor]` `benchmark_gap` 리포트 — `beats_benchmark`, `recommendations`
+--- [x] `[AGY]` `tests/test_promotion_beat_benchmark.py`
+--- [x] `[Cursor]` equal-weight 벤치마크 NaN 버그 수정 (`_build_equal_weight_benchmark_values`)
+--- [x] `[Cursor]` `run_portfolio_backtest` ↔ config 정합 (`portfolio_backtest_settings.py`, 손절/익절 전달)
+--- [x] `[Cursor]` `volume_filter_enabled=false`, `max_position_pct=0.11`, AI·RS 랭킹 유지
+--- [x] `[AGY]` `bash scripts/run_alpha_pipeline.sh` — **+96.8% vs bench +65.0%** (`beats_benchmark=true`, gap +31.8pp)
+--- [x] `[AGY]` LLM/뉴스 필터 impact — `python -m src.llm_backtest_impact_report` (`run_alpha_pipeline` 포함)
+--- [x] `[Cursor]` in-loop 운영 검증 — `bash scripts/run_operational_alpha_validation.sh` (baseline vs LLM+news)
+--- [x] `[Cursor]` 백테스트 진입 141키 `data/llm_cache.json` 워밍업 (`scripts/warm_llm_cache_from_backtest.sh`)
+--- [ ] `[Cursor]` paper `main.py`로 캐시·`execution_audit.csv` 운영 중 갱신
+--- [ ] `[Cursor]` 벤치 초과 유지 시 paper `crowding_guard_enabled` 점진 활성화 검토
+-+- [ ] 주기: `bash scripts/run_paper_ops_bootstrap.sh` (dry-run + 리포트)
+-+- [ ] paper에서 `execution_audit`·`data/llm_cache.json` 누적 후 `run_llm_advisory_report.sh`로 따름/무시 비교
+-+- [ ] Crowding: `bash scripts/run_crowding_paper_gate.sh` 재실행 후 **GO**일 때만 `config/crowding_paper_proposal.json` 값을 `strategy_config`에 반영
+- 
+- ---
+- 
+- ## Quick commands
+- 
+- ```bash
+-+bash scripts/run_paper_ops_bootstrap.sh
+- bash scripts/run_alpha_pipeline.sh
+--bash scripts/run_ops_reports.sh --weekly
+--RUN_ID=phase29 SKIP_CODEX=1 bash scripts/run_pass_complete.sh
+-+bash scripts/warm_llm_cache_from_backtest.sh   # 선택: 캐시 재충전
+-+RUN_ID=phase30 SKIP_CODEX=1 bash scripts/run_pass_complete.sh
+- ```
+-diff --git a/config/strategy_config.json b/config/strategy_config.json
+-index 5ae7ecc..050ed83 100644
+---- a/config/strategy_config.json
+-+++ b/config/strategy_config.json
+-@@ -168,5 +168,6 @@
+-   "margin_leverage_stress_gate_required": true,
+-   "trailing_stop_pct": 0.05,
+-   "rebalance_threshold_pct": 0.20,
+--  "sector_rotation_enabled": true
+-+  "sector_rotation_enabled": true,
+-+  "crowding_guard_enabled": false
+- }
+-diff --git a/docs/TODO_ARCHIVE.md b/docs/TODO_ARCHIVE.md
+-index 0893900..63d0699 100644
+---- a/docs/TODO_ARCHIVE.md
+-+++ b/docs/TODO_ARCHIVE.md
+-@@ -27,6 +27,7 @@
+- | 26 | Live alignment (paper) | Crowding go/no-go, execution vs slippage diff, leverage/LLM cache alerts |
+- | 27 | Universe + instrument meta | Master CSV, UNIVERSE_PROFILE, leveraged ETF registry and buy gates |
+- | 28 | Margin leverage paper | Stress go/no-go gate, proposal caps, main buy block |
+-+| 29 | Beat benchmark (alpha) | Promotion ≥ bench, EW benchmark fix, alpha/operational pipelines, LLM advisory-only, cache warmup |
+- 
+- **Milestones**
+- - **2026-05-27:** Phase 0–19 closed (code + pytest + runbook).
+-@@ -36,3 +37,4 @@
+- - **2026-05-30:** Phase 26 closed; paper crowding gate, execution alignment, stress/cache Telegram alerts.
+- - **2026-05-30:** Phase 27 closed; universe master/smoke/research profiles, instrument registry, leverage ETF gates.
+- - **2026-05-30:** Phase 28 closed; margin leverage paper gate wired to leverage stress + main.
+-+- **2026-05-31:** Phase 29 closed; +96.8% vs B&H +65%, LLM advisory (no block), crowding paper gate NO_GO.
+-diff --git a/docs/runbook.md b/docs/runbook.md
+-index 10b7eea..61d7e2e 100644
+---- a/docs/runbook.md
+-+++ b/docs/runbook.md
+-@@ -83,6 +83,21 @@ LIVE_LLM=1 bash scripts/run_operational_alpha_validation.sh   # cache miss 시 G
+- 산출물: `data/llm_cache.json`, `logs/llm_cache_warmup/latest_summary.json`, `logs/operational_alpha/latest_summary.json`  
+- 워밍업은 진입일 키(`{티커}_{YYYY-MM-DD}`)로 저장. 당일 yfinance에 기사가 없으면 **현재 헤드라인 fallback**으로 Gemini 호출(완전한 과거 뉴스 아카이브는 아님). paper `main.py` 실행 시 같은 키로 캐시가 계속 쌓임.
+- 
+-+```bash
+-+bash scripts/run_paper_ops_bootstrap.sh   # dry-run + advisory + alpha + operational summaries
+-+```
+-+
+-+### 2.3.2 Crowding guard (paper)
+-+
+-+`strategy_config.json` 기본: **`crowding_guard_enabled: false`**. Paper 실험 값은 `config/crowding_paper_proposal.json`만.
+-+
+-+```bash
+-+bash scripts/run_guard_impact_report.sh
+-+bash scripts/run_crowding_paper_gate.sh   # writes logs/crowding_paper/go_no_go_checklist.json
+-+```
+-+
+-+2026-05-31 gate 결과: **NO_GO** (Sharpe delta below floor). **GO** 전까지 prod config에 crowding 켜지 않음.
+-+
+- ### 2.4 유니버스 프로필 (`UNIVERSE_PROFILE`)
+- 
+- | 프로필 | 스캔 풀 | 용도 |
+-diff --git a/logs/portfolio_backtest/portfolio_summary.csv b/logs/portfolio_backtest/portfolio_summary.csv
+-index fcc8c9b..840ffc9 100644
+---- a/logs/portfolio_backtest/portfolio_summary.csv
+-+++ b/logs/portfolio_backtest/portfolio_summary.csv
+-@@ -1,2 +1,2 @@
+- initial_cash,final_equity,total_return,benchmark_return,max_drawdown,sharpe_ratio,trades,win_rate
+--10000.0,15072.372552764085,0.5072372552764086,0.5823625689672778,-0.10211053509473034,1.5211408575289322,42,0.5714285714285714
+-+10000.0,19681.309045199054,0.9681309045199054,0.6504853238288733,-0.0731374832818028,3.1519064349744568,141,0.6028368794326241
++
+ ```
+diff --git a/reports/agent_pipeline/phase30/runtime_harness.log b/reports/agent_pipeline/phase30/runtime_harness.log
+index 3d91d1d..d492c3a 100644
+--- a/reports/agent_pipeline/phase30/runtime_harness.log
++++ b/reports/agent_pipeline/phase30/runtime_harness.log
+@@ -1,5 +1,5 @@
+ ============================= test session starts ==============================
+-platform linux -- Python 3.12.3, pytest-9.0.3, pluggy-1.6.0
++platform linux -- Python 3.12.8, pytest-9.0.3, pluggy-1.6.0
+ rootdir: /home/kimyo/trading-bot
+ plugins: anyio-4.13.0
+ collected 45 items
+@@ -26,4 +26,4 @@ tests/test_champion_promotion_governance.py ...                          [100%]
+     warnings.warn(  # deprecated in 14.0 - 2024-11-09
+ 
+ -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+-======================== 45 passed, 1 warning in 2.44s =========================
++======================== 45 passed, 1 warning in 3.03s =========================
+diff --git a/src/ml_model.py b/src/ml_model.py
+index 21edffc..466cbf1 100644
+--- a/src/ml_model.py
++++ b/src/ml_model.py
+@@ -480,19 +480,44 @@ def _build_regime_feature_dataset(
+ def _collect_regime_cv_metrics(
+     regime: str,
+     regime_data: pd.DataFrame,
++    *,
++    feature_columns: list[str] | None = None,
++    lgbm_params: dict[str, Any] | None = None,
++    xgb_params: dict[str, Any] | None = None,
+ ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+     """Time-series CV metrics and per-row calibration data for one regime."""
+     metrics: list[dict[str, Any]] = []
+     calibration_rows: list[dict[str, Any]] = []
+-    X_regime = regime_data[FEATURE_COLUMNS]
++    cols = feature_columns or list(FEATURE_COLUMNS)
++    available_cols = [c for c in cols if c in regime_data.columns]
++    if not available_cols:
++        return metrics, calibration_rows
++
++    X_regime = regime_data[available_cols]
+     y_regime = regime_data["target"]
+     tscv = TimeSeriesSplit(n_splits=3)
++    lgbm_defaults: dict[str, Any] = {
++        "n_estimators": 100,
++        "random_state": 42,
++        "verbose": -1,
++    }
++    xgb_defaults: dict[str, Any] = {
++        "n_estimators": 100,
++        "random_state": 42,
++        "n_jobs": -1,
++        "verbosity": 0,
++    }
++    if lgbm_params:
++        lgbm_defaults.update(lgbm_params)
++    if xgb_params:
++        xgb_defaults.update(xgb_params)
++
+     for fold, (train_idx, test_idx) in enumerate(tscv.split(X_regime), start=1):
+         X_train, X_test = X_regime.iloc[train_idx], X_regime.iloc[test_idx]
+         y_train, y_test = y_regime.iloc[train_idx], y_regime.iloc[test_idx]
+ 
+-        f_lgbm = LGBMClassifier(n_estimators=100, random_state=42, verbose=-1)
+-        f_xgb = XGBClassifier(n_estimators=100, random_state=42, n_jobs=-1, verbosity=0)
++        f_lgbm = LGBMClassifier(**lgbm_defaults)
++        f_xgb = XGBClassifier(**xgb_defaults)
+         f_lgbm.fit(X_train, y_train)
+         f_xgb.fit(X_train, y_train)
+         proba = (f_lgbm.predict_proba(X_test)[:, 1] + f_xgb.predict_proba(X_test)[:, 1]) / 2.0
+diff --git a/tests/fixtures/ml_quality/golden_fold_stability_report.json b/tests/fixtures/ml_quality/golden_fold_stability_report.json
+index 3a47525..d93d150 100644
+--- a/tests/fixtures/ml_quality/golden_fold_stability_report.json
++++ b/tests/fixtures/ml_quality/golden_fold_stability_report.json
+@@ -20,7 +20,7 @@
+     }
+   },
+   "fold_count": 4,
+-  "generated_at": "2026-06-02T07:21:26Z",
++  "generated_at": "2026-06-12T00:42:07Z",
+   "high_variance_warning": false,
+   "roc_auc": {
+     "coefficient_of_variation": 0.01359820733051054,
+diff --git a/tests/fixtures/ml_quality/golden_model_calibration_report.json b/tests/fixtures/ml_quality/golden_model_calibration_report.json
+index 77681b3..f67b779 100644
+--- a/tests/fixtures/ml_quality/golden_model_calibration_report.json
++++ b/tests/fixtures/ml_quality/golden_model_calibration_report.json
+@@ -1,6 +1,6 @@
+ {
+   "bin_count": 20,
+-  "generated_at": "2026-06-02T07:21:26Z",
++  "generated_at": "2026-06-12T00:42:07Z",
+   "overall_avg_brier_score": 0.25,
+   "regimes": {
+     "BEAR": {
+diff --git a/tests/test_ml_quality_report.py b/tests/test_ml_quality_report.py
+index 50032ef..958a3d3 100644
+--- a/tests/test_ml_quality_report.py
++++ b/tests/test_ml_quality_report.py
+@@ -13,6 +13,7 @@ from src.ml_quality_report import (
+     evaluate_ml_quality_promotion_gates,
+     evaluate_walk_forward_oos_metrics,
+     normalize_fold_metrics_df,
++    rebuild_calibration_artifacts_from_training,
+     regenerate_reports_from_fold_metrics_csv,
+     write_ml_quality_reports,
+ )
+@@ -82,6 +83,39 @@ def test_regenerate_from_csv_round_trip(tmp_path: Path):
+     assert paths["fold_stability"].is_file()
+ 
+ 
++def test_rebuild_calibration_artifacts_from_training(monkeypatch, tmp_path: Path):
++    sample = _sample_metrics_df()
++
++    monkeypatch.setattr(
++        "src.ml_model.collect_regime_cv_metrics_df",
++        lambda *args, **kwargs: sample,
++    )
++    from types import SimpleNamespace
++
++    monkeypatch.setattr(
++        "src.settings.load_settings",
++        lambda: SimpleNamespace(tickers=["AAPL"]),
++    )
++    monkeypatch.setattr(
++        "src.data_loader.load_price_data_batch",
++        lambda tickers, period="5y": {"AAPL": pd.DataFrame()},
++    )
++    monkeypatch.setattr("src.macro_loader.load_macro_data", lambda period="5y": pd.DataFrame())
++    monkeypatch.setattr(
++        "src.retrain_holdout.portfolio_holdout_window",
++        lambda data: (pd.Timestamp("2025-01-01"), pd.Timestamp("2025-06-01")),
++    )
++    monkeypatch.setattr(
++        "src.retrain_holdout.exclude_holdout_from_ticker_data",
++        lambda data, start: data,
++    )
++
++    paths = rebuild_calibration_artifacts_from_training(tmp_path)
++    assert paths["calibration_rows"].is_file()
++    rows = pd.read_csv(paths["calibration_rows"])
++    assert len(rows) >= 1
++
++
+ def test_regenerate_from_csv_preserves_existing_calibration_rows(tmp_path: Path):
+     source = tmp_path / "fold_metrics.csv"
+     _sample_metrics_df().to_csv(source, index=False)
+
+exec
+/bin/bash -lc "git diff -- src/ml_model.py src/ml_quality_report.py tests/test_ml_quality_report.py && sed -n '430,560p' src/ml_model.py && rg \"collect_regime_cv_metrics\" -n src tests" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+diff --git a/src/ml_model.py b/src/ml_model.py
+index 21edffc..466cbf1 100644
+--- a/src/ml_model.py
++++ b/src/ml_model.py
+@@ -480,19 +480,44 @@ def _build_regime_feature_dataset(
+ def _collect_regime_cv_metrics(
+     regime: str,
+     regime_data: pd.DataFrame,
++    *,
++    feature_columns: list[str] | None = None,
++    lgbm_params: dict[str, Any] | None = None,
++    xgb_params: dict[str, Any] | None = None,
+ ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+     """Time-series CV metrics and per-row calibration data for one regime."""
+     metrics: list[dict[str, Any]] = []
+     calibration_rows: list[dict[str, Any]] = []
+-    X_regime = regime_data[FEATURE_COLUMNS]
++    cols = feature_columns or list(FEATURE_COLUMNS)
++    available_cols = [c for c in cols if c in regime_data.columns]
++    if not available_cols:
++        return metrics, calibration_rows
++
++    X_regime = regime_data[available_cols]
+     y_regime = regime_data["target"]
+     tscv = TimeSeriesSplit(n_splits=3)
++    lgbm_defaults: dict[str, Any] = {
++        "n_estimators": 100,
++        "random_state": 42,
++        "verbose": -1,
++    }
++    xgb_defaults: dict[str, Any] = {
++        "n_estimators": 100,
++        "random_state": 42,
++        "n_jobs": -1,
++        "verbosity": 0,
++    }
++    if lgbm_params:
++        lgbm_defaults.update(lgbm_params)
++    if xgb_params:
++        xgb_defaults.update(xgb_params)
++
+     for fold, (train_idx, test_idx) in enumerate(tscv.split(X_regime), start=1):
+         X_train, X_test = X_regime.iloc[train_idx], X_regime.iloc[test_idx]
+         y_train, y_test = y_regime.iloc[train_idx], y_regime.iloc[test_idx]
+ 
+-        f_lgbm = LGBMClassifier(n_estimators=100, random_state=42, verbose=-1)
+-        f_xgb = XGBClassifier(n_estimators=100, random_state=42, n_jobs=-1, verbosity=0)
++        f_lgbm = LGBMClassifier(**lgbm_defaults)
++        f_xgb = XGBClassifier(**xgb_defaults)
+         f_lgbm.fit(X_train, y_train)
+         f_xgb.fit(X_train, y_train)
+         proba = (f_lgbm.predict_proba(X_test)[:, 1] + f_xgb.predict_proba(X_test)[:, 1]) / 2.0
+diff --git a/tests/test_ml_quality_report.py b/tests/test_ml_quality_report.py
+index 50032ef..958a3d3 100644
+--- a/tests/test_ml_quality_report.py
++++ b/tests/test_ml_quality_report.py
+@@ -13,6 +13,7 @@ from src.ml_quality_report import (
+     evaluate_ml_quality_promotion_gates,
+     evaluate_walk_forward_oos_metrics,
+     normalize_fold_metrics_df,
++    rebuild_calibration_artifacts_from_training,
+     regenerate_reports_from_fold_metrics_csv,
+     write_ml_quality_reports,
+ )
+@@ -82,6 +83,39 @@ def test_regenerate_from_csv_round_trip(tmp_path: Path):
+     assert paths["fold_stability"].is_file()
+ 
+ 
++def test_rebuild_calibration_artifacts_from_training(monkeypatch, tmp_path: Path):
++    sample = _sample_metrics_df()
++
++    monkeypatch.setattr(
++        "src.ml_model.collect_regime_cv_metrics_df",
++        lambda *args, **kwargs: sample,
++    )
++    from types import SimpleNamespace
++
++    monkeypatch.setattr(
++        "src.settings.load_settings",
++        lambda: SimpleNamespace(tickers=["AAPL"]),
++    )
++    monkeypatch.setattr(
++        "src.data_loader.load_price_data_batch",
++        lambda tickers, period="5y": {"AAPL": pd.DataFrame()},
++    )
++    monkeypatch.setattr("src.macro_loader.load_macro_data", lambda period="5y": pd.DataFrame())
++    monkeypatch.setattr(
++        "src.retrain_holdout.portfolio_holdout_window",
++        lambda data: (pd.Timestamp("2025-01-01"), pd.Timestamp("2025-06-01")),
++    )
++    monkeypatch.setattr(
++        "src.retrain_holdout.exclude_holdout_from_ticker_data",
++        lambda data, start: data,
++    )
++
++    paths = rebuild_calibration_artifacts_from_training(tmp_path)
++    assert paths["calibration_rows"].is_file()
++    rows = pd.read_csv(paths["calibration_rows"])
++    assert len(rows) >= 1
++
++
+ def test_regenerate_from_csv_preserves_existing_calibration_rows(tmp_path: Path):
+     source = tmp_path / "fold_metrics.csv"
+     _sample_metrics_df().to_csv(source, index=False)
+    if challenger_portfolio is not None:
+        report["challenger_portfolio_oos"] = challenger_portfolio
+    if champion_portfolio is not None:
+        report["champion_portfolio_oos"] = champion_portfolio
+    if portfolio_gate is not None:
+        report["portfolio_gate_failures"] = portfolio_gate.failures
+        report["portfolio_gate_warnings"] = portfolio_gate.warnings
+    return report
+
+
+def _build_regime_feature_dataset(
+    training_data: Dict[str, pd.DataFrame],
+    *,
+    prediction_horizon: int,
+    target_return_threshold: float,
+    vix_df: pd.DataFrame | None,
+    spy_df: pd.DataFrame | None,
+    macro_df: pd.DataFrame | None,
+) -> pd.DataFrame:
+    frames = []
+    for ticker, df in training_data.items():
+        try:
+            feature_df = build_features(
+                df,
+                prediction_horizon=prediction_horizon,
+                target_return_threshold=target_return_threshold,
+                vix_df=vix_df,
+                spy_df=spy_df,
+                macro_df=macro_df,
+            )
+        except ValueError:
+            continue
+        feature_df["ticker"] = ticker
+        frames.append(feature_df)
+
+    if not frames:
+        return pd.DataFrame()
+
+    dataset = pd.concat(frames, ignore_index=True).sort_values("date").reset_index(drop=True)
+    if spy_df is not None and vix_df is not None:
+        regime_series = compute_daily_regime(spy_df, vix_df)
+        dataset = dataset.merge(
+            regime_series.rename("regime"), left_on="date", right_index=True, how="left"
+        )
+        dataset["regime"] = dataset["regime"].fillna("NEUTRAL")
+    else:
+        dataset["regime"] = "NEUTRAL"
+    return dataset
+
+
+def _collect_regime_cv_metrics(
+    regime: str,
+    regime_data: pd.DataFrame,
+    *,
+    feature_columns: list[str] | None = None,
+    lgbm_params: dict[str, Any] | None = None,
+    xgb_params: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Time-series CV metrics and per-row calibration data for one regime."""
+    metrics: list[dict[str, Any]] = []
+    calibration_rows: list[dict[str, Any]] = []
+    cols = feature_columns or list(FEATURE_COLUMNS)
+    available_cols = [c for c in cols if c in regime_data.columns]
+    if not available_cols:
+        return metrics, calibration_rows
+
+    X_regime = regime_data[available_cols]
+    y_regime = regime_data["target"]
+    tscv = TimeSeriesSplit(n_splits=3)
+    lgbm_defaults: dict[str, Any] = {
+        "n_estimators": 100,
+        "random_state": 42,
+        "verbose": -1,
+    }
+    xgb_defaults: dict[str, Any] = {
+        "n_estimators": 100,
+        "random_state": 42,
+        "n_jobs": -1,
+        "verbosity": 0,
+    }
+    if lgbm_params:
+        lgbm_defaults.update(lgbm_params)
+    if xgb_params:
+        xgb_defaults.update(xgb_params)
+
+    for fold, (train_idx, test_idx) in enumerate(tscv.split(X_regime), start=1):
+        X_train, X_test = X_regime.iloc[train_idx], X_regime.iloc[test_idx]
+        y_train, y_test = y_regime.iloc[train_idx], y_regime.iloc[test_idx]
+
+        f_lgbm = LGBMClassifier(**lgbm_defaults)
+        f_xgb = XGBClassifier(**xgb_defaults)
+        f_lgbm.fit(X_train, y_train)
+        f_xgb.fit(X_train, y_train)
+        proba = (f_lgbm.predict_proba(X_test)[:, 1] + f_xgb.predict_proba(X_test)[:, 1]) / 2.0
+
+        try:
+            auc = float(roc_auc_score(y_test, proba))
+        except ValueError:
+            auc = 0.5
+        brier = float(brier_score_loss(y_test, proba))
+        metrics.append(
+            {
+                "regime": regime,
+                "fold": fold,
+                "roc_auc": auc,
+                "brier_score": brier,
+                "test_size": int(len(test_idx)),
+            }
+        )
+        calibration_rows.extend(
+            {
+                "regime": regime,
+                "fold": fold,
+                "y_true": int(y_true),
+                "y_prob": float(y_prob),
+            }
+            for y_true, y_prob in zip(y_test.tolist(), proba.tolist())
+        )
+    return metrics, calibration_rows
+
+
+def collect_regime_cv_metrics_df(
+    training_data: Dict[str, pd.DataFrame],
+    prediction_horizon: int = 5,
+    target_return_threshold: float = 0.0,
+    vix_df: pd.DataFrame | None = None,
+    spy_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """CV fold metrics + calibration rows without training champion models."""
+    dataset = _build_regime_feature_dataset(
+tests/test_regime_feature_experiment.py:53:        "src.regime_feature_experiment._collect_regime_cv_metrics",
+tests/test_fold_stability_experiment.py:65:    monkeypatch.setattr("src.fold_stability_experiment._collect_regime_cv_metrics", _fake_cv)
+tests/test_ml_quality_report.py:90:        "src.ml_model.collect_regime_cv_metrics_df",
+src/ml_model.py:480:def _collect_regime_cv_metrics(
+src/ml_model.py:551:def collect_regime_cv_metrics_df(
+src/ml_model.py:582:        metrics, rows = _collect_regime_cv_metrics(regime, regime_data)
+src/ml_model.py:650:        fold_metrics, fold_rows = _collect_regime_cv_metrics(regime, regime_data)
+src/fold_stability_experiment.py:13:from src.ml_model import _build_regime_feature_dataset, _collect_regime_cv_metrics
+src/fold_stability_experiment.py:82:            metrics, _ = _collect_regime_cv_metrics(
+src/regime_feature_experiment.py:14:from src.ml_model import _build_regime_feature_dataset, _collect_regime_cv_metrics
+src/regime_feature_experiment.py:83:    metrics, _rows = _collect_regime_cv_metrics(
+src/ml_quality_report.py:472:    from src.ml_model import collect_regime_cv_metrics_df
+src/ml_quality_report.py:493:    metrics_df = collect_regime_cv_metrics_df(
+
+exec
+/bin/bash -lc "sed -n '560,700p' src/ml_model.py; sed -n '1,130p' src/regime_feature_experiment.py; sed -n '1,120p' src/fold_stability_experiment.py; sed -n '430,520p' src/ml_quality_report.py" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+    dataset = _build_regime_feature_dataset(
+        training_data,
+        prediction_horizon=prediction_horizon,
+        target_return_threshold=target_return_threshold,
+        vix_df=vix_df,
+        spy_df=spy_df,
+        macro_df=macro_df,
+    )
+    if dataset.empty:
+        return pd.DataFrame()
+
+    all_metrics: list[dict[str, Any]] = []
+    calibration_rows: list[dict[str, Any]] = []
+    for regime in ("BULL", "BEAR", "NEUTRAL"):
+        regime_data = dataset[dataset["regime"] == regime]
+        if len(regime_data) < 100:
+            print(
+                f"  WARNING: insufficient data for {regime} regime "
+                f"(rows={len(regime_data)}), skipping CV..."
+            )
+            continue
+        print(f"  Collecting CV metrics for {regime} (rows={len(regime_data)})...")
+        metrics, rows = _collect_regime_cv_metrics(regime, regime_data)
+        all_metrics.extend(metrics)
+        calibration_rows.extend(rows)
+
+    metrics_df = pd.DataFrame(all_metrics)
+    metrics_df.attrs["calibration_rows"] = calibration_rows
+    return metrics_df
+
+
+def train_ai_score_model(
+    training_data: Dict[str, pd.DataFrame],
+    prediction_horizon: int = 5,
+    target_return_threshold: float = 0.0,
+    vix_df: pd.DataFrame | None = None,
+    spy_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
+) -> Tuple[BaseModel, pd.DataFrame]:
+    dataset = _build_regime_feature_dataset(
+        training_data,
+        prediction_horizon=prediction_horizon,
+        target_return_threshold=target_return_threshold,
+        vix_df=vix_df,
+        spy_df=spy_df,
+        macro_df=macro_df,
+    )
+    if dataset.empty:
+        raise ValueError("No training features could be built from input tickers.")
+
+    regimes = ["BULL", "BEAR", "NEUTRAL"]
+    trained_models = {}
+    all_metrics = []
+    calibration_rows = []
+
+    for regime in regimes:
+        regime_data = dataset[dataset["regime"] == regime]
+        if len(regime_data) < 100:  # 최소 데이터 요구량
+            print(f"  WARNING: insufficient data for {regime} regime (rows={len(regime_data)}), skipping...")
+            continue
+            
+        print(f"  Training {regime} ensemble model (LightGBM + XGBoost, rows={len(regime_data)})...")
+        X_regime = regime_data[FEATURE_COLUMNS]
+        y_regime = regime_data["target"]
+
+        lgbm = LGBMClassifier(
+            n_estimators=500,
+            learning_rate=0.05,
+            max_depth=6,
+            num_leaves=31,
+            min_child_samples=20,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=42,
+            class_weight="balanced" if regime != "BEAR" else None,
+            n_jobs=-1,
+            verbose=-1,
+        )
+        
+        xgb = XGBClassifier(
+            n_estimators=500,
+            learning_rate=0.05,
+            max_depth=6,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=42,
+            n_jobs=-1,
+            verbosity=0,
+        )
+
+        fold_metrics, fold_rows = _collect_regime_cv_metrics(regime, regime_data)
+        all_metrics.extend(fold_metrics)
+        calibration_rows.extend(fold_rows)
+
+        lgbm.fit(X_regime, y_regime)
+        xgb.fit(X_regime, y_regime)
+        trained_models[regime] = SoftVotingEnsemble(lgbm, xgb)
+
+    # 만약 특정 레짐 모델이 하나도 없으면 (에러 방지)
+    if not trained_models:
+        raise ValueError("No models could be trained for any regime.")
+
+    metrics_df = pd.DataFrame(all_metrics)
+    metrics_df.attrs["calibration_rows"] = calibration_rows
+    wrapper = RegimeAwareModelWrapper(trained_models, FEATURE_COLUMNS, prediction_horizon, target_return_threshold)
+    return wrapper, metrics_df
+
+
+def load_ai_score_model() -> BaseModel:
+    if not MODEL_PATH.exists():
+        raise FileNotFoundError(
+            f"Model not found: {MODEL_PATH}. Run python -m src.train_ai_model first."
+        )
+
+    bundle = joblib.load(MODEL_PATH)
+    
+    # 레거시 단일 모델 지원 (하위 호환성)
+    if "model" in bundle:
+        return RegimeAwareModelWrapper(
+            {"NEUTRAL": bundle["model"]},
+            bundle["feature_columns"],
+            bundle["prediction_horizon"],
+            bundle["target_return_threshold"],
+        )
+        
+    return RegimeAwareModelWrapper(
+        bundle["models"],
+        bundle["feature_columns"],
+        bundle["prediction_horizon"],
+        bundle["target_return_threshold"],
+    )
+
+
+def predict_ai_score_from_bundle(
+    df: pd.DataFrame,
+    model: BaseModel,
+    vix_df: pd.DataFrame | None = None,
+    spy_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
+) -> float:
+    proba_series = model.predict_proba(df, vix_df=vix_df, spy_df=spy_df, macro_df=macro_df)
+"""Report-only feature bundle experiments for weak regimes (no champion promotion)."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+
+from src.features import FEATURE_COLUMNS
+from src.ml_model import _build_regime_feature_dataset, _collect_regime_cv_metrics
+from src.regime_weakness_report import (
+    DEFAULT_FOLD_METRICS_PATH,
+    DEFAULT_OUTPUT_DIR,
+    build_regime_weakness_report,
+)
+from src.sector import SECTOR_MAP
+
+DEFAULT_WEAKNESS_PATH = DEFAULT_OUTPUT_DIR / "regime_weakness_report.json"
+WEAK_REGIME_AUC_GATE = 0.52
+
+EXPERIMENT_FEATURE_BUNDLES: dict[str, list[str]] = {
+    "baseline": list(FEATURE_COLUMNS),
+    "watchlist": [
+        "spy_rel_return_20d",
+        "ma_ratio_20_200",
+        "vix_percentile_52w",
+        "volatility_20d",
+        "yield_spread_10y3m",
+        "return_5d",
+        "return_20d",
+        "rsi_14",
+    ],
+    "macro_stress": [
+        "spy_rel_return_20d",
+        "vix_level",
+        "vix_percentile_52w",
+        "vvix_level",
+        "yield_spread_10y3m",
+        "gold_20d_return",
+        "dxy_20d_return",
+        "volatility_20d",
+    ],
+    "momentum_breadth": list(FEATURE_COLUMNS)
+    + ["sector_momentum_20d", "market_breadth_20d"],
+}
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def augment_experiment_features(dataset: pd.DataFrame) -> pd.DataFrame:
+    """Add report-only sector momentum and market breadth columns."""
+    if dataset.empty or "ticker" not in dataset.columns or "return_20d" not in dataset.columns:
+        return dataset
+
+    frame = dataset.copy()
+    frame["sector"] = frame["ticker"].astype(str).map(SECTOR_MAP).fillna("other")
+    frame["sector_momentum_20d"] = frame.groupby(["date", "sector"], observed=False)[
+        "return_20d"
+    ].transform("mean")
+    frame["market_breadth_20d"] = frame.groupby("date", observed=False)["return_20d"].transform(
+        lambda values: float((pd.to_numeric(values, errors="coerce") > 0).mean())
+    )
+    return frame
+
+
+def _bundle_columns(name: str, dataset: pd.DataFrame) -> list[str]:
+    requested = EXPERIMENT_FEATURE_BUNDLES[name]
+    return [col for col in requested if col in dataset.columns]
+
+
+def _evaluate_bundle(
+    regime: str,
+    regime_data: pd.DataFrame,
+    bundle_name: str,
+    feature_columns: list[str],
+) -> dict[str, Any]:
+    metrics, _rows = _collect_regime_cv_metrics(
+        regime,
+        regime_data,
+        feature_columns=feature_columns,
+    )
+    if not metrics:
+        return {
+            "bundle": bundle_name,
+            "feature_count": len(feature_columns),
+            "folds": 0,
+            "roc_auc_mean": None,
+            "roc_auc_std": None,
+            "passes_gate": False,
+            "note": "insufficient data or no usable features",
+        }
+
+    aucs = pd.Series([row["roc_auc"] for row in metrics], dtype=float)
+    mean_auc = float(aucs.mean())
+    std_auc = float(aucs.std(ddof=0)) if len(aucs) > 1 else 0.0
+    return {
+        "bundle": bundle_name,
+        "feature_count": len(feature_columns),
+        "folds": int(len(metrics)),
+        "roc_auc_mean": mean_auc,
+        "roc_auc_std": std_auc,
+        "passes_gate": mean_auc >= WEAK_REGIME_AUC_GATE,
+    }
+
+
+def build_regime_feature_experiment_report(
+    *,
+    weakness_path: str | Path = DEFAULT_WEAKNESS_PATH,
+    training_data: dict[str, pd.DataFrame],
+    prediction_horizon: int = 20,
+    target_return_threshold: float = 0.0,
+    vix_df: pd.DataFrame | None = None,
+    spy_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
+) -> dict[str, Any]:
+    weakness = (
+        json.loads(Path(weakness_path).read_text(encoding="utf-8"))
+        if Path(weakness_path).is_file()
+        else build_regime_weakness_report()
+    )
+    weak_regimes = [str(r).upper() for r in weakness.get("weak_regimes", [])]
+    if not weak_regimes:
+        return {
+            "generated_at": _utc_now_iso(),
+"""Report-only regularization sweep to reduce fold ROC-AUC variance."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+
+from src.ml_model import _build_regime_feature_dataset, _collect_regime_cv_metrics
+from src.ml_quality_report import ROC_AUC_STD_WARN_THRESHOLD
+
+DEFAULT_OUTPUT_DIR = Path("logs/ml")
+FOLD_STD_GATE = ROC_AUC_STD_WARN_THRESHOLD
+
+REGULARIZATION_GRID: list[dict[str, Any]] = [
+    {"name": "baseline", "lgbm": {}, "xgb": {}},
+    {"name": "lgbm_l1_0.1", "lgbm": {"reg_alpha": 0.1, "reg_lambda": 0.0}, "xgb": {}},
+    {"name": "lgbm_l2_0.5", "lgbm": {"reg_alpha": 0.0, "reg_lambda": 0.5}, "xgb": {}},
+    {"name": "lgbm_elastic_1.0", "lgbm": {"reg_alpha": 0.5, "reg_lambda": 0.5}, "xgb": {}},
+    {"name": "xgb_reg_0.5", "lgbm": {}, "xgb": {"reg_alpha": 0.5, "reg_lambda": 1.0}},
+    {"name": "combo_tight", "lgbm": {"reg_alpha": 0.3, "reg_lambda": 0.3}, "xgb": {"reg_alpha": 0.3, "reg_lambda": 0.8}},
+]
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _metrics_summary(metrics: list[dict[str, Any]]) -> dict[str, Any]:
+    if not metrics:
+        return {"folds": 0, "roc_auc_mean": None, "roc_auc_std": None, "passes_gate": False}
+    aucs = pd.Series([row["roc_auc"] for row in metrics], dtype=float)
+    std_auc = float(aucs.std(ddof=0)) if len(aucs) > 1 else 0.0
+    return {
+        "folds": int(len(metrics)),
+        "roc_auc_mean": float(aucs.mean()),
+        "roc_auc_std": std_auc,
+        "passes_gate": std_auc < FOLD_STD_GATE,
+    }
+
+
+def build_fold_stability_experiment_report(
+    *,
+    training_data: dict[str, pd.DataFrame],
+    prediction_horizon: int = 20,
+    target_return_threshold: float = 0.0,
+    vix_df: pd.DataFrame | None = None,
+    spy_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
+    focus_regimes: tuple[str, ...] = ("BEAR", "BULL", "NEUTRAL"),
+) -> dict[str, Any]:
+    dataset = _build_regime_feature_dataset(
+        training_data,
+        prediction_horizon=prediction_horizon,
+        target_return_threshold=target_return_threshold,
+        vix_df=vix_df,
+        spy_df=spy_df,
+        macro_df=macro_df,
+    )
+    if dataset.empty:
+        return {
+            "generated_at": _utc_now_iso(),
+            "status": "missing_training_data",
+            "fold_std_gate": FOLD_STD_GATE,
+            "grid": [row["name"] for row in REGULARIZATION_GRID],
+            "results": {},
+            "recommendation": "Training features could not be built.",
+        }
+
+    results: dict[str, Any] = {}
+    best_overall: dict[str, Any] | None = None
+    for regime in focus_regimes:
+        regime_data = dataset[dataset["regime"].astype(str).str.upper() == regime]
+        if len(regime_data) < 100:
+            continue
+        regime_rows: list[dict[str, Any]] = []
+        for candidate in REGULARIZATION_GRID:
+            metrics, _ = _collect_regime_cv_metrics(
+                regime,
+                regime_data,
+                lgbm_params=candidate.get("lgbm"),
+                xgb_params=candidate.get("xgb"),
+            )
+            summary = _metrics_summary(metrics)
+            row = {"candidate": candidate["name"], **summary}
+            regime_rows.append(row)
+            if summary["roc_auc_std"] is not None and (
+                best_overall is None
+                or summary["roc_auc_std"] < best_overall["roc_auc_std"]
+            ):
+                best_overall = {"regime": regime, **row}
+
+        results[regime] = regime_rows
+
+    any_pass = any(
+        row.get("passes_gate")
+        for rows in results.values()
+        for row in rows
+    )
+    recommendation = (
+        f"Candidate {best_overall['candidate']} on {best_overall['regime']} has lowest fold std "
+        f"({best_overall['roc_auc_std']:.4f}); evaluate in a label challenger before promotion."
+        if best_overall and best_overall.get("roc_auc_std") is not None
+        else "No regularization candidate improved fold stability."
+    )
+    if not any_pass:
+        recommendation += " None cleared the fold-std gate yet."
+
+    return {
+        "generated_at": _utc_now_iso(),
+        "status": "ok",
+        "fold_std_gate": FOLD_STD_GATE,
+        "grid": [row["name"] for row in REGULARIZATION_GRID],
+        "results": results,
+        "best_overall": best_overall,
+        "any_passes_gate": any_pass,
+
+    calibration_rows = metrics_df.attrs.get("calibration_rows", []) if metrics_df is not None else []
+    if calibration_rows:
+        pd.DataFrame(calibration_rows).to_csv(rows_path, index=False)
+    # Preserve existing per-row calibration data when regenerating from fold_metrics.csv only.
+
+    return {
+        "fold_metrics": fold_metrics_path,
+        "fold_stability": stability_path,
+        "calibration_report": calibration_path,
+        "calibration_bins": bins_path,
+        "calibration_rows": rows_path,
+    }
+
+
+def load_fold_metrics_csv(path: str | Path) -> pd.DataFrame:
+    return normalize_fold_metrics_df(pd.read_csv(path))
+
+
+def regenerate_reports_from_fold_metrics_csv(
+    metrics_path: str | Path,
+    output_dir: str | Path | None = None,
+    *,
+    file_prefix: str = "",
+) -> dict[str, Path]:
+    """Rebuild stability (and empty calibration) from saved fold_metrics.csv only."""
+    metrics_path = Path(metrics_path)
+    output_dir = Path(output_dir or metrics_path.parent)
+    metrics_df = load_fold_metrics_csv(metrics_path)
+    return write_ml_quality_reports(output_dir, metrics_df, file_prefix=file_prefix)
+
+
+def rebuild_calibration_artifacts_from_training(
+    output_dir: str | Path = DEFAULT_ML_OUTPUT_DIR,
+    *,
+    period: str = "5y",
+    prediction_horizon: int = 20,
+    target_return_threshold: float = 0.0,
+) -> dict[str, Path]:
+    """Re-run regime CV to populate model_calibration_rows.csv (no champion retrain)."""
+    from src.data_loader import load_price_data_batch
+    from src.macro_loader import load_macro_data
+    from src.ml_model import collect_regime_cv_metrics_df
+    from src.retrain_holdout import exclude_holdout_from_ticker_data, portfolio_holdout_window
+    from src.settings import load_settings
+
+    settings = load_settings()
+    training_data = load_price_data_batch(settings.tickers, period=period)
+
+    context_tickers = ["^VIX"]
+    if "SPY" not in training_data:
+        context_tickers.append("SPY")
+    context_data = load_price_data_batch(context_tickers, period=period)
+    vix_df = context_data.get("^VIX")
+    spy_df = training_data.get("SPY") if "SPY" in training_data else context_data.get("SPY")
+
+    macro_df = load_macro_data(period=period)
+    if macro_df.empty:
+        macro_df = None
+
+    holdout_start, _holdout_end = portfolio_holdout_window(training_data)
+    training_data_fit = exclude_holdout_from_ticker_data(training_data, holdout_start)
+
+    metrics_df = collect_regime_cv_metrics_df(
+        training_data_fit,
+        prediction_horizon=prediction_horizon,
+        target_return_threshold=target_return_threshold,
+        vix_df=vix_df,
+        spy_df=spy_df,
+        macro_df=macro_df,
+    )
+    if metrics_df.empty:
+        raise ValueError("CV metrics collection produced no rows; check training data.")
+
+    return write_ml_quality_reports(output_dir, metrics_df)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Generate fold stability and calibration reports from fold metrics"
+    )
+    parser.add_argument(
+        "--metrics",
+        type=Path,
+        default=DEFAULT_ML_OUTPUT_DIR / "ai_model_metrics.csv",
+        help="Source metrics CSV (retrain legacy path) or fold_metrics.csv",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+
+exec
+/bin/bash -lc '.venv/bin/python -m pytest tests/test_ml_quality_report.py tests/test_regime_feature_experiment.py tests/test_fold_stability_experiment.py' in /home/kimyo/trading-bot
+ exited 1 in 222ms:
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/pytest/__main__.py", line 9, in <module>
+    raise SystemExit(pytest.console_main())
+                     ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/_pytest/config/__init__.py", line 223, in console_main
+    code = main()
+           ^^^^^^
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/_pytest/config/__init__.py", line 193, in main
+    config = _prepareconfig(new_args, plugins)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/_pytest/config/__init__.py", line 361, in _prepareconfig
+    config: Config = pluginmanager.hook.pytest_cmdline_parse(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/pluggy/_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/pluggy/_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/pluggy/_callers.py", line 167, in _multicall
+    raise exception
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/_pytest/helpconfig.py", line 124, in pytest_cmdline_parse
+    config = yield
+             ^^^^^
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/pluggy/_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/_pytest/config/__init__.py", line 1192, in pytest_cmdline_parse
+    self.parse(args)
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/_pytest/config/__init__.py", line 1562, in parse
+    self.hook.pytest_load_initial_conftests(
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/pluggy/_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/pluggy/_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/pluggy/_callers.py", line 167, in _multicall
+    raise exception
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/_pytest/warnings.py", line 128, in pytest_load_initial_conftests
+    return (yield)
+            ^^^^^
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/pluggy/_callers.py", line 116, in _multicall
+    next(function_gen)  # first yield
+    ^^^^^^^^^^^^^^^^^^
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/_pytest/capture.py", line 170, in pytest_load_initial_conftests
+    capman.start_global_capturing()
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/_pytest/capture.py", line 773, in start_global_capturing
+    self._global_capturing = _get_multicapture(self._method)
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/_pytest/capture.py", line 714, in _get_multicapture
+    return MultiCapture(in_=FDCapture(0), out=FDCapture(1), err=FDCapture(2))
+                                              ^^^^^^^^^^^^
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/_pytest/capture.py", line 493, in __init__
+    TemporaryFile(buffering=0),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/kimyo/.pyenv/versions/3.12.8/lib/python3.12/tempfile.py", line 631, in TemporaryFile
+    prefix, suffix, dir, output_type = _sanitize_params(prefix, suffix, dir)
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/kimyo/.pyenv/versions/3.12.8/lib/python3.12/tempfile.py", line 126, in _sanitize_params
+    dir = gettempdir()
+          ^^^^^^^^^^^^
+  File "/home/kimyo/.pyenv/versions/3.12.8/lib/python3.12/tempfile.py", line 315, in gettempdir
+    return _os.fsdecode(_gettempdir())
+                        ^^^^^^^^^^^^^
+  File "/home/kimyo/.pyenv/versions/3.12.8/lib/python3.12/tempfile.py", line 308, in _gettempdir
+    tempdir = _get_default_tempdir()
+              ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/kimyo/.pyenv/versions/3.12.8/lib/python3.12/tempfile.py", line 223, in _get_default_tempdir
+    raise FileNotFoundError(_errno.ENOENT,
+FileNotFoundError: [Errno 2] No usable temporary directory found in ['/tmp', '/var/tmp', '/usr/tmp', '/home/kimyo/trading-bot']
+
+exec
+/bin/bash -lc "nl -ba src/ml_model.py | sed -n '488,502p'" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+   488	    """Time-series CV metrics and per-row calibration data for one regime."""
+   489	    metrics: list[dict[str, Any]] = []
+   490	    calibration_rows: list[dict[str, Any]] = []
+   491	    cols = feature_columns or list(FEATURE_COLUMNS)
+   492	    available_cols = [c for c in cols if c in regime_data.columns]
+   493	    if not available_cols:
+   494	        return metrics, calibration_rows
+   495	
+   496	    X_regime = regime_data[available_cols]
+   497	    y_regime = regime_data["target"]
+   498	    tscv = TimeSeriesSplit(n_splits=3)
+   499	    lgbm_defaults: dict[str, Any] = {
+   500	        "n_estimators": 100,
+   501	        "random_state": 42,
+   502	        "verbose": -1,
+
+codex
+The new optional feature-column support mishandles an explicit empty list, which can make experiment reports evaluate the wrong feature set. I could not run focused pytest locally because the read-only sandbox has no usable temporary directory.
+
+Review comment:
+
+- [P2] Preserve explicit empty feature lists — /home/kimyo/trading-bot/src/ml_model.py:491-491
+  When a report-only experiment passes an explicit empty `feature_columns` list (for example, a bundle whose requested columns are absent), this falls back to the full `FEATURE_COLUMNS` set instead of returning no metrics. That makes `_evaluate_bundle` report a usable baseline-like result rather than the intended "no usable features" path, so sparse/custom datasets can produce misleading regime/fold experiment reports.
