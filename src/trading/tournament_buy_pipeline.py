@@ -6,7 +6,6 @@ from src.order_intent import build_buy_intent
 from src.portfolio_sleeves import TOURNAMENT_SLEEVE_ID, load_sleeve_definitions
 from src.position_dust import effective_position
 from src.position_sizing import cap_single_order_amount
-from src.risk_manager import check_buy_allowed
 from src.settings import merge_settings_overlay
 from src.tournament_alpha_model import select_tournament_candidates
 from src.trading.bot_helpers import (
@@ -24,6 +23,17 @@ from src.trading_config_guard import load_named_profile_overlay
 def _tournament_settings(ctx: TradingRunContext):
     overlay = load_named_profile_overlay("tournament_paper")
     return merge_settings_overlay(ctx.settings, overlay)
+
+
+def _tournament_open_position_count(ctx: TradingRunContext) -> int:
+    count = 0
+    for symbol, position in ctx.positions_by_symbol.items():
+        sleeve_id = ctx.sleeve_ctx.sleeve_position_map.get(str(symbol).upper(), "")
+        if sleeve_id != TOURNAMENT_SLEEVE_ID:
+            continue
+        if effective_position(position, min_usd=ctx.dust_min_usd):
+            count += 1
+    return count
 
 
 def run_tournament_buy_pipeline(ctx: TradingRunContext) -> None:
@@ -78,6 +88,7 @@ def run_tournament_buy_pipeline(ctx: TradingRunContext) -> None:
 
     print(f"Tournament sleeve: {len(picks)} candidate(s) from alpha model")
     portfolio_value = float(ctx.account["portfolio_value"])
+    pending_tournament_buys = 0
 
     for ticker, alpha in picks.items():
         if ctx.orders_submitted >= ctx.settings.max_orders_per_run:
@@ -118,23 +129,33 @@ def run_tournament_buy_pipeline(ctx: TradingRunContext) -> None:
             )
             continue
 
-        risk = check_buy_allowed(
-            signal=signal,
-            cash=ctx.cash,
-            current_positions_count=ctx.meaningful_positions_count,
-            portfolio_value=portfolio_value,
-            settings=tournament_settings,
+        sleeve_cash = float(
+            ctx.sleeve_ctx.budget_remaining.get(TOURNAMENT_SLEEVE_ID, 0.0)
         )
-        if not risk.allowed or risk.target_amount < 10.0:
+        max_positions = int(getattr(tournament_settings, "max_total_positions", 12))
+        if _tournament_open_position_count(ctx) + pending_tournament_buys >= max_positions:
             ctx.buy_summary_rows.append(
-                f"{ticker}: TOURNAMENT_NOT_ALLOWED {risk.reason}"
+                f"{ticker}: TOURNAMENT_NOT_ALLOWED max tournament positions reached"
+            )
+            continue
+        if sleeve_cash < 10.0:
+            ctx.buy_summary_rows.append(
+                f"{ticker}: TOURNAMENT_NOT_ALLOWED tournament sleeve budget exhausted"
+            )
+            continue
+
+        position_pct = float(getattr(tournament_settings, "max_position_pct", 0.35))
+        target_amount = min(sleeve_cash, portfolio_value * position_pct)
+        if target_amount < 10.0:
+            ctx.buy_summary_rows.append(
+                f"{ticker}: TOURNAMENT_NOT_ALLOWED target amount below minimum"
             )
             continue
 
         order_amount = min(
-            float(risk.target_amount),
+            float(target_amount),
             portfolio_value * float(alpha.max_position_pct),
-            float(ctx.sleeve_ctx.budget_remaining.get(TOURNAMENT_SLEEVE_ID, 0.0)),
+            sleeve_cash,
         )
         order_amount = cap_single_order_amount(
             order_amount,
@@ -200,6 +221,7 @@ def run_tournament_buy_pipeline(ctx: TradingRunContext) -> None:
             )
             ctx.live_order_count += 1
             ctx.orders_submitted += 1
+            pending_tournament_buys += 1
             ctx.submitted_notional_today += order_amount
             ctx.sleeve_ctx.consume_submit_budget(
                 order_amount,

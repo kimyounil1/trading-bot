@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -32,8 +33,10 @@ def check_buy_allowed(
     ticker: str | None = None,
     position_mult: float = 1.0,
     cash_buffer_mult: float = 1.0,
+    settings: Any | None = None,
 ) -> RiskDecision:
-    settings = load_settings()
+    if settings is None:
+        settings = load_settings()
 
     if signal != "BUY":
         return RiskDecision(False, f"signal is {signal}")

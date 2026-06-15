@@ -1,5 +1,6 @@
 .env
 .antigravitycli/
+.claude-account-2/
 .venv/
 __pycache__/
 *.pyc
@@ -9,8 +10,14 @@ data/
 # explain model training, validation, and selected backtest baselines.
 logs/*
 !logs/.gitkeep
+# logs/ml: track only curated decision records + the calibration runtime input.
+# Experiment/sweep outputs (rank_label_experiment_*, label_challenger/, *_rows.csv,
+# fold/threshold/regime experiment reports) are regenerable and stay ignored.
 !logs/ml/
-!logs/ml/*.csv
+logs/ml/*
+!logs/ml/ai_model_metrics.csv
+!logs/ml/regime_weakness_report.json
+!logs/ml/model_calibration_bins.csv
 !logs/retrain_history.csv
 !logs/validation/
 !logs/validation/*.csv
@@ -59,6 +66,10 @@ tests/fixtures/audit_daily/golden_output/
 # Champion model binaries are local-only (retrain + promotion); never commit ad-hoc retrains.
 models/*
 !models/.gitkeep
+
+# Codex/agent review runs are timestamp-named (YYYYMMDDThhmmss) and transient.
+# Keep only intentionally-named phase dirs (phase30, drill_*, ...).
+reports/agent_pipeline/[0-9]*T[0-9]*/
 
 # Never commit bulky/generated trading artifacts.
 logs/**/portfolio_equity.csv

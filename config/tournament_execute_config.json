@@ -1,0 +1,10 @@
+{
+  "timezone": "Asia/Seoul",
+  "schedule_note": "KST day-market window: paper --execute for tournament sleeve data (core exits/buys run too). Separate from daily paper ops dry-run.",
+  "on_calendar_times": [
+    "Mon..Fri 10:30:00",
+    "Mon..Fri 15:00:00"
+  ],
+  "service_name": "trading-bot-tournament-execute.service",
+  "timer_name": "trading-bot-tournament-execute.timer"
+}

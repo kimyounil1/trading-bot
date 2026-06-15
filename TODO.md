@@ -125,9 +125,9 @@
 | **Toss Open API** (Phase 33) | [ ] blocked | API 키·스펙 대기 |
 | **Live 전환** (Phase 34 foundation 완료) | [ ] blocked | §1 블로커 해소 + Rank 2주 + operator sign-off |
 | **Champion / rank live 승격** | [ ] blocked | AI authority gates |
-| **Gemini 429 quota 대응** | [ ] | 간헐 발생 · retry/backoff/degraded mode 강화 |
-| **Tournament sleeve 성과 리포트 자동 판정** | [ ] | `run_tournament_score_report.sh` → pass/fail 요약 |
-| **Untracked logs 정리** | [ ] | `logs/ml/rank_label_experiment_*` 등 `.gitignore` 정리 |
+| **Gemini 429 quota 대응** | [x] | `_call_with_retry` — 429/RESOURCE_EXHAUSTED/503 한정 capped exp-backoff+jitter (server `retry_delay` 우선), 그 다음 vLLM→degraded 폴백 체인. env: `LLM_MAX_RETRIES`(2)·`LLM_RETRY_BASE_DELAY`(2s)·`LLM_RETRY_MAX_DELAY`(8s) |
+| **Tournament sleeve 성과 리포트 자동 판정** | [x] | `tournament_score_report` verdict **PASS/FAIL/INSUFFICIENT_DATA** (excess vs best benchmark · `--min-excess-return-pct`) + `format_tournament_score_summary` CLI 출력 · 현재 sleeve NAV 0 → `INSUFFICIENT_DATA` |
+| **Untracked logs 정리** | [x] | `.gitignore` — `logs/ml/*` 화이트리스트 정리(curated 3종만 추적) + `reports/agent_pipeline/<timestamp>/` 무시 + `.claude-account-2/` · untracked 103→37 |
 | **LLM×AI 불일치 시그널 연구** | [ ] | score↔llm r=0.031 직교 (`logs/llm_ai_comparison`) — 불일치(AI pass + LLM fail) 시 포지션 축소 연구. 낮은 우선 |
 
 ---

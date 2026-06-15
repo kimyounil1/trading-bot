@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import re
+import time
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
 
 from google import genai
 
@@ -40,6 +42,106 @@ def llm_backend_available() -> bool:
 
 def _env_truthy(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes"}
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, "").strip() or default)
+    except (TypeError, ValueError):
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, "").strip() or default)
+    except (TypeError, ValueError):
+        return default
+
+
+# Bounded retry for transient Gemini errors (429/RESOURCE_EXHAUSTED/503) before
+# falling back to vLLM / degraded mode. Conservative defaults bound live-path latency.
+LLM_MAX_RETRIES = _env_int("LLM_MAX_RETRIES", 2)
+LLM_RETRY_BASE_DELAY = _env_float("LLM_RETRY_BASE_DELAY", 2.0)
+LLM_RETRY_MAX_DELAY = _env_float("LLM_RETRY_MAX_DELAY", 8.0)
+
+_RETRYABLE_MARKERS = (
+    "resource_exhausted",
+    "rate limit",
+    "rate_limit",
+    "ratelimit",
+    "too many requests",
+    "429",
+    "503",
+    "unavailable",
+    "quota",
+)
+_NON_RETRYABLE_AUTH_MARKERS = (
+    "invalid api key",
+    "api key not valid",
+    "permission denied",
+    "unauthenticated",
+    "401",
+    "403",
+)
+_RETRY_DELAY_RE = re.compile(r"retry_?delay\D+(\d+(?:\.\d+)?)", re.IGNORECASE)
+
+
+def _is_retryable_gemini_error(exc: BaseException) -> bool:
+    """True for transient Gemini errors (429/quota/503) worth an in-place retry.
+
+    Auth/permission failures are never retried.
+    """
+    message = str(exc).lower()
+    type_name = type(exc).__name__.lower()
+    if any(marker in message for marker in _NON_RETRYABLE_AUTH_MARKERS):
+        return False
+    return any(marker in message or marker in type_name for marker in _RETRYABLE_MARKERS)
+
+
+def _suggested_retry_delay(exc: BaseException) -> float | None:
+    """Best-effort parse of a server-suggested retry delay (seconds) from the error."""
+    match = _RETRY_DELAY_RE.search(str(exc))
+    if not match:
+        return None
+    try:
+        return float(match.group(1))
+    except ValueError:
+        return None
+
+
+def _call_with_retry(
+    fn: Callable[[], str],
+    *,
+    max_retries: int = LLM_MAX_RETRIES,
+    base_delay: float = LLM_RETRY_BASE_DELAY,
+    max_delay: float = LLM_RETRY_MAX_DELAY,
+    is_retryable: Callable[[BaseException], bool] = _is_retryable_gemini_error,
+    sleep: Callable[[float], None] | None = None,
+    rng: Callable[[], float] | None = None,
+) -> str:
+    """Call fn(), retrying transient failures with capped exponential backoff + jitter.
+
+    Honors a server-suggested retry delay when the error carries one. Non-retryable
+    errors (and exhausted retries) propagate so the caller's vLLM/degraded fallback runs.
+    """
+    sleep = sleep or time.sleep
+    rng = rng or random.random
+    attempt = 0
+    while True:
+        try:
+            return fn()
+        except Exception as exc:  # noqa: BLE001 - re-raised when not retryable/exhausted
+            if attempt >= max_retries or not is_retryable(exc):
+                raise
+            suggested = _suggested_retry_delay(exc)
+            base = suggested if suggested is not None else base_delay * (2 ** attempt)
+            delay = min(base, max_delay) + rng() * 0.5 * base_delay
+            print(
+                f"Gemini transient error (attempt {attempt + 1}/{max_retries + 1}), "
+                f"retrying in {delay:.1f}s: {exc}"
+            )
+            sleep(delay)
+            attempt += 1
 
 
 def llm_skipped_for_run() -> bool:
@@ -98,11 +200,15 @@ def _response_text(response: Any) -> str:
 
 def _generate_gemini_text(prompt: str, *, model: str | None = None) -> str:
     client = _get_genai_client()
-    response = client.models.generate_content(
-        model=model or DEFAULT_LLM_MODEL,
-        contents=prompt,
-    )
-    return _response_text(response)
+
+    def _call() -> str:
+        response = client.models.generate_content(
+            model=model or DEFAULT_LLM_MODEL,
+            contents=prompt,
+        )
+        return _response_text(response)
+
+    return _call_with_retry(_call)
 
 
 def _generate_llm_text_with_provider(prompt: str, *, model: str | None = None) -> Tuple[str, str]:

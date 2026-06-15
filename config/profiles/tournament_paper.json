@@ -2,7 +2,7 @@
   "profile": "tournament_paper",
   "description": "Aggressive paper-only alpha tournament sleeve (21d rolling focus).",
   "trading_environment": "paper",
-  "max_total_positions": 5,
+  "max_total_positions": 12,
   "max_position_pct": 0.35,
   "max_holding_days": 14,
   "rank_ai_buy_gate_enabled": true,

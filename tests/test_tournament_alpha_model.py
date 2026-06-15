@@ -1,5 +1,6 @@
 import unittest
 
+from src.rank_ai_gate import RankAIGateScore
 from src.tournament_alpha_model import score_tournament_candidate, select_tournament_candidates
 
 
@@ -24,6 +25,30 @@ class TournamentAlphaModelTest(unittest.TestCase):
             rank_scores={"AAA": {"score": 0.40}},
         )
         self.assertIsNone(signal)
+
+    def test_uses_percentile_from_rank_ai_gate_score(self) -> None:
+        rank_scores = {
+            "RBLX": RankAIGateScore(
+                ticker="RBLX",
+                score=0.55,
+                percentile=0.99,
+                allowed=True,
+                reason="passed",
+            ),
+            "AMD": RankAIGateScore(
+                ticker="AMD",
+                score=0.60,
+                percentile=0.70,
+                allowed=False,
+                reason="blocked",
+            ),
+        }
+        picks = select_tournament_candidates(
+            ["RBLX", "AMD"],
+            rank_scores=rank_scores,
+            max_picks=2,
+        )
+        self.assertEqual(list(picks.keys()), ["RBLX"])
 
 
 if __name__ == "__main__":
