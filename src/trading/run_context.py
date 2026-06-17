@@ -41,6 +41,7 @@ from src.sector_rotation import get_sector_leadership
 from src.settings import apply_dynamic_profile, load_settings
 from src.sleeve_runtime import SleeveRunContext, init_sleeve_run_context
 from src.strategy import is_bullish_market_regime
+from src.partial_exit_policy import load_partial_exit_state
 from src.trading.bot_helpers import load_peaks, offline_account_summary
 from src.trading_config_guard import (
     apply_environment_profile,
@@ -79,6 +80,7 @@ class TradingRunContext:
     guard_open_symbols: set[str]
     current_gross_exposure: float
     peaks: dict[str, float]
+    partial_exit_taken: dict[str, bool]
     price_data_freshness: dict[str, tuple[bool, str]]
     market_regime_bullish: bool
     rank_ai_gate_scores: dict[str, Any]
@@ -209,6 +211,7 @@ def build_sleeve_rebalance_run_context(*, execute_orders: bool) -> TradingRunCon
             positions, min_usd=dust_min_usd
         ),
         peaks=load_peaks(),
+        partial_exit_taken=load_partial_exit_state(open_symbols=open_symbols),
         price_data_freshness={},
         market_regime_bullish=True,
         rank_ai_gate_scores={},
@@ -545,6 +548,7 @@ def build_trading_run_context(*, execute_orders: bool) -> TradingRunContext:
 
     # 트레일링 스탑용 최고가 정보 로드
     peaks = load_peaks()
+    partial_exit_taken = load_partial_exit_state(open_symbols=open_symbols)
     price_data_freshness = {
         ticker: check_price_frame_freshness(raw_df, market_clock)
         for ticker, raw_df in ticker_data.items()
@@ -585,6 +589,7 @@ def build_trading_run_context(*, execute_orders: bool) -> TradingRunContext:
         guard_open_symbols=guard_open_symbols,
         current_gross_exposure=current_gross_exposure,
         peaks=peaks,
+        partial_exit_taken=partial_exit_taken,
         price_data_freshness=price_data_freshness,
         market_regime_bullish=market_regime_bullish,
         rank_ai_gate_scores=rank_ai_gate_scores,

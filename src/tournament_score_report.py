@@ -11,7 +11,7 @@ from typing import Any
 import pandas as pd
 
 from src.data_loader import load_price_data_batch
-from src.portfolio_sleeves import TOURNAMENT_SLEEVE_ID
+from src.portfolio_sleeves import TOURNAMENT_SLEEVE_ID, load_sleeve_definitions
 from src.settings import load_settings
 
 DEFAULT_OUTPUT_DIR = Path("logs/tournament")
@@ -140,6 +140,13 @@ def build_tournament_score_report(
         min_excess_return_pct=min_excess_return_pct,
     )
 
+    tournament_def = load_sleeve_definitions(settings).get(TOURNAMENT_SLEEVE_ID)
+    paper_only = bool(tournament_def.paper_only) if tournament_def else False
+    live_enabled = (
+        str(getattr(settings, "trading_environment", "paper")).lower() == "live"
+        and not paper_only
+    )
+
     return {
         "generated_at": _utc_now_iso(),
         "lookback_days": lookback_days,
@@ -160,8 +167,8 @@ def build_tournament_score_report(
         "verdict_passed": verdict["passed"],
         "verdict_reason": verdict["reason"],
         "verdict_ko": verdict["verdict_ko"],
-        "paper_only": True,
-        "live_enabled": False,
+        "paper_only": paper_only,
+        "live_enabled": live_enabled,
         "sources": {"sleeve_summary": str(sleeve_summary_path)},
     }
 

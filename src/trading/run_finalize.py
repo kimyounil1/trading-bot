@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from src.notifier import notify_run_summary
+from src.partial_exit_policy import save_partial_exit_state
 from src.trading.bot_helpers import save_peaks, summarize_run_metrics
 from src.trading.run_context import TradingRunContext
 
@@ -70,6 +71,7 @@ def compact_exit_summary(rows: list[str], limit: int = 20) -> str:
 
 def finalize_trading_run(ctx: TradingRunContext) -> None:
     save_peaks(ctx.peaks)
+    save_partial_exit_state(ctx.partial_exit_taken)
 
     metrics_summary = summarize_run_metrics(
         live_order_count=ctx.live_order_count,

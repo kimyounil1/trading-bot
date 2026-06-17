@@ -78,7 +78,7 @@ AI may trigger exits in addition to buys. Highest risk; requires Tier 2 plus sel
 | Sleeve | `tournament` (30% target weight when sleeves enabled) |
 | Profile | `config/profiles/tournament_paper.json` |
 | Model id | `tournament_alpha_model` |
-| Live | **OFF** (`paper_only=true`) |
+| Live | **OFF** on live profile (policy: disable tournament sleeve); paper execute same as core (`paper_only=false`) |
 
 **Paper validation before live (future, blocked by default):**
 

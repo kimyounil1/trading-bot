@@ -179,7 +179,7 @@
   "max_single_name_loss_pct": 0.02,
   "crowding_guard_enabled": true,
   "crowding_lookback_days": 60,
-  "crowding_max_positions": 2,
+  "crowding_max_positions": 3,
   "crowding_momentum_threshold": 0.15,
   "crowding_trend_gap_threshold": 0.05,
   "dynamic_universe_enabled": true,
@@ -248,7 +248,7 @@
       "target_weight": 0.3,
       "profile": "tournament_paper",
       "strategy": "alpha_tournament",
-      "paper_only": true
+      "paper_only": false
     },
     "cash": {
       "enabled": true,

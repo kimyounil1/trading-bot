@@ -6,7 +6,7 @@ from src.trading_config_guard import validate_live_policies
 
 
 class TournamentProfileGuardTest(unittest.TestCase):
-    def test_tournament_paper_only_blocks_live_sleeves(self) -> None:
+    def test_tournament_paper_only_false_allows_live_sleeve_when_disabled(self) -> None:
         settings = StrategySettings(
             portfolio_sleeves_enabled=True,
             live_safety_enabled=True,
@@ -23,7 +23,7 @@ class TournamentProfileGuardTest(unittest.TestCase):
                     "target_weight": 0.3,
                     "profile": "tournament_paper",
                     "strategy": "alpha_tournament",
-                    "paper_only": True,
+                    "paper_only": False,
                 },
                 "cash": {
                     "enabled": True,
@@ -34,8 +34,8 @@ class TournamentProfileGuardTest(unittest.TestCase):
         )
         broker = PaperBrokerAdapter()
         reasons = validate_live_policies(settings, "live", broker)
-        self.assertTrue(any("tournament" in r for r in reasons))
-        self.assertTrue(any("paper_only" in r for r in reasons))
+        self.assertTrue(any("tournament sleeve must be disabled" in r for r in reasons))
+        self.assertFalse(any("paper_only" in r for r in reasons))
 
 
 if __name__ == "__main__":

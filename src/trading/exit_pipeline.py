@@ -7,6 +7,10 @@ from datetime import datetime, timezone
 from src.alpaca_client import get_position_entry_date
 from src.logger import log_order, log_order_status
 from src.notifier import notify_error, notify_info, notify_order
+from src.partial_exit_policy import (
+    compute_partial_exit_thresholds,
+    evaluate_partial_exit,
+)
 from src.position_dust import is_dust_position
 from src.risk_manager import ExitDecision
 from src.trading.bot_helpers import (
@@ -94,6 +98,7 @@ def run_exit_pipeline(ctx: TradingRunContext) -> None:
                     ctx.positions_by_symbol.pop(ticker, None)
                     ctx.open_symbols.discard(ticker)
                     ctx.guard_open_symbols.discard(ticker)
+                    ctx.partial_exit_taken.pop(ticker, None)
                     ctx.meaningful_positions_count = max(
                         0, ctx.meaningful_positions_count - 1
                     )
@@ -231,13 +236,41 @@ def run_exit_pipeline(ctx: TradingRunContext) -> None:
                 )
     
                 # Partial Profit Taking (Phase 11-A)
-                # 수익률이 take_profit_partial_pct 이상이면 비중의 절반을 매도 (분할 익절)
+                # Lock in gains on meaningful positions only; once per holding.
                 partial_tp_thr = float(getattr(ctx.settings, "take_profit_partial_pct", 0.0))
                 if not exit_decision.should_exit and partial_tp_thr > 0 and unrealized_plpc >= partial_tp_thr:
                     current_qty = float(position["qty"])
-                    if current_qty > 0.1: 
-                        sell_qty = round(current_qty * float(getattr(ctx.settings, "partial_exit_ratio", 0.5)), 4)
-                        print(f"  PARTIAL_EXIT_TRIGGERED: {ticker} pnl={unrealized_plpc*100:.2f}% >= {partial_tp_thr*100:.2f}%. Selling {sell_qty}")
+                    position_mv = abs(float(position.get("market_value", 0.0)))
+                    sell_notional = current_qty * current_price * float(
+                        getattr(ctx.settings, "partial_exit_ratio", 0.5)
+                    )
+                    thresholds = compute_partial_exit_thresholds(
+                        portfolio_value=float(ctx.account["portfolio_value"]),
+                        settings=ctx.settings,
+                        dust_min_usd=ctx.dust_min_usd,
+                    )
+                    partial_allowed, partial_skip_reason = evaluate_partial_exit(
+                        position_market_value=position_mv,
+                        sell_notional=sell_notional,
+                        thresholds=thresholds,
+                        already_taken=bool(ctx.partial_exit_taken.get(ticker)),
+                    )
+                    if not partial_allowed:
+                        print(f"  PARTIAL_EXIT_SKIPPED: {ticker} — {partial_skip_reason}")
+                        ctx.exit_summary_rows.append(
+                            f"{ticker}: PARTIAL_EXIT_SKIPPED {partial_skip_reason}"
+                        )
+                    elif current_qty > 0.1:
+                        sell_qty = round(
+                            current_qty * float(getattr(ctx.settings, "partial_exit_ratio", 0.5)),
+                            4,
+                        )
+                        sell_notional = sell_qty * current_price
+                        print(
+                            f"  PARTIAL_EXIT_TRIGGERED: {ticker} pnl={unrealized_plpc*100:.2f}% "
+                            f">= {partial_tp_thr*100:.2f}%. Selling {sell_qty} "
+                            f"(~${sell_notional:.2f})"
+                        )
                         if ctx.can_submit_orders:
                             try:
                                 partial_submission = ctx.broker_adapter.submit_sell_qty(
@@ -268,6 +301,7 @@ def run_exit_pipeline(ctx: TradingRunContext) -> None:
                                     side=partial_submission.side,
                                     quantity=sell_qty,
                                 )
+                                ctx.partial_exit_taken[ticker] = True
                                 notify_info("💰 Partial Profit Taken", f"{ticker}: Sold {sell_qty} shares at +{unrealized_plpc*100:.2f}% profit.")
                             except Exception as e:
                                 print(f"  Partial exit error for {ticker}: {e}")
@@ -466,6 +500,7 @@ def run_exit_pipeline(ctx: TradingRunContext) -> None:
                 if ticker in ctx.open_symbols:
                     ctx.open_symbols.remove(ticker)
                     ctx.positions_by_symbol.pop(ticker, None)
+                    ctx.partial_exit_taken.pop(ticker, None)
                     ctx.positions_count -= 1
                     ctx.sleeve_ctx.record_exit(ticker)
     

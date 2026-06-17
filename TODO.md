@@ -31,11 +31,13 @@
 | 영역 | 상태 |
 |------|------|
 | **Alpha** | trailing 20% · 전략 **+76.1%** vs EW **+67.1%** (gap **+9.0pp**) · SPY **+28.9pp** (`logs/benchmark_gap/latest_summary.json`) |
+| **Paper P&L (Alpaca)** | all-time **−1.57%** ($100k→$98.4k) · 실현 **−$2,886**(손절 ADBE/SOFI/RBLX/SHOP) · 미실현 **+$1,312 (+5.0%)** · `logs/portfolio_pnl/` |
 | **Crowding** | config **ON** · reassessment `DISABLE_OR_KEEP_OFF` (blocked_trades=0) |
 | **Paper ops** | daily timer active · `logs/paper_ops/latest_summary.json` |
 | **LLM (paper)** | blocking mode · Gemini 429 간헐 · precision 리포트 §1-A 수리 완료 (일일 bootstrap) |
-| **Rank AI (paper)** | buy/add gate ON · `rank_gate_ready` false — **~11/14일 · ~3일 남음** (`run_live_readiness.sh`) |
-| **Live readiness** | **시간 조건 2건만** — rank 14d · paper_validation 14d (코드 블로커 해소됨) |
+| **Rank AI (paper)** | buy/add gate ON · `rank_gate_ready` **true — 14/14 완료 (2026-06-16)** |
+| **Live readiness** | rank 14d **충족** · paper_validation 14d만 남음 (코드 블로커 해소됨) · operator sign-off |
+| **Crowding A/B** | `crowding_max_positions` **2→3 적용 (06-16)** — 모니터링 A/B, 평가 ~06-30 (§7) |
 | **Champion AI** | **유지** — promotion gate 미통과. **모델 품질:** Brier **0.323** (CV rebuild) · isotonic OOF **0.244** (`calibration_experiment` ok) · fold std 0.0695 · champion 승격은 여전히 블로커 |
 | **Portfolio sleeves** | ON (core 50 / tournament 30 / cash 20) · registry + drift trim + allocation rebalance |
 | **Research (shipped)** | regime/intraday/guard/rank gates 결론 반영 (`b9f4f6c`) · stop5_trail10 paper trial **대기** · **전략 레이어 연구 소진 → 다음 헤드룸은 모델 품질 (Active §4)** |
@@ -60,13 +62,13 @@
 
 ---
 
-### 2. Phase 32 — Rank AI paper 관측 (시간 대기)
+### 2. Phase 32 — Rank AI paper 관측 (완료 — 2026-06-16)
 
 **Toss(32-A)는 API 키 전까지 보류.**
 
 | # | 항목 | 상태 |
 |---|------|------|
-| 1 | **Rank AI paper 2주** — 매일 bootstrap → `logs/paper_validation` · `rank_gate_ready=true` | [ ] 진행 중 (~11/14 calendar days, **~3일 남음**) |
+| 1 | **Rank AI paper 2주** — 매일 bootstrap → `logs/paper_validation` · `rank_gate_ready=true` | [x] **14/14 완료 (2026-06-16)** — `gate_ready=true`. live 기본 ON은 operator sign-off 후 |
 | 2 | **Paper validation 추세** — rolling agreement · SKIP 레이어 관찰 · rank/LLM spike alerts | [x] |
 | 3 | Codex scoped review `phase32_retry` | [x] |
 
@@ -112,9 +114,9 @@
 |---|-------|------|------|----------|
 | **5-A** | `[Research]` | **진입 시그널 스윕** | [x] | entry — **17/48 pass** · best OOS **ma5/ma50/rsi75** gap **+21.5pp** (holdout) · `logs/strategy_parameter_sweep/entry_signal_sweep_report.json` |
 | **5-B** | `[Research]` | **사이징·익절 스윕** | [x] | sizing — **32/64 pass** (baseline OOS gap -18pp) · best **pos0.15/tp0.10/hold45** · backtester `max_holding_days` 추가 · `sizing_exit_sweep_report.json` |
-| **5-adopt** | `[Cursor]` | **채택 시 config 반영** | [ ] | 스윕 후보 **수동 검토** — holdout 과최적화 의심 시 보류 · `run_research_promotion_gates.sh` 경로만 (자동 반영 금지) |
+| **5-adopt** | `[Cursor]` | **채택 시 config 반영** | [ ] | **2026-06-16 검토:** **5-B 거절** (train −17pp·OOS 과대·pos/tp 이미 반영). **5-A는 crowding A/B(~06-30) 평가 후** paper trial — 후보 **AGGRESSIVE ma_slow 30 / rsi 75** (5/50 비채택). §7과 동시 레버 금지 · `run_research_promotion_gates.sh` 경로만 (자동 반영 금지) |
 
-**주의:** 5-A/5-B는 AGY `[Research]` 세션. 채택은 5-adopt `[Cursor]`만.
+**주의:** 5-A/5-B는 AGY `[Research]` 세션. 채택은 5-adopt `[Cursor]`만. **순서:** §7 crowding A/B 평가 → 5-A partial trial → 유지/롤백 합산 판단.
 
 ---
 
@@ -122,13 +124,32 @@
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
-| **Toss Open API** (Phase 33) | [ ] blocked | API 키·스펙 대기 |
-| **Live 전환** (Phase 34 foundation 완료) | [ ] blocked | §1 블로커 해소 + Rank 2주 + operator sign-off |
+| **Toss Open API** (Phase 33) | [ ] 보류(키 확보) | **API 키 발급됨(2026-06)** · 적용 보류 — paper P&L 마이너스라 **Alpaca paper 계속 관측** 후 적용 |
+| **Live 전환** (Phase 34 foundation 완료) | [ ] 보류 | Rank 2주 **충족** · 코드 블로커 해소 · 단 operator가 **paper 흑자 전환까지 보류 결정(2026-06-16)** + sign-off |
 | **Champion / rank live 승격** | [ ] blocked | AI authority gates |
 | **Gemini 429 quota 대응** | [x] | `_call_with_retry` — 429/RESOURCE_EXHAUSTED/503 한정 capped exp-backoff+jitter (server `retry_delay` 우선), 그 다음 vLLM→degraded 폴백 체인. env: `LLM_MAX_RETRIES`(2)·`LLM_RETRY_BASE_DELAY`(2s)·`LLM_RETRY_MAX_DELAY`(8s) |
 | **Tournament sleeve 성과 리포트 자동 판정** | [x] | `tournament_score_report` verdict **PASS/FAIL/INSUFFICIENT_DATA** (excess vs best benchmark · `--min-excess-return-pct`) + `format_tournament_score_summary` CLI 출력 · 현재 sleeve NAV 0 → `INSUFFICIENT_DATA` |
 | **Untracked logs 정리** | [x] | `.gitignore` — `logs/ml/*` 화이트리스트 정리(curated 3종만 추적) + `reports/agent_pipeline/<timestamp>/` 무시 + `.claude-account-2/` · untracked 103→37 |
 | **LLM×AI 불일치 시그널 연구** | [ ] | score↔llm r=0.031 직교 (`logs/llm_ai_comparison`) — 불일치(AI pass + LLM fail) 시 포지션 축소 연구. 낮은 우선 |
+
+---
+
+### 7. 현금 과다 / 매수 차단 조사 (2026-06-16)
+
+**질문:** paper 현금 ~72% (목표 ~20%), "매수 차단 과다"?
+
+**테스트 결론 — 강제 배포는 현 장세에서 손해. 높은 현금은 대체로 정상.**
+
+| 레버 | 결과 | 산출물 |
+|------|------|--------|
+| 가드 완화 (sector/crowding 3/3) | **배포 ↓·수익 ↓** (3/3 = 투자 13.9%, −0.06%). 차단 종목 5d fwd: crowding **−3.9%**, sector −2.5% → 손실 종목 거름 | `logs/guard_scenario_2w/` |
+| signal-SELL 밴드 (MA10/50 히스테리시스) | 배포 ↑(12→37%)이나 **수익·MDD 악화**, 전체기간 비단조(noise). 비채택 | `logs/signal_relax_2w/` (`trend_signal_band_pct` 실험 후 backtester revert) |
+| 레거시 리태깅 | 보유 $27.4k 전부 tournament (BAC $12.9k). **기존 `build_sleeve_retag_actions`는 core→tournament 단방향 → 빈 결과**. 정합성용 수동 편집만 가능, 배포엔 무효 | — |
+
+**유일하게 근거 있는 레버 → A/B 적용 중:**
+- [x] **`crowding_max_positions` 2→3 단독 적용 (2026-06-16)** — rank 관측 **14/14 완료**(`gate_ready=true`) 후 `scripts/crowding_ab_gate.py`로 적용. 배포 증가 기대(백테스트 12→38%), `max_sector_positions`는 2 유지. baseline/marker: `logs/crowding_ab/applied.json` · config 백업 `logs/crowding_ab/strategy_config.bak.json`.
+- [ ] **A/B 평가 ~2026-06-30** — 배포율·수익·MDD 추적. ⚠️ `do_not_relax_guards_when` 조건1(차단 종목 5d fwd 음수, crowding −3.9%)은 여전히 참 → **모니터링 A/B**. 롤백: `PYTHONPATH=. .venv/bin/python scripts/crowding_ab_gate.py --rollback` (MDD만 악화·배포/수익 이득 없으면).
+- [ ] **이후 §5-adopt (5-A)** — crowding 결과 확정 뒤 **AGGRESSIVE ma_slow 20→30, rsi 80→75** paper trial (5-B·5/50 후보는 비채택). 레버 겹치지 않게 순차 적용.
 
 ---
 
