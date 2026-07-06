@@ -1,0 +1,69 @@
+{
+  "horizon": 20,
+  "base_best_ic": 0.0381,
+  "results": {
+    "return_20d": {
+      "mean_ic": 0.0214,
+      "ic_std": 0.2491,
+      "t_stat": 2.12,
+      "ir": 0.086,
+      "hit_rate": 54.7,
+      "n_days": 607,
+      "kind": "baseline"
+    },
+    "high_52w_ratio": {
+      "mean_ic": 0.0114,
+      "ic_std": 0.2243,
+      "t_stat": 1.25,
+      "ir": 0.051,
+      "hit_rate": 52.4,
+      "n_days": 607,
+      "kind": "baseline"
+    },
+    "ma_ratio_10_50": {
+      "mean_ic": 0.0381,
+      "ic_std": 0.248,
+      "t_stat": 3.78,
+      "ir": 0.153,
+      "hit_rate": 59.0,
+      "n_days": 607,
+      "kind": "baseline"
+    },
+    "news_sent_1d": {
+      "mean_ic": 0.0102,
+      "ic_std": 0.1448,
+      "t_stat": 1.41,
+      "ir": 0.071,
+      "hit_rate": 53.0,
+      "n_days": 402,
+      "kind": "candidate"
+    },
+    "news_sent_5d": {
+      "mean_ic": 0.0089,
+      "ic_std": 0.1213,
+      "t_stat": 1.6,
+      "ir": 0.073,
+      "hit_rate": 55.0,
+      "n_days": 478,
+      "kind": "candidate"
+    },
+    "news_vol_surge": {
+      "mean_ic": -0.0015,
+      "ic_std": 0.1686,
+      "t_stat": -0.22,
+      "ir": -0.009,
+      "hit_rate": 49.1,
+      "n_days": 593,
+      "kind": "candidate"
+    },
+    "news_sent_x_vol": {
+      "mean_ic": 0.0075,
+      "ic_std": 0.127,
+      "t_stat": 1.29,
+      "ir": 0.059,
+      "hit_rate": 52.5,
+      "n_days": 478,
+      "kind": "candidate"
+    }
+  }
+}
