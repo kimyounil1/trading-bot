@@ -11,7 +11,14 @@ quantifies where the sim's OOS edge leaks in live paper trading:
 
 Reads logs/execution_audit.csv + logs/portfolio_pnl/equity_curve.csv + price caches.
 Retrains the production-config rank model to reproduce the sim (research replica).
-Outputs logs/sim_paper_gap/attribution_summary.json.
+Outputs logs/sim_paper_gap/attribution_summary.json, appends to history.jsonl, and
+evaluates a PRE-REGISTERED decision rule in trend_summary.json:
+
+  budget_leak_flag (per run): blocked-by-budget buys (cash_exhausted + sleeve_budget)
+  have n>=20 and mean forward return >= 50% of the mean forward return of executed
+  buys (which must be positive, n>=5). If 8 CONSECUTIVE weekly runs flag, the trend
+  recommendation switches to "start a core-sleeve budget +15% A/B". Rule fixed
+  2026-07-06 to avoid post-hoc rationalization; don't tweak it mid-collection.
 
 Usage:
   .venv/bin/python -m scripts.sim_paper_gap_attribution
@@ -144,6 +151,86 @@ def _build_dataset(
     return dataset.sort_values(["date", "ticker"]).reset_index(drop=True)
 
 
+BUDGET_LEAK_MIN_BLOCKED = 20
+BUDGET_LEAK_MIN_BUYS = 5
+BUDGET_LEAK_RATIO = 0.5
+BUDGET_LEAK_CONSECUTIVE_RUNS = 8
+
+
+def _budget_leak_flag(report: dict) -> bool | None:
+    """Pre-registered rule (2026-07-06); returns None when sample too small."""
+    buys = report.get("buys_submitted", {})
+    guards = report.get("guard_blocked_fwd_returns", {})
+    blocked_n = 0
+    blocked_weighted = 0.0
+    for key in ("cash_exhausted", "sleeve_budget"):
+        g = guards.get(key) or {}
+        n = int(g.get("n") or 0)
+        mean = g.get("mean_fwd_to_end")
+        if n and mean is not None:
+            blocked_n += n
+            blocked_weighted += n * float(mean)
+    buys_n = int(buys.get("n") or 0)
+    buys_mean = buys.get("mean_fwd_to_end")
+    if blocked_n < BUDGET_LEAK_MIN_BLOCKED or buys_n < BUDGET_LEAK_MIN_BUYS or buys_mean is None:
+        return None
+    if float(buys_mean) <= 0:
+        return False
+    return (blocked_weighted / blocked_n) >= BUDGET_LEAK_RATIO * float(buys_mean)
+
+
+def _update_history_and_trend(report: dict) -> dict:
+    history_path = OUTPUT_DIR / "history.jsonl"
+    record = {
+        "generated_at": report["generated_at"],
+        "window": report["window"],
+        "window_returns": report["window_returns"],
+        "buys_submitted": report["buys_submitted"],
+        "guard_blocked_fwd_returns": report["guard_blocked_fwd_returns"],
+        "budget_leak_flag": _budget_leak_flag(report),
+    }
+    with history_path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record) + "\n")
+
+    records = [
+        json.loads(line)
+        for line in history_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    consecutive = 0
+    for rec in reversed(records):
+        if rec.get("budget_leak_flag") is True:
+            consecutive += 1
+        else:
+            break
+    triggered = consecutive >= BUDGET_LEAK_CONSECUTIVE_RUNS
+    trend = {
+        "generated_at": report["generated_at"],
+        "runs": len(records),
+        "budget_leak_consecutive_flags": consecutive,
+        "budget_leak_rule": (
+            f"blocked(cash_exhausted+sleeve_budget, n>={BUDGET_LEAK_MIN_BLOCKED}) mean fwd >= "
+            f"{BUDGET_LEAK_RATIO} x buys mean fwd (buys n>={BUDGET_LEAK_MIN_BUYS}, mean>0); "
+            f"act after {BUDGET_LEAK_CONSECUTIVE_RUNS} consecutive weekly flags"
+        ),
+        "action_triggered": triggered,
+        "recommendation": (
+            "Budget-leak rule satisfied for 8 consecutive runs: start a core-sleeve "
+            "budget +15% paper A/B (controlled, report-only first)"
+            if triggered
+            else "Keep collecting weekly evidence; no config change yet"
+        ),
+        "recent_flags": [
+            {"generated_at": r["generated_at"], "budget_leak_flag": r.get("budget_leak_flag")}
+            for r in records[-10:]
+        ],
+    }
+    (OUTPUT_DIR / "trend_summary.json").write_text(
+        json.dumps(trend, indent=2), encoding="utf-8"
+    )
+    return trend
+
+
 def main() -> None:
     settings = load_settings()
     cfg = RankExperimentConfig(
@@ -273,12 +360,18 @@ def main() -> None:
     out = OUTPUT_DIR / "attribution_summary.json"
     out.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
+    trend = _update_history_and_trend(report)
+
     print(f"paper {paper_return:+.2%} | sim {sim_return:+.2%} (exposure {sim_exposure:.0%}) | "
           f"SPY {spy_return:+.2%} | EW-universe {ew_return:+.2%}")
     print(f"buys n={buys.get('n')} mean {buys.get('mean_fwd_to_end', float('nan')):+.2%} | "
           f"buy_errors n={buy_errors.get('n')} mean {buy_errors.get('mean_fwd_to_end', float('nan')):+.2%}")
     for b, s in sorted(guards.items(), key=lambda kv: -kv[1].get("n", 0)):
         print(f"  {b:<18} n={s['n']:>5} mean {s.get('mean_fwd_to_end', float('nan')):+.2%}")
+    print(
+        f"Trend: runs={trend['runs']} budget_leak_consecutive={trend['budget_leak_consecutive_flags']} "
+        f"-> {trend['recommendation']}"
+    )
     print(f"Saved: {out}")
 
 
