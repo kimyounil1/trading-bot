@@ -69,4 +69,8 @@ def portfolio_backtest_kwargs(
         "ai_score_frames": ai_score_frames,
         "evaluation_start_date": evaluation_start_date,
         "evaluation_end_date": evaluation_end_date,
+        "rank_ai_buy_gate_enabled": settings.rank_ai_buy_gate_enabled,
+        "rank_ai_buy_top_k_enabled": getattr(settings, "rank_ai_buy_top_k_enabled", True),
+        "max_orders_per_run": settings.max_orders_per_run,
+        "operational_settings": settings,
     }

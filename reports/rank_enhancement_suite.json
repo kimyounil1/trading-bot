@@ -1,0 +1,172 @@
+{
+  "generated_at": "2026-06-24T07:42:15Z",
+  "holdout": {
+    "start": "2025-12-23",
+    "end": "2026-06-23"
+  },
+  "label_experiments": {
+    "variants": {
+      "raw_return": {
+        "label": "raw_return",
+        "top_bucket_auc": 0.6436,
+        "brier": 0.127,
+        "rmse": 0.293,
+        "mean_cs_ic": 0.0826,
+        "portfolio_gap_pct": 37.61,
+        "portfolio_sharpe": 3.497,
+        "portfolio_mdd": -0.1608
+      },
+      "risk_adjusted": {
+        "label": "risk_adjusted",
+        "top_bucket_auc": 0.5387,
+        "brier": 0.1322,
+        "rmse": 0.3046,
+        "mean_cs_ic": -0.0215,
+        "portfolio_gap_pct": 0.56,
+        "portfolio_sharpe": 1.683,
+        "portfolio_mdd": -0.1418
+      },
+      "spy_excess": {
+        "label": "spy_excess",
+        "top_bucket_auc": 0.6423,
+        "brier": 0.1271,
+        "rmse": 0.2929,
+        "mean_cs_ic": 0.0817,
+        "portfolio_gap_pct": 32.68,
+        "portfolio_sharpe": 3.307,
+        "portfolio_mdd": -0.1608
+      }
+    },
+    "winner": "raw_return",
+    "promote": false,
+    "note": "Promote only if non-raw label beats raw on IC+portfolio gate"
+  },
+  "exit_sweep": {
+    "current_config": {
+      "stop_loss_pct": 0.05,
+      "take_profit_pct": 0.1,
+      "trailing_stop_pct": 0.1,
+      "total_return_pct": 7.39,
+      "benchmark_return_pct": 16.05,
+      "gap_pct": -8.66,
+      "max_drawdown_pct": -18.98,
+      "sharpe": 0.677,
+      "trades": 51,
+      "risk_adj": 0.389,
+      "is_current": true
+    },
+    "best": {
+      "stop_loss_pct": 0.05,
+      "take_profit_pct": 0.08,
+      "trailing_stop_pct": 0.15,
+      "total_return_pct": 13.29,
+      "benchmark_return_pct": 16.05,
+      "gap_pct": -2.76,
+      "max_drawdown_pct": -17.06,
+      "sharpe": 1.015,
+      "trades": 49,
+      "risk_adj": 0.779,
+      "is_current": false
+    },
+    "promote": true,
+    "top5": [
+      {
+        "stop_loss_pct": 0.05,
+        "take_profit_pct": 0.08,
+        "trailing_stop_pct": 0.15,
+        "total_return_pct": 13.29,
+        "benchmark_return_pct": 16.05,
+        "gap_pct": -2.76,
+        "max_drawdown_pct": -17.06,
+        "sharpe": 1.015,
+        "trades": 49,
+        "risk_adj": 0.779,
+        "is_current": false
+      },
+      {
+        "stop_loss_pct": 0.05,
+        "take_profit_pct": 0.1,
+        "trailing_stop_pct": 0.15,
+        "total_return_pct": 13.29,
+        "benchmark_return_pct": 16.05,
+        "gap_pct": -2.76,
+        "max_drawdown_pct": -17.06,
+        "sharpe": 1.015,
+        "trades": 49,
+        "risk_adj": 0.779,
+        "is_current": false
+      },
+      {
+        "stop_loss_pct": 0.05,
+        "take_profit_pct": 0.15,
+        "trailing_stop_pct": 0.15,
+        "total_return_pct": 13.29,
+        "benchmark_return_pct": 16.05,
+        "gap_pct": -2.76,
+        "max_drawdown_pct": -17.06,
+        "sharpe": 1.015,
+        "trades": 49,
+        "risk_adj": 0.779,
+        "is_current": false
+      },
+      {
+        "stop_loss_pct": 0.07,
+        "take_profit_pct": 0.08,
+        "trailing_stop_pct": 0.15,
+        "total_return_pct": 11.09,
+        "benchmark_return_pct": 16.05,
+        "gap_pct": -4.96,
+        "max_drawdown_pct": -15.37,
+        "sharpe": 0.886,
+        "trades": 42,
+        "risk_adj": 0.722,
+        "is_current": false
+      },
+      {
+        "stop_loss_pct": 0.07,
+        "take_profit_pct": 0.1,
+        "trailing_stop_pct": 0.15,
+        "total_return_pct": 11.09,
+        "benchmark_return_pct": 16.05,
+        "gap_pct": -4.96,
+        "max_drawdown_pct": -15.37,
+        "sharpe": 0.886,
+        "trades": 42,
+        "risk_adj": 0.722,
+        "is_current": false
+      }
+    ]
+  },
+  "rank_sizing": {
+    "variants": {
+      "flat": {
+        "total_return_pct": 7.39,
+        "gap_pct": -8.66,
+        "max_drawdown_pct": -18.98,
+        "sharpe": 0.677,
+        "trades": 51
+      },
+      "rank_linear_0.6_1.25": {
+        "total_return_pct": 3.08,
+        "gap_pct": -12.96,
+        "max_drawdown_pct": -19.1,
+        "sharpe": 0.371,
+        "trades": 55
+      },
+      "rank_linear_0.5_1.4": {
+        "total_return_pct": 2.5,
+        "gap_pct": -13.55,
+        "max_drawdown_pct": -19.74,
+        "sharpe": 0.324,
+        "trades": 55
+      }
+    },
+    "best": "flat",
+    "promote": false
+  },
+  "summary": {
+    "label_promote": false,
+    "exit_promote": true,
+    "sizing_promote": false
+  }
+}

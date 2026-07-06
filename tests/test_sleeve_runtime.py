@@ -36,6 +36,37 @@ class SleeveRuntimeTest(unittest.TestCase):
             ctx.allocator.order_budget_for("core") + 1e-6,
         )
 
+    def test_trim_does_not_deplete_budget_before_submit(self) -> None:
+        settings = StrategySettings(
+            portfolio_sleeves_enabled=True,
+            sleeves=default_sleeves_config(),
+        )
+        broker = MagicMock()
+        broker.get_open_orders.return_value = []
+        ctx = init_sleeve_run_context(
+            settings,
+            broker_adapter=broker,
+            account={
+                "portfolio_value": 100_000.0,
+                "cash": 30_000.0,
+                "buying_power": 30_000.0,
+            },
+            positions=[{"symbol": "NVDA", "market_value": 40_000.0}],
+        )
+        initial = float(ctx.budget_remaining["core"])
+        approved = [
+            {"ticker": "RBLX", "order_amount": initial * 0.69},
+            {"ticker": "NEM", "order_amount": initial * 0.31},
+        ]
+        trimmed = ctx.trim_approved_buys(approved)
+        self.assertEqual(len(trimmed), 2)
+        self.assertAlmostEqual(ctx.budget_remaining["core"], initial)
+        ok, reason = ctx.check_submit_budget(trimmed[0]["order_amount"])
+        self.assertTrue(ok, reason)
+        ctx.consume_submit_budget(trimmed[0]["order_amount"])
+        ok2, reason2 = ctx.check_submit_budget(trimmed[1]["order_amount"])
+        self.assertTrue(ok2, reason2)
+
     def test_consume_submit_budget(self) -> None:
         from src.portfolio_sleeves import CORE_SLEEVE_ID
 

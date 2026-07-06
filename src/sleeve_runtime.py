@@ -97,12 +97,14 @@ class SleeveRunContext:
         sleeve_key = str(sleeve_id).lower()
         initial_budget = self.allocator.order_budget_for(sleeve_key)
         before_count = len(approved_buys)
-        trimmed, remaining = trim_candidates_to_sleeve_budget(
+        trimmed, _remaining = trim_candidates_to_sleeve_budget(
             approved_buys,
             initial_budget,
             min_amount=min_amount,
         )
-        self.budget_remaining[sleeve_key] = remaining
+        # Do not set budget_remaining to trim leftover: submit consumes via
+        # check_submit_budget + consume_submit_budget. Pre-depleting here
+        # caused every trimmed candidate to fail submit (double accounting).
         if len(trimmed) != before_count:
             print(
                 f"Portfolio sleeves: trimmed {before_count - len(trimmed)} "

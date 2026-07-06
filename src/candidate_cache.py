@@ -23,7 +23,6 @@ from src.ml_model import load_ai_score_model, predict_ai_score_from_bundle
 from src.buy_guards import (
     apply_sector_score_bonus,
     apply_shared_buy_guards,
-    execution_label_for_cache,
 )
 from src.llm_analyst import llm_cache_only_for_run
 from src.macro_events import get_macro_event_risk
@@ -46,6 +45,7 @@ from src.position_dust import (
 )
 from src.position_sizing import cap_single_order_amount, conviction_adjustments
 from src.rank_ai_gate import apply_rank_ai_buy_gate, build_rank_ai_gate_scores
+from src.rank_buy_allocator import finalize_rank_buy_cache_execution_labels
 from src.sector_rotation import get_sector_leadership
 from src.settings import load_settings
 from src.strategy import add_indicators, generate_signal
@@ -448,7 +448,6 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
     current_gross_exposure = meaningful_gross_exposure(
         positions, min_usd=dust_min_usd
     )
-    dry_run_orders_count = 0
     simulated_daily_notional = get_today_buy_notional()
     recent_buy_symbols = get_recent_buy_symbols(
         int(getattr(settings, "buy_cooldown_days", 0))
@@ -613,17 +612,6 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
                 reason = exposure.reason if not exposure.allowed else reason
                 order_amount = exposure.target_amount
 
-            execution_label, would_submit = execution_label_for_cache(
-                risk_allowed=risk_allowed,
-                reason=reason,
-                dry_run_orders_count=dry_run_orders_count,
-                max_orders_per_run=int(settings.max_orders_per_run),
-                orders_allowed=bool(clock.orders_allowed),
-            )
-            if would_submit:
-                dry_run_orders_count += 1
-                simulated_daily_notional += order_amount
-
             buy_rows.append(
                 {
                     "ticker": ticker,
@@ -643,8 +631,7 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
                     "daily_order_used": simulated_daily_notional,
                     "daily_order_limit": getattr(settings, "max_daily_order_amount", None),
                     "buy_cooldown_days": getattr(settings, "buy_cooldown_days", None),
-                    "execution_label": execution_label,
-                    "would_submit_if_execute": would_submit,
+                    "is_new_position": position is None,
                     "close": float(latest["close"]),
                     "rsi": float(latest["rsi"]),
                     "ma_fast": float(latest["ma_fast"]),
@@ -653,6 +640,13 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
             )
         except Exception as exc:
             buy_rows.append({"ticker": ticker, "error": str(exc)})
+
+    finalize_rank_buy_cache_execution_labels(
+        buy_rows,
+        settings=settings,
+        meaningful_positions_count=meaningful_positions_count,
+        orders_allowed=bool(clock.orders_allowed),
+    )
 
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     meta = {

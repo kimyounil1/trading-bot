@@ -164,6 +164,7 @@ class StrategySettings(StrategyProfile):
     rank_ai_buy_gate_top_bucket_pct: float = 0.15
     rank_ai_buy_gate_min_score_quantile: float = 0.85
     rank_ai_buy_gate_fail_closed: bool = True
+    rank_ai_buy_top_k_enabled: bool = True
     broker_provider: str = "alpaca"  # alpaca | paper (fake) | toss (future)
     live_safety_enabled: bool = False
     live_safety_kill_switch_path: str = "data/runtime/KILL_SWITCH"

@@ -13,6 +13,11 @@ from src.portfolio_optimizer import compute_weights_from_ticker_data
 from src.position_dust import effective_position
 from src.position_sizing import cap_single_order_amount, conviction_adjustments
 from src.rank_ai_gate import apply_rank_ai_buy_gate
+from src.rank_buy_allocator import (
+    SKIP_RANK_TOP_K_REASON,
+    apply_rank_top_k_new_buy_selection,
+    sort_approved_buys_for_execution,
+)
 from src.risk_manager import (
     apply_buy_safety_limits,
     apply_effective_leverage_exposure_limits,
@@ -309,6 +314,7 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
                     "signal": signal,
                     "llm_verdict": format_llm_verdict(llm_is_ok, llm_reason),
                     "limit_price": float(latest["close"]),
+                    "is_new_position": held_position is None,
                 })
     
         except Exception as exc:
@@ -327,6 +333,37 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
             )
             notify_error(f"{ticker} bot error", exc)
     
+    approved_buys, rank_top_k_skipped = apply_rank_top_k_new_buy_selection(
+        approved_buys,
+        settings=ctx.settings,
+        meaningful_positions_count=ctx.meaningful_positions_count,
+        orders_submitted=ctx.orders_submitted,
+    )
+    for skipped in rank_top_k_skipped:
+        ticker = skipped["ticker"]
+        ctx.skipped_reasons[f"buy:{SKIP_RANK_TOP_K_REASON}"] += 1
+        ctx.buy_summary_rows.append(
+            f"{ticker}: SKIP_BUY {skipped['risk_reason']}, "
+            f"ai_score={skipped.get('ai_score')}"
+        )
+        audit_log(
+            ctx.audit_ctx,
+            event_type="SKIP_BUY",
+            ticker=ticker,
+            action="BUY",
+            status="SKIPPED",
+            reason=format_audit_reason(skipped["risk_reason"], ticker),
+            profile_name=ctx.profile_name,
+            regime=ctx.current_regime,
+            signal=skipped.get("signal"),
+            ai_score=skipped.get("ai_score"),
+            rank_ai_score=skipped.get("rank_ai_score"),
+            rank_ai_percentile=skipped.get("rank_ai_percentile"),
+            llm_verdict=skipped.get("llm_verdict"),
+            notional=skipped.get("order_amount"),
+            **ctx.sleeve_ctx.audit_fields(budget_after=0.0),
+        )
+
     # 3) MVO 가중치 적용 (Pass 2: allocation_method에 따라 주문 금액 조정)
     allocation_method = getattr(ctx.settings, "allocation_method", "equal_weight")
     if allocation_method != "equal_weight" and len(approved_buys) > 1:
@@ -357,6 +394,10 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
             )
         )
     
+    approved_buys = sort_approved_buys_for_execution(
+        approved_buys,
+        settings=ctx.settings,
+    )
     approved_buys = ctx.sleeve_ctx.trim_approved_buys(approved_buys)
     
     # 4) 주문 제출 (Pass 3)
@@ -614,14 +655,14 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
                 f"ai_score={ai_score}"
             )
     
-            filled_notional = filled_notional(checked_order, order_amount)
-            if filled_notional > 0:
+            fill_notional_amt = filled_notional(checked_order, order_amount)
+            if fill_notional_amt > 0:
                 if ticker not in ctx.guard_open_symbols:
                     ctx.guard_open_symbols.add(ticker)
                     ctx.open_symbols.add(ticker)
                     ctx.positions_count += 1
-                ctx.cash -= filled_notional
-                ctx.current_gross_exposure += filled_notional
+                ctx.cash -= fill_notional_amt
+                ctx.current_gross_exposure += fill_notional_amt
                 ctx.sleeve_ctx.record_fill(ticker, sleeve_id="core")
         except Exception as exc:
             ctx.live_safety_guard.record_order_failure()

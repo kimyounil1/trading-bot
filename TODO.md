@@ -101,8 +101,12 @@
 | **4-A-C** | `[Cursor]` | **캘리브레이션 런타임 연결** | [x] | `predict_ai_score_from_bundle` + `ai_score_calibration_enabled` (**default-off**) · bins `logs/ml/model_calibration_bins.csv` |
 | **4-B** | `[Research]` | **약세 레짐 피처 실험** | [x] | `regime_feature_experiment.py` · `run_regime_feature_experiment.sh` — **BULL** weak only · best baseline AUC **0.495** · **게이트 미통과** (≥0.52) · report-only 유지 |
 | **4-C** | `[Research]` | **Fold 안정성 (variance 축소)** | [x] | `fold_stability_experiment.py` · `run_fold_stability_experiment.sh` — BULL `xgb_reg_0.5` std **0.005** (gate pass) · BEAR/NEUTRAL 여전히 >0.05 · label challenger 검토만 |
+| **4-D** | `[Research]` | **피처 고도화 (RS/VCP/gap) — IC + 재학습** | [x] **채택 보류** | IC: `gap_vol_20d` 단독 최강(0.0657,t=6.83) but 직교 잔차 IC=0.0166(t=1.84). **재학습 OOS(`rank_gap_feature_retrain`):** baseline AUC **0.649** IC **0.0815** gap **+36.1%** vs challenger AUC **0.643** IC **0.080** gap **+14.1%** → **gate FAIL**. `gap_vol_20d`는 `build_features`에만 추가(연구용), `FEATURE_COLUMNS`/paper 모델 **미변경**. 산출물: `scripts/rank_feature_research.py`, `scripts/rank_gap_feature_retrain.py`, `logs/ml/rank_gap_feature_retrain/` |
+| **4-E** | `[Research]` | **Rank AI 3트랙 강화 (label·exit·sizing)** | [x] | `scripts/rank_enhancement_suite.py` · holdout 2025-12-23..2026-06-23 · **label:** raw AUC **0.644** IC **0.083** gap **+37.6%** (winner) · risk-adj IC **-0.022** FAIL · spy-excess IC **0.082** gap **+32.7%** → **미채택**. **exit:** best **sl0.05/tr0.15/tp0.08** gap **-2.76%** sharpe **1.015** vs current gap **-8.66%** sharpe **0.677** → **gate PASS** · paper `trailing_stop_pct` **0.15**, `take_profit_pct` **0.08** 반영. **sizing:** flat sharpe **0.677** > rank-linear variants → **미채택** (`rank_position_sizing_enabled` backtester only). 산출물: `reports/rank_enhancement_suite.json` |
 
-**순서:** 4-A-R → 4-A-C → `[AGY-test]` (스키마·연결 회귀) → Codex. 각 항목 DoD: pytest + 리포트 산출물 + scoped review.
+**순서:** 4-A-R → 4-A-C → 4-D(IC) → 4-E → IC 통과 시 재학습 → `[AGY-test]` (스키마·연결 회귀) → Codex. 각 항목 DoD: pytest + 리포트 산출물 + scoped review.
+
+**4-D 원칙 (PBA 교훈):** "좋아 보이는 규칙/피처"는 도입 전 반드시 IC·이벤트스터디로 엣지를 먼저 증명한다. 엣지 없으면 추가하지 않는다.
 
 ---
 

@@ -58,6 +58,13 @@ def explain_buy_skip_reason(
                 summary="이번 run에서 허용된 최대 주문 건수에 도달했습니다.",
                 detail="설정 `max_orders_per_run` 때문에 뒤 순위 후보는 제출되지 않습니다.",
             )
+        if label == "SKIP_RANK_TOP_K":
+            return BuySkipExplanation(
+                category="랭크 배분",
+                summary="rank 상위 K 밖이라 매수에서 제외됐습니다.",
+                detail="85% 컷을 통과했지만 같은 run에서 rank percentile 상위 K에 들지 못했습니다.",
+                action_hint="`rank_ai_buy_top_k_enabled`와 `max_orders_per_run`을 확인하세요.",
+            )
         if label == "SKIP_DAILY_LIMIT":
             return BuySkipExplanation(
                 category="일일 한도",
@@ -298,6 +305,7 @@ def explain_execution_label(label: str) -> str:
         "NOT_ALLOWED": "가드 미통과 — 매수 불가",
         "SESSION_CLOSED": "거래 세션 닫힘 — 주문 불가",
         "SKIP_MAX_ORDERS": "run당 최대 주문 수 초과",
+        "SKIP_RANK_TOP_K": "rank 상위 K 밖",
         "SKIP_DAILY_LIMIT": "일일 매수 금액 한도",
         "SKIP_COOLDOWN": "재매수 쿨다운",
     }

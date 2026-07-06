@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -13,6 +14,13 @@ from src.llm_analyst import evaluate_ticker_consensus
 from src.news_sentiment import get_ticker_sentiment
 from src.risk_manager import apply_factor_crowding_limits
 from src.regime_stop_policy import RegimeStopProfile, resolve_regime_stop_params
+from src.rank_ai_gate import build_rank_ai_gate_scores, rank_ai_gate_effective_cutoff
+from src.rank_buy_allocator import (
+    attach_rank_gate_scores_to_day_df,
+    max_rank_new_buys_per_run,
+    rank_buy_top_k_enabled,
+    truncate_ticker_frames_asof,
+)
 from src.sector import is_sector_allowed
 
 
@@ -328,6 +336,12 @@ def run_portfolio_backtest(
     news_sentiment_filter_enabled: bool = False,
     news_sentiment_threshold: float = -0.30,
     operational_settings: Any | None = None,
+    rank_ai_buy_gate_enabled: bool = False,
+    rank_ai_buy_top_k_enabled: bool = True,
+    max_orders_per_run: int = 6,
+    rank_position_sizing_enabled: bool = False,
+    rank_position_sizing_min_mult: float = 0.6,
+    rank_position_sizing_max_mult: float = 1.25,
 ) -> tuple[PortfolioBacktestResult, pd.DataFrame, pd.DataFrame]:
     if relative_strength_lookback_days <= 0:
         raise ValueError("relative_strength_lookback_days must be positive")
@@ -556,34 +570,81 @@ def run_portfolio_backtest(
                 (~day_df["ticker"].isin(positions.keys()))
             ].copy()
 
-            buy_candidates["trend_strength"] = (
-                buy_candidates["ma_fast"] / buy_candidates["ma_slow"]
-            )
-            buy_candidates["rank_ai_score"] = pd.to_numeric(
-                buy_candidates["ai_score"],
-                errors="coerce",
-            ).fillna(0.0)
-            buy_candidates["rank_momentum"] = pd.to_numeric(
-                buy_candidates["relative_return"],
-                errors="coerce",
-            ).fillna(0.0)
-            buy_candidates["rank_volatility"] = pd.to_numeric(
-                buy_candidates["volatility"],
-                errors="coerce",
-            ).fillna(0.0)
-            buy_candidates["rank_score"] = (
-                rank_trend_weight * (buy_candidates["trend_strength"] - 1.0)
-                + rank_ai_weight * buy_candidates["rank_ai_score"]
-                + rank_momentum_weight * buy_candidates["rank_momentum"]
-                - rank_volatility_weight * buy_candidates["rank_volatility"]
-            )
+            ops_settings = operational_settings
+            use_rank_gate = bool(rank_ai_buy_gate_enabled and ops_settings is not None)
 
-            buy_candidates = buy_candidates.sort_values(
-                ["rank_score", "trend_strength", "rsi"],
-                ascending=[False, False, True],
-            )
+            if use_rank_gate:
+                trunc = truncate_ticker_frames_asof(ticker_data, current_date)
+                vix_asof = None
+                if vix_df is not None and not vix_df.empty:
+                    vix_tmp = vix_df.copy()
+                    vix_tmp["date"] = pd.to_datetime(vix_tmp["date"])
+                    vix_asof = vix_tmp[vix_tmp["date"] <= pd.Timestamp(current_date)]
+                spy_asof = None
+                spy_source = ticker_data.get("SPY")
+                if spy_source is not None and not spy_source.empty:
+                    spy_tmp = spy_source.copy()
+                    spy_tmp["date"] = pd.to_datetime(spy_tmp["date"])
+                    spy_asof = spy_tmp[spy_tmp["date"] <= pd.Timestamp(current_date)]
+                macro_asof = None
+                if macro_df is not None and not macro_df.empty:
+                    macro_tmp = macro_df.copy()
+                    macro_tmp["date"] = pd.to_datetime(macro_tmp["date"])
+                    macro_asof = macro_tmp[macro_tmp["date"] <= pd.Timestamp(current_date)]
+                try:
+                    rank_scores = build_rank_ai_gate_scores(
+                        trunc,
+                        ops_settings,
+                        vix_df=vix_asof,
+                        spy_df=spy_asof,
+                        macro_df=macro_asof,
+                    )
+                except Exception:
+                    rank_scores = {}
+                cutoff = rank_ai_gate_effective_cutoff(ops_settings)
+                buy_candidates = attach_rank_gate_scores_to_day_df(
+                    buy_candidates,
+                    scores=rank_scores,
+                    cutoff=cutoff,
+                )
+                if rank_buy_top_k_enabled(ops_settings):
+                    max_select = max_rank_new_buys_per_run(
+                        ops_settings,
+                        meaningful_positions_count=len(positions),
+                    )
+                    max_select = min(max_select, slots_left)
+                else:
+                    max_select = slots_left
+                selected = buy_candidates.head(max_select)
+            else:
+                buy_candidates["trend_strength"] = (
+                    buy_candidates["ma_fast"] / buy_candidates["ma_slow"]
+                )
+                buy_candidates["rank_ai_score"] = pd.to_numeric(
+                    buy_candidates["ai_score"],
+                    errors="coerce",
+                ).fillna(0.0)
+                buy_candidates["rank_momentum"] = pd.to_numeric(
+                    buy_candidates["relative_return"],
+                    errors="coerce",
+                ).fillna(0.0)
+                buy_candidates["rank_volatility"] = pd.to_numeric(
+                    buy_candidates["volatility"],
+                    errors="coerce",
+                ).fillna(0.0)
+                buy_candidates["rank_score"] = (
+                    rank_trend_weight * (buy_candidates["trend_strength"] - 1.0)
+                    + rank_ai_weight * buy_candidates["rank_ai_score"]
+                    + rank_momentum_weight * buy_candidates["rank_momentum"]
+                    - rank_volatility_weight * buy_candidates["rank_volatility"]
+                )
 
-            selected = buy_candidates.head(slots_left)
+                buy_candidates = buy_candidates.sort_values(
+                    ["rank_score", "trend_strength", "rsi"],
+                    ascending=[False, False, True],
+                )
+
+                selected = buy_candidates.head(slots_left)
             candidate_tickers = selected["ticker"].tolist()
 
             # Compute dynamic weights when using MVO/BL
@@ -659,6 +720,18 @@ def run_portfolio_backtest(
                     )
                 else:
                     target_value = equity * target_position_pct
+
+                if rank_position_sizing_enabled and use_rank_gate:
+                    pct = row.get("rank_ai_percentile")
+                    if pct is not None and pd.notna(pct) and ops_settings is not None:
+                        cutoff = rank_ai_gate_effective_cutoff(ops_settings)
+                        span = max(1.0 - float(cutoff), 1e-6)
+                        strength = min(1.0, max(0.0, (float(pct) - float(cutoff)) / span))
+                        mult = float(rank_position_sizing_min_mult) + strength * (
+                            float(rank_position_sizing_max_mult)
+                            - float(rank_position_sizing_min_mult)
+                        )
+                        target_value *= mult
 
                 available_value = min(cash, target_value)
 

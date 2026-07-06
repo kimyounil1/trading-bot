@@ -35,6 +35,10 @@ FEATURE_COLUMNS = [
     "vvix_20d_return",
 ]
 
+# Research / challenger rank features (not in production FEATURE_COLUMNS until gated promotion).
+RANK_GAP_VOL_FEATURE = "gap_vol_20d"
+FEATURE_COLUMNS_WITH_GAP_VOL = [*FEATURE_COLUMNS, RANK_GAP_VOL_FEATURE]
+
 REQUIRED_PRICE_COLUMNS = {"date", "high", "low", "close", "volume"}
 MAX_FEATURE_LOOKBACK = 252
 
@@ -173,6 +177,11 @@ def build_features(
         df["skew_level"] = 100.0
         df["vvix_level"] = 90.0
         df["vvix_20d_return"] = 0.0
+
+    # Gap-up x volume surge (20d max) — PBA earnings-gap proxy; rank research IC leader.
+    gap_up = (df["open"] / df["close"].shift(1) - 1.0).clip(lower=0.0)
+    vol_surge = df["volume"] / df["volume"].rolling(20).mean()
+    df[RANK_GAP_VOL_FEATURE] = (gap_up * vol_surge).rolling(20).max()
 
     df["future_return"] = df["close"].shift(-prediction_horizon) / df["close"] - 1.0
     df["target"] = (df["future_return"] > target_return_threshold).astype(int)
