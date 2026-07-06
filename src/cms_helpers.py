@@ -214,6 +214,11 @@ def classify_buy_candidates(
 def sort_buy_candidates(buy_df: pd.DataFrame) -> pd.DataFrame:
     if buy_df.empty:
         return buy_df
+    if "rank_ai_percentile" in buy_df.columns and buy_df["rank_ai_percentile"].notna().any():
+        sort_cols = ["rank_ai_percentile"]
+        if "ai_score" in buy_df.columns:
+            sort_cols.append("ai_score")
+        return buy_df.sort_values(sort_cols, ascending=False, na_position="last")
     sort_cols = [
         col
         for col in ["would_submit_if_execute", "risk_allowed", "ai_score"]

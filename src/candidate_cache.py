@@ -46,6 +46,7 @@ from src.position_dust import (
 from src.position_sizing import cap_single_order_amount, conviction_adjustments
 from src.rank_ai_gate import apply_rank_ai_buy_gate, build_rank_ai_gate_scores
 from src.rank_buy_allocator import finalize_rank_buy_cache_execution_labels
+from src.rank_leaderboard import LATEST_RANK_PATH, build_rank_leaderboard_frame
 from src.sector_rotation import get_sector_leadership
 from src.settings import load_settings
 from src.strategy import add_indicators, generate_signal
@@ -337,7 +338,7 @@ def build_data_quality_rows(
     return pd.DataFrame(quality_rows), pd.DataFrame(error_rows)
 
 
-def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     started_at = time.monotonic()
     settings = load_settings()
     clock = get_market_clock(settings)
@@ -693,12 +694,21 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
         meta.setdefault("source", "static_config")
         meta.setdefault("missing_ticker_count", 0)
 
+    buy_df = pd.DataFrame(buy_rows)
+    rank_df = build_rank_leaderboard_frame(
+        rank_ai_gate_scores,
+        open_symbols=open_symbols,
+        buy_df=buy_df,
+        settings=settings,
+    )
+
     return (
         meta,
         pd.DataFrame(exit_rows),
-        pd.DataFrame(buy_rows),
+        buy_df,
         quality_df,
         errors_df,
+        rank_df,
     )
 
 
@@ -713,7 +723,7 @@ def _read_csv_or_empty(path: Path) -> pd.DataFrame:
 
 def save_candidate_cache() -> dict:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    meta, exit_df, buy_df, quality_df, errors_df = build_candidate_cache()
+    meta, exit_df, buy_df, quality_df, errors_df, rank_df = build_candidate_cache()
 
     if errors_df.empty:
         errors_df = pd.DataFrame(columns=["ticker", "data_status", "reason"])
@@ -724,6 +734,7 @@ def save_candidate_cache() -> dict:
     )
     exit_df.to_csv(LATEST_EXIT_PATH, index=False)
     buy_df.to_csv(LATEST_BUY_PATH, index=False)
+    rank_df.to_csv(LATEST_RANK_PATH, index=False)
     quality_df.to_csv(LATEST_QUALITY_PATH, index=False)
     errors_df.to_csv(LATEST_ERRORS_PATH, index=False)
 
@@ -736,6 +747,7 @@ def save_candidate_cache() -> dict:
     )
     exit_df.to_csv(run_dir / "exit_candidates.csv", index=False)
     buy_df.to_csv(run_dir / "buy_candidates.csv", index=False)
+    rank_df.to_csv(run_dir / "rank_leaderboard.csv", index=False)
     quality_df.to_csv(run_dir / "data_quality.csv", index=False)
     errors_df.to_csv(run_dir / "errors.csv", index=False)
     return meta

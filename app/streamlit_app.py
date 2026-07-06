@@ -32,6 +32,11 @@ from src.notification_settings import (
 from src.logger import log_order, log_order_status
 from src.data_loader import load_price_data_batch
 from src.candidate_cache import load_latest_candidate_cache_full
+from src.rank_leaderboard import (
+    build_rank_leaderboard_live,
+    format_rank_leaderboard_for_display,
+    load_latest_rank_leaderboard,
+)
 from src.cms_sleeve_panel import (
     build_sleeve_control_panel_rows,
     build_sleeves_config_dict,
@@ -588,6 +593,84 @@ def sidebar_settings_editor() -> None:
         )
 
 
+def render_rank_leaderboard_panel(settings, positions: list[dict] | None) -> None:
+    from src.rank_ai_gate import rank_ai_gate_effective_cutoff
+
+    st.subheader("Rank AI 순위")
+    if not getattr(settings, "rank_ai_buy_gate_enabled", False):
+        st.caption("Rank AI buy gate가 꺼져 있습니다.")
+        return
+
+    cutoff = rank_ai_gate_effective_cutoff(settings)
+    rank_df = pd.DataFrame()
+    generated_at = "—"
+
+    if st.button("순위 새로고침", key="overview_rank_refresh"):
+        with st.spinner("Rank AI 점수 계산 중..."):
+            try:
+                rank_df = build_rank_leaderboard_live(settings, positions)
+                generated_at = datetime.now().strftime("%Y-%m-%d %H:%M UTC")
+                st.session_state["overview_rank_df"] = rank_df
+                st.session_state["overview_rank_generated_at"] = generated_at
+            except Exception as exc:
+                st.error(f"순위 계산 실패: {exc}")
+                return
+
+    if "overview_rank_df" in st.session_state:
+        rank_df = st.session_state["overview_rank_df"]
+        generated_at = st.session_state.get("overview_rank_generated_at", generated_at)
+    else:
+        try:
+            meta, rank_df = load_latest_rank_leaderboard()
+            generated_at = str(meta.get("generated_at") or "—")
+        except FileNotFoundError:
+            st.info(
+                "순위 캐시가 없습니다. **순위 새로고침**을 누르거나 "
+                "`python -m src.generate_candidate_cache`를 실행하세요."
+            )
+            return
+
+    if rank_df.empty:
+        st.info("표시할 Rank 순위가 없습니다.")
+        return
+
+    pass_count = int(rank_df.get("rank_gate_pass", pd.Series(dtype=bool)).sum())
+    st.caption(
+        f"갱신: {generated_at} · cutoff **{cutoff:.2f}** · "
+        f"Gate PASS **{pass_count}/{len(rank_df)}** · "
+        "상위는 모델 cross-section 백분위(매수 시그널/가드 통과와 별개)"
+    )
+
+    pass_df = rank_df[rank_df.get("rank_gate_pass", False)].copy()
+    buy_df = rank_df[
+        rank_df.get("would_submit_if_execute", False).fillna(False).astype(bool)
+    ].copy()
+    tabs = st.tabs(
+        [
+            f"Gate PASS ({len(pass_df)})",
+            f"매수후보 ({len(buy_df)})",
+            f"전체 ({len(rank_df)})",
+        ]
+    )
+
+    def _show(frame: pd.DataFrame, limit: int = 20) -> None:
+        if frame.empty:
+            st.info("표시할 항목이 없습니다.")
+            return
+        st.dataframe(
+            format_rank_leaderboard_for_display(frame.head(limit)),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    with tabs[0]:
+        _show(pass_df)
+    with tabs[1]:
+        _show(buy_df)
+    with tabs[2]:
+        _show(rank_df, limit=25)
+
+
 def render_overview() -> None:
     st.title("트레이딩 봇 CMS")
 
@@ -642,6 +725,8 @@ def render_overview() -> None:
             "ai_score_buy_threshold": getattr(settings, "ai_score_buy_threshold", None),
         },
     )
+
+    render_rank_leaderboard_panel(settings, positions)
 
     benchmark_gap = load_json_summary("logs/benchmark_gap/latest_summary.json")
     if benchmark_gap:

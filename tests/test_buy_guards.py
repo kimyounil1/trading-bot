@@ -147,7 +147,7 @@ class TestCandidateCacheMeta(unittest.TestCase):
                 next_open=None,
                 next_close=None,
             )
-            meta, buy_df, exit_df, quality_df, errors_df = build_candidate_cache()
+            meta, _exit_df, buy_df, quality_df, errors_df, rank_df = build_candidate_cache()
 
         self.assertIn("orders_allowed", meta)
         self.assertIn("trading_session", meta)
