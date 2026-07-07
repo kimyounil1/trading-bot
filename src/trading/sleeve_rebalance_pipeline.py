@@ -18,6 +18,7 @@ from src.sleeve_rebalance_state import (
 from src.trading.bot_helpers import (
     audit_log,
     execution_block_label,
+    execution_reference_price,
     order_is_filled,
 )
 from src.trading.run_context import TradingRunContext
@@ -76,10 +77,33 @@ def _execute_sell_actions(
             )
             continue
 
+        position = ctx.positions_by_symbol.get(ticker) or {}
+        try:
+            current_price = float(position.get("current_price") or 0.0)
+        except (TypeError, ValueError):
+            current_price = 0.0
+        if current_price <= 0:
+            ctx.exit_summary_rows.append(
+                f"{ticker}: {event_prefix}_SKIP no current price for limit order"
+            )
+            audit_log(
+                ctx.audit_ctx,
+                event_type="SKIP_SELL",
+                ticker=ticker,
+                action="SELL",
+                status="SKIPPED",
+                reason="no current price available for sleeve trim limit order",
+                profile_name=ctx.profile_name,
+                regime=ctx.current_regime,
+                **ctx.sleeve_ctx.audit_fields(sleeve_id=action.sleeve_id),
+            )
+            continue
+
         try:
             submission = ctx.broker_adapter.submit_sell_qty(
                 ticker=ticker,
                 qty=action.sell_qty,
+                limit_price=execution_reference_price(None, fallback=current_price),
                 market_clock=ctx.market_clock,
                 slippage_pct=ctx.extended_slippage,
                 client_order_id=f"slev_{ctx.run_id}_{ticker}",
@@ -87,7 +111,7 @@ def _execute_sell_actions(
             ctx.live_order_count += 1
             log_order(
                 ticker=ticker,
-                qty=action.sell_qty,
+                notional=round(action.sell_qty * current_price, 2),
                 order_id=submission.order_id,
                 status=submission.status,
                 side=submission.side,
