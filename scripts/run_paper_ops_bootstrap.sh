@@ -80,6 +80,9 @@ echo "=== [8c/9] Sleeve + tournament reports ==="
 bash scripts/run_sleeve_performance_report.sh || echo "WARN: sleeve performance report skipped"
 bash scripts/run_tournament_score_report.sh || echo "WARN: tournament score report skipped"
 
+echo "=== [8c2/9] Market regime snapshot ==="
+.venv/bin/python -m src.market_regime_snapshot || echo "WARN: market regime snapshot skipped"
+
 echo "=== [8d/9] stop5_trail10 trial tracker (no-op until --start) ==="
 bash scripts/run_stop_trail_trial_report.sh || echo "WARN: stop trail trial report skipped"
 
