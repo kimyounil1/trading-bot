@@ -49,7 +49,7 @@ Route **`[AGY-test]`** to AGY (explicit invoke; sequential pass) for:
 
 ## When to Assign AGY (`[Research]`)
 
-Route **`[Research]`** to AGY for offline work (see `TODO.md` §4–§5):
+Route **`[Research]`** to AGY for offline work (사례: `docs/TODO_ARCHIVE.md` 2026-06/07 research 패스):
 - calibration / fold-stability / label experiments and report CLIs;
 - parameter sweeps via `portfolio_backtester` / `research_promotion_gates.py`;
 - harness scripts under `tests/harness/` tied to research outputs;

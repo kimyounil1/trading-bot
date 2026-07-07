@@ -97,6 +97,8 @@ LIVE_LLM=1 bash scripts/run_operational_alpha_validation.sh   # cache miss 시 G
 - Gemini 429/500/quota 등 → (활성 시) 로컬 vLLM 호출; 캐시 `llm_provider: vllm`
 - 점검: `PYTHONPATH=. .venv/bin/python -c "from src.llm_vllm import probe_vllm_models; print(probe_vllm_models())"`
 
+⚠️ **Gemini 무료 티어 한도 (2026-07 실측):** 모델당 **일 20콜** (`gemini-2.5-flash`·`flash-lite` 각각 별도 쿼터). 라이브 veto가 이 한도 위에서 돌고 있어 캐시 미스가 몰리면 `llm_degraded_mode`(기본 PASS = 자동승인)로 넘어감 — veto 실효성이 필요하면 유료 전환(월 ~$1) 또는 vLLM 폴백 활성 권장. 대량 배치(소급 스코어링 등)는 반드시 vLLM으로: `scripts/llm_retro_scoring.py --provider vllm`.
+
 ```bash
 bash scripts/run_paper_ops_bootstrap.sh   # dry-run + advisory + alpha + crowding gate (report only)
 SKIP_ALPHA=1 bash scripts/run_paper_ops_bootstrap.sh   # model/alpha 없을 때 paper audit·crowding만
@@ -115,8 +117,9 @@ systemctl --user enable --now trading-bot-daily-paper-ops.timer
 
 ### 2.3.2 Crowding guard (paper)
 
-**현재 (2026-06-01):** gate **GO_PAPER** → `strategy_config.json`에 proposal 반영됨 (`crowding_guard_enabled: true`).  
-재평가·롤백 시 guard impact 갱신 후 gate만 다시 실행; merge는 명시적일 때만.
+**현재 (2026-07-07):** `crowding_guard_enabled: true` · `crowding_max_positions` **2→3 적용 (06-16)** 후 유지.
+6월 실측에서 크라우딩 차단 종목의 사후수익은 ~중립 — 가드별 기회비용은 **주간 갭 어트리뷰션**(§3)으로 상시 계측하므로 별도 A/B 평가는 종결.
+재평가·롤백 시 guard impact 갱신 후 gate만 다시 실행; merge는 명시적일 때만. 롤백: `PYTHONPATH=. .venv/bin/python scripts/crowding_ab_gate.py --rollback`.
 
 ```bash
 bash scripts/run_guard_impact_report.sh
@@ -150,7 +153,7 @@ bash scripts/run_crowding_live_impact_report.sh --lookback-days 7
 |--------|---------|------|
 | `paper` (기본) | `config/strategy_config.json` tickers | 운영·기본 백테스트 |
 | `smoke` | `config/universe_smoke.json` (~11종) | pytest·빠른 로컬 검증 |
-| `research` | `config/universe_master.csv` (~259종) | 넓은 스캔·retrain 데이터 풀 |
+| `research` | `config/universe_master.csv` (255종 — 2026-07-06 죽은 티커 정리: SQ→XYZ, WRK→SW, ANTM·MMC·CKNG·SEE 제거) | 넓은 스캔·retrain 데이터 풀 |
 
 ```bash
 # master CSV 일괄 캐시 (로컬, 시간 소요)
@@ -184,6 +187,22 @@ print(len(s.tickers), 'tickers cached')
 
 ## 📈 3. 주기적 점검 사항 (Maintenance)
 
+- **증거 루프 (2026-07 신설)** — 9월 판단(슬리브 배분·예산 완화)과 라이브 전환의 근거 데이터:
+  ```bash
+  # ① 슬리브 성과 (데일리 — bootstrap 8c 단계 자동, 수동은 아래)
+  bash scripts/run_sleeve_performance_report.sh      # → logs/sleeves/ (07-06 이전 기록은 0-버그, portfolio_value>0 필터)
+  # ② 마켓 레짐 스냅샷 (데일리 — bootstrap 8c2 단계 자동, 레짐 전환 시 Telegram 알림)
+  PYTHONPATH=. .venv/bin/python -m src.market_regime_snapshot   # → logs/market_regime/
+  # ③ 시뮬-페이퍼 갭 어트리뷰션 (주간 — 일 18:00 ET 타이머)
+  bash scripts/install_gap_attribution_timer.sh && systemctl --user enable --now trading-bot-gap-attribution.timer
+  bash scripts/run_weekly_gap_attribution.sh         # → logs/sim_paper_gap/ (trend_summary.json에 8주 판정 규칙)
+  ```
+  ⚠️ 갭 어트리뷰션의 슬리브 예산 판정 규칙은 **사전 등록(2026-07-06 고정)** — 중간에 규칙을 수정하지 말 것. BULL 이탈 알림 = 노가드 tournament 슬리브 재평가 트리거.
+- **슬리브 리밸런스 (수동 트리거)**:
+  ```bash
+  bash scripts/run_sleeve_rebalance_once.sh    # retag + drift trim 즉시 실행
+  bash scripts/run_portfolio_pnl_report.sh     # paper P&L 스냅샷 → logs/portfolio_pnl/
+  ```
 - **일간·주간 ops 배치** (권장):
   ```bash
   bash scripts/run_ops_reports.sh              # audit + LLM cache

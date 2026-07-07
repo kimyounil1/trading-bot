@@ -8,7 +8,7 @@
 
 ### 1. 하이브리드 의사결정 엔진
 - **정량 모델 (Ensemble AI)**: LightGBM과 XGBoost를 결합한 앙상블 모델이 24개 이상의 피처(기술적 지표, 옵션 시장 tail risk, 매크로 지표)를 기반으로 매수 확률 점수를 산출합니다.
-- **정성 모델 (LLM Consensus)**: Google **Gen AI SDK** (`google-genai`) + Gemini API로 최신 뉴스를 분석합니다. `GEMINI_API_KEY` 또는 `GOOGLE_API_KEY` 필요. 소송, 부정회계, 가이던스 하향 등 정량 모델이 놓치기 쉬운 펀더멘털 리스크를 감지하여 최종 승인을 결정합니다. (결과는 비용 절감을 위해 로컬 캐싱됩니다.)
+- **정성 모델 (LLM Consensus)**: Google **Gen AI SDK** (`google-genai`) + Gemini API로 최신 뉴스를 분석합니다. `GEMINI_API_KEY` 또는 `GOOGLE_API_KEY` 필요. 소송, 부정회계, 가이던스 하향 등 정량 모델이 놓치기 쉬운 펀더멘털 리스크를 감지하여 최종 승인을 결정합니다. (결과는 비용 절감을 위해 로컬 캐싱되며, Gemini 429/quota 시 로컬 vLLM 폴백을 지원합니다 — `LLM_VLLM_*` env, [`docs/runbook.md`](docs/runbook.md) §2.3.1.)
 
 ### 2. 시장 레짐 인지형 전략 (Regime-Aware)
 - VIX 지수와 지수 추세를 조합하여 시장 상태를 **BULL / BEAR / NEUTRAL**로 분류합니다.
@@ -30,6 +30,14 @@
 - **Paper validation**: AI vs LLM agreement, SKIP 레이어(AI/LLM/rank), 2주 rank gate 누적 → `logs/paper_validation/`
 - **신호 검증 리포트**: rank forward-return, LLM block precision, paper validation trend (Phase 33)
 - **일일 paper ops**: 평일 21:45 ET systemd timer → dry-run + bootstrap + 리포트 갱신
+
+### 6. 포트폴리오 슬리브 & 증거 루프 (Phase 36–39 + 2026-07)
+- **슬리브 분할**: core 50% (rank gate 전략) / **tournament 30%** (알파 모델 집중 베팅, 최대 35% 포지션·14일 보유·노가드) / cash 20% — 레지스트리·드리프트 트림·할당 리밸런스 포함
+- **증거 루프 3종** (판단은 감이 아니라 데이터로):
+  - 슬리브 성과 데일리 (`logs/sleeves/`) — 실현/미실현 P&L·승률, 배분 조정 근거
+  - 마켓 레짐 스냅샷 데일리 (`logs/market_regime/`) — BULL/BEAR 판정 + **전환 시 Telegram 알림**
+  - 시뮬-페이퍼 갭 어트리뷰션 주간 (`logs/sim_paper_gap/`) — 가드별 기회비용, 슬리브 예산 완화 판정 규칙(8주 연속) 사전 등록
+- **리서치 결론 (2026-06/07)**: 유니버스 확대·피처 추가(실적/뉴스/gap_vol)·레짐 게이트 전부 게이트 기각 — 남은 수익 레버는 자본 배치 판단(~09월). 상세: [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
 
 ## 📂 프로젝트 구조
 
@@ -135,6 +143,12 @@ bash scripts/run_crowding_gate_reassessment.sh
 bash scripts/run_regime_weakness_report.sh
 bash scripts/run_model_quality_report.sh
 bash scripts/run_live_readiness.sh   # live GO/NO_GO (Phase 34)
+
+# 슬리브 · 증거 루프 (2026-07)
+bash scripts/run_sleeve_performance_report.sh                       # 슬리브별 P&L/승률
+bash scripts/run_portfolio_pnl_report.sh                            # paper P&L (FIFO realized)
+PYTHONPATH=. .venv/bin/python -m src.market_regime_snapshot         # 레짐 스냅샷 (데일리 자동)
+bash scripts/run_weekly_gap_attribution.sh                          # 갭 어트리뷰션 (일 18:00 ET 타이머)
 ```
 
 Live execute (double confirm): `TRADING_ENV=live CONFIRM_LIVE_TRADING=YES_I_UNDERSTAND PYTHONPATH=. .venv/bin/python src/main.py --execute`
@@ -152,13 +166,15 @@ PR/push 시 GitHub Actions가 `requirements.txt` 설치 후 pytest·CMS import·
 
 로드맵·활성 TODO: [`TODO.md`](TODO.md) · AI 권한 Tier: [`docs/ai_authority_gates.md`](docs/ai_authority_gates.md)
 
-## 📊 현재 성과·상태 (2026-06)
+## 📊 현재 성과·상태 (2026-07-07)
 | 영역 | 요약 |
 |------|------|
-| **Alpha (backtest)** | trailing 20% · vs EW **+9.0pp** · vs SPY **+28.9pp** — `logs/benchmark_gap/latest_summary.json` |
-| **Champion AI** | overlay 유지 (promotion gate 미통과). `ai_score_calibration_enabled` 옵션 overlay 추가 (기본 OFF) |
-| **Rank AI (paper)** | buy/add gate ON · 2주 paper validation 진행 중 (`rank_gate_ready` 누적) |
-| **LLM (paper)** | blocking mode · agreement ~75% |
-| **Crowding** | config ON · gate **NO_GO** → reassessment `TUNE`/`DISABLE_OR_KEEP_OFF` 참고 |
+| **Paper P&L (Alpaca)** | all-time **+3.2%** ($103.2k) — 흑자 전환. 6월 한 달 **+5.1%** vs SPY **−0.9%** — `logs/portfolio_pnl/` |
+| **Sleeves** | tournament **+$5.5k** (승률 100%, 6/9 가동) vs core **−$2.3k** — 4주 표본, 배분 판단 ~09월 |
+| **Market regime** | **BULL** (최근 60일 중 50일) · 데일리 스냅샷 + 전환 알림 — `logs/market_regime/` |
+| **Rank AI (paper)** | buy/add gate ON · `rank_gate_ready` **true** (14/14, 2026-06-16) |
+| **LLM (paper)** | blocking mode · 20d 기준 reject −4.1% vs accept +0.5% 실증 — `logs/llm_advisory/precision.json` |
+| **Crowding** | `crowding_max_positions` **3** (06-16 적용, 유지) — 가드 기회비용은 주간 갭 어트리뷰션으로 계측 |
+| **Research** | 레버 전수 검증·기각 (2026-06/07) — 상세 [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md) |
 
-과거 OOS 스냅샷: Ultra Aggressive(Bull) 5개월 **+41.68%** (레거시 벤치마크).
+⚠️ 백테스트 시뮬의 "+30%p gap"은 라이브 기대치가 아님 — 동일 윈도우 비교에서 실제 paper가 무제약 시뮬을 상회 (`logs/sim_paper_gap/`).

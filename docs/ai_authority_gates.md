@@ -108,3 +108,5 @@ bash scripts/run_paper_ops_bootstrap.sh
 | Date | Decision |
 |------|----------|
 | 2026-06-02 | Rank label 20d/top15% passes OOS portfolio gate; wired as **paper-only** buy/add overlay. Champion unchanged. |
+| 2026-06-16 | Rank gate 2주 paper 관측 **완료 (14/14, `gate_ready=true`)**. Live 기본 ON은 여전히 operator sign-off 대기 — paper 흑자 지속 확인 후 논의. |
+| 2026-07-06/07 | 리서치 레버(유니버스·피처·레짐 게이트) 전수 기각 — 랭크 모델·게이트 구성 변경 없음. 교훈 3원칙은 `promotion_gates.md` 참고. Tournament sleeve는 paper-only 유지 (`paper_only=true`, live 차단). |

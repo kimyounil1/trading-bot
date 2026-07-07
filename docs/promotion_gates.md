@@ -65,8 +65,16 @@ Output: `logs/research_promotion_gates/latest_summary.json`
 |--------|------|
 | `logs/ml/rank_label_experiment*/latest_summary.json` | Rank-label OOS sweep; gate = gap ≥ 0 pp, Sharpe ≥ 1.0, MDD ≥ −20%, turnover ≤ 1.2 |
 | `data/research/guard_regime_policy.json` | Sector/crowding limits by bull/bear; **do not relax** during Rank AI paper observation |
-| `logs/regime_stop_backtest/latest_summary.json` | Regime adaptive stops — **not adopted** (baseline 5%/20% wins) |
+| `logs/regime_stop_backtest/latest_summary.json` | Regime adaptive stops — **not adopted** (baseline wins) |
 | `logs/intraday_timing_2w/latest_summary.json` | Intraday schedule — **keep 09:35/15:45** |
+| `logs/ml/rank_universe_ab/` | Universe 110→255 expansion (2026-07) — **REJECTED** (Sharpe halved, MDD 3x) |
+| `logs/ml/rank_gap_feature_retrain/` · `logs/ml/earnings_feature_retrain/` · `reports/news_feature_ic.json` | gap_vol · earnings · VADER news features — **all REJECTED** |
+| `logs/ml/rank_regime_gate/` | Regime-conditional rank cutoff — **REJECTED** (6m pass, 12m fail) |
+
+**2026-06/07 교훈 (게이트 설계 원칙):**
+1. **단일 피처 IC 통과 ≠ 모델 게이트 통과** — 6연속 확인. IC 스크린은 필요조건일 뿐, 채택은 반드시 재학습 OOS 포트폴리오 게이트를 거칠 것.
+2. **단일 홀드아웃 갭은 시끄러움** — 홀드아웃 시작 1주 이동에 갭이 6%p 출렁 (36%→30%). 승격급 결정은 다중 윈도우(예: 6m + 12m) 검증 필수 — 레짐 게이트가 6m 통과 후 12m에서 뒤집힌 사례.
+3. **백테스트 gap ≠ 라이브 기대치** — 동일 윈도우 실측에서 paper(+3.1%)가 무제약 시뮬(+0.2%)을 상회 (`logs/sim_paper_gap/`).
 
 **Paper Rank AI (Tier 1)** — passed OOS, wired in config, champion swap still blocked:
 
@@ -76,4 +84,4 @@ Output: `logs/research_promotion_gates/latest_summary.json`
 | OOS gap | +14.4 pp vs equal-weight |
 | Sharpe | 1.76 |
 | Config | `rank_ai_buy_gate_enabled=true`, model path in `strategy_config.json` |
-| Live default | Blocked until ≥ 2 weeks paper validation (`ai_authority_gates.md`) |
+| Live default | 2주 paper validation **충족 (14/14, 2026-06-16)** — live 기본 ON은 operator sign-off 대기 (`ai_authority_gates.md`) |

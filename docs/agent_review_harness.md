@@ -47,7 +47,7 @@ Inside a Cursor chat, the main agent may spawn **read-only** sub-agents (`explor
 | `[AGY-test]` / `[AGY]` | AGY | pytest after Cursor or Research |
 | `[AGY-risk]` | AGY read-only | Strategy/risk memo; does not replace Codex `NEXT_TODO` |
 
-Details: `CURSOR.md` Task Labels · `AGY.md` invocation modes · `TODO.md` §4–§5 examples.
+Details: `CURSOR.md` Task Labels · `AGY.md` invocation modes · research-track 사례는 `docs/TODO_ARCHIVE.md`.
 
 ## Default Codex Stance
 

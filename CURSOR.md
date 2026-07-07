@@ -190,7 +190,7 @@ When splitting work across agents, label tasks in `TODO.md` or task files:
 [Cursor] implement → [AGY-test] pytest → run_pass_complete.sh → Codex
 ```
 
-**Suggested split — research track (§4–§5):**
+**Suggested split — research track (사례: `docs/TODO_ARCHIVE.md` 2026-06/07 research 패스):**
 ```
 [Research] (AGY) experiment + reports + pytest
   → [Cursor] runtime wiring / config adopt (if needed)
