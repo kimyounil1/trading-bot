@@ -26,23 +26,21 @@
 
 ---
 
-## Current Status (2026-06-12)
+## Current Status (2026-07-07)
 
 | 영역 | 상태 |
 |------|------|
-| **Alpha** | trailing 20% · 전략 **+76.1%** vs EW **+67.1%** (gap **+9.0pp**) · SPY **+28.9pp** (`logs/benchmark_gap/latest_summary.json`) |
-| **Paper P&L (Alpaca)** | all-time **−1.57%** ($100k→$98.4k) · 실현 **−$2,886**(손절 ADBE/SOFI/RBLX/SHOP) · 미실현 **+$1,312 (+5.0%)** · `logs/portfolio_pnl/` |
-| **Crowding** | config **ON** · reassessment `DISABLE_OR_KEEP_OFF` (blocked_trades=0) |
-| **Paper ops** | daily timer active · `logs/paper_ops/latest_summary.json` |
-| **LLM (paper)** | blocking mode · Gemini 429 간헐 · precision 리포트 §1-A 수리 완료 (일일 bootstrap) |
-| **Rank AI (paper)** | buy/add gate ON · `rank_gate_ready` **true — 14/14 완료 (2026-06-16)** |
-| **Live readiness** | rank 14d **충족** · paper_validation 14d만 남음 (코드 블로커 해소됨) · operator sign-off |
-| **Crowding A/B** | `crowding_max_positions` **2→3 적용 (06-16)** — 모니터링 A/B, 평가 ~06-30 (§7) |
-| **Champion AI** | **유지** — promotion gate 미통과. **모델 품질:** Brier **0.323** (CV rebuild) · isotonic OOF **0.244** (`calibration_experiment` ok) · fold std 0.0695 · champion 승격은 여전히 블로커 |
-| **Portfolio sleeves** | ON (core 50 / tournament 30 / cash 20) · registry + drift trim + allocation rebalance |
-| **Research (shipped)** | regime/intraday/guard/rank gates 결론 반영 (`b9f4f6c`) · stop5_trail10 paper trial **대기** · **전략 레이어 연구 소진 → 다음 헤드룸은 모델 품질 (Active §4)** |
+| **Paper P&L (Alpaca)** | all-time **+3.2%** ($103.2k) — **흑자 전환**. 6월 한 달 **+5.1%** vs SPY **−0.9%** vs 무제약 시뮬 복제 **+0.2%** (`logs/sim_paper_gap/`) |
+| **Sleeves** | tournament **+$5.5k** (승률 100%, 6/9 가동) vs core **−$2.3k** (승률 49%) — 4주 표본, 배분 변경은 ~09월 판단 |
+| **Market regime** | **BULL** (최근 60일 중 50일) · SPY 고점 −0.8% · 폭 건강(50MA 위 65%) · 데일리 스냅샷 + 전환 알림 가동 (`logs/market_regime/`) |
+| **Research** | **리서치 카드 소진** — 유니버스 확대·gap_vol·실적 피처·VADER 뉴스·레짐 게이트 전부 게이트 기각 (2026-06/07). 마지막 카드 = LLM 소급 스코어링 (진행 중, 로컬 vLLM gemma4-26B) |
+| **계측 (증거 루프)** | ① sleeve 성과 데일리(0-기록 버그 수리됨) ② 레짐 스냅샷 데일리 ③ 갭 어트리뷰션 주간(일 18:00 ET, 슬리브 예산 8주 규칙 사전 등록) |
+| **버그 수리 (07-06/07)** | ATR <14봉 크래시 · sleeve 리포트 계좌 미조회 · 슬리브 트림 `limit_price` 누락 + `log_order` 시그니처 · 테스트→프로덕션 로그 오염 차단 · 전체 테스트 **503 green** |
+| **Crowding A/B (06-16, 2→3)** | **3 유지** — 6월 차단 종목 사후수익 ~중립, 주간 어트리뷰션이 가드별 기회비용 계측을 대체 (별도 평가 종결) |
+| **LLM (paper)** | blocking veto 유지 — 20d 기준 reject −4.1% vs accept +0.5% 실증. Gemini 무료티어 **일 20콜** 위에서 운영 중 (유료 전환 시 안정화) |
+| **Live readiness** | 시간 조건 충족 + **paper 흑자 전환 달성** — 지속성 관측 후 operator sign-off 논의 가능 |
 
-**마일스톤:** Rank 2주 관측 종료(~4일 후) 시점에 live readiness가 **시간 조건만** 남도록 **1→2→3** 선행. 모델 품질 트랙(§4)은 오프라인 리서치라 paper config 불변 — Rank 관측·stop trail 트라이얼과 **병행 가능**.
+**현 국면:** "만들고 고치는" 단계 → **"운영하고 판단하는"** 단계. 새 리서치 없이 증거 루프가 9월 판단(슬리브 배분·예산 완화)의 데이터를 쌓는 중.
 
 ---
 
@@ -50,110 +48,55 @@
 
 우선순위 순.
 
-### 1. Live readiness 블로커 (완료 — 2026-06-11)
-
-`run_live_readiness.sh` NO_GO 사유는 이제 **시간 조건 2개만** (rank 14d · validation 14d). 상세는 Follow-up backlog 참조.
+### 1. 이번 주 (2026-07-07~)
 
 | # | 항목 | 상태 | 비고 |
 |---|------|------|------|
-| **1-A** | **LLM precision 리포트 수리** | [x] | blocking 모드 REJECT 집계 + dedupe + 단기 5d horizon + bootstrap 연결 → reject=15/accept=82 |
-| **1-B** | **data_health ^VIX 오탐** | [x] | 변동성 지수 전용 `max_daily_jump` 1.5 → **GO** |
-| **1-C** | **LLM verdict 파싱 정리** | [x] | `parse_llm_decision` — 마지막 DECISION 블록 채택 + reason 클립. CoT 'APPROVE' 언급 오승인 버그 수정 |
+| 1-A | **LLM 소급 스코어링 완주 + IC 최종 판정** | [ ] 진행 중 (오늘 ~17:40) | 로컬 vLLM gemma4-26B, 9,861 ticker-days · 완주 후 `scripts/llm_feature_research.py` — **마지막 리서치 카드**. 중간(36d): 전부 no-edge, `llm_approved` 음수 관찰 · 사전학습 누출 편향 주의 (통과해도 paper A/B 필수) |
+| 1-B | **BB/GRAB 슬리브 트림 재시도 확인** | [ ] 내일 04:45 런 | `limit_price` 수정(dd1a91e)은 07-07 15:00 런에서 무에러 검증 완료. 트림 자체는 다음 리밸런스 트리거에서 `SELL_SUBMITTED` 확인 → 완료 시 memory `bb-trim-verification-pending` 삭제 |
+| 1-C | **stop5_trail10 트라이얼 종결 처리** | [ ] | `READY_TO_EVALUATE`(06-26)인데 06-24 exit 스윕 승격(**tr 0.15 / tp 0.08**)이 트라이얼 config(tr 0.10)를 덮어씀 — 평가 불능 상태. 트라이얼 공식 종료 + 리포트에 superseded 기록 |
 
----
+### 2. 예정된 판단 (증거 축적 대기 — 손대지 말 것)
 
-### 2. Phase 32 — Rank AI paper 관측 (완료 — 2026-06-16)
+| 시점 | 판단 | 근거 데이터 |
+|------|------|------------|
+| **~2026-09 초** | 토너먼트 배분 30%→확대 여부 | `logs/sleeves/history.jsonl` 8주+ (07-06 이전 기록은 0-버그, `portfolio_value>0` 필터) |
+| **~2026-09 초** | core 슬리브 예산 +15% A/B 착수 여부 | `logs/sim_paper_gap/trend_summary.json` — **사전 등록 규칙(8주 연속 플래그) 고정, 중간 수정 금지** |
+| **레짐 전환 알림 시** | 노가드 토너먼트 재평가 | `logs/market_regime/` — BULL 이탈 시 텔레그램 알림 |
+| **paper 흑자 지속 시** | Live 전환 논의 재개 (Toss 키 보유) | `logs/portfolio_pnl/` + `run_live_readiness.sh` |
 
-**Toss(32-A)는 API 키 전까지 보류.**
-
-| # | 항목 | 상태 |
-|---|------|------|
-| 1 | **Rank AI paper 2주** — 매일 bootstrap → `logs/paper_validation` · `rank_gate_ready=true` | [x] **14/14 완료 (2026-06-16)** — `gate_ready=true`. live 기본 ON은 operator sign-off 후 |
-| 2 | **Paper validation 추세** — rolling agreement · SKIP 레이어 관찰 · rank/LLM spike alerts | [x] |
-| 3 | Codex scoped review `phase32_retry` | [x] |
-
-**하지 말 것** ([`docs/ai_authority_gates.md`](docs/ai_authority_gates.md))
-
-- `models/ai_score_model.joblib` champion 교체
-- Rank gate **live** 기본 ON (Tier-1 paper 2주 전)
-
----
-
-### 3. Research — stop5_trail10 paper trial
-
-백테스트 follow-up (`regime_stop_backtest --followup`): 수익 **-0.2pp**, MDD **-9.4%→-6.3%**. 레짐 adaptive와 무관.
-
-| # | 항목 | 상태 |
-|---|------|------|
-| 1 | `trailing_stop_pct` 0.20→**0.10** paper config trial | [x] **2026-06-12 시작** — `strategy_config.json` 반영 · `src/stop_trail_trial_report.py` + `run_stop_trail_trial_report.sh` (`--start` 완료) · bootstrap 8d 연결 |
-| 2 | 2주 paper 관측 — return vs MDD vs baseline (`logs/stop_trail_trial/latest_summary.json` · `READY_TO_EVALUATE` ~06-26) | [ ] 진행 중 |
-| 3 | 평가 후 결정: 유지(MDD 개선·수익 drag ≤ -0.2pp) 또는 **0.20 롤백** | [ ] blocked until 2 |
-
----
-
-### 4. Research — 모델 품질 트랙 (성능 개선 1순위)
-
-**배경 (2026-06-12 탐색):** 전략 레이어(레짐 스탑·장중 타이밍·할당 방식 MVO/BL·rank label 스윕)는 결론 완료 — 대부분 채택 기준 미달. 남은 헤드룸은 **모델 품질**. 챔피언 ROC-AUC 0.5075(동전 수준)이며, Brier·fold std·약세 레짐 3개 블로커가 champion 승격과 authority 확장을 막고 있음. 오프라인 리서치이므로 paper config 불변 — §2·§3 관측과 병행 가능.
-
-| # | Owner | 항목 | 상태 | 작업 내용 |
-|---|-------|------|------|----------|
-| **4-A-R** | `[Research]` | **캘리브레이션 실험·리포트** | [x] | `ml_quality_report --rebuild-calibration-rows` → `model_calibration_rows.csv` (70k rows) · `calibration_experiment` **ok** — isotonic OOF Brier **0.244** (base 0.321) · `run_model_quality_report.sh` auto-rebuild if rows missing |
-| **4-A-C** | `[Cursor]` | **캘리브레이션 런타임 연결** | [x] | `predict_ai_score_from_bundle` + `ai_score_calibration_enabled` (**default-off**) · bins `logs/ml/model_calibration_bins.csv` |
-| **4-B** | `[Research]` | **약세 레짐 피처 실험** | [x] | `regime_feature_experiment.py` · `run_regime_feature_experiment.sh` — **BULL** weak only · best baseline AUC **0.495** · **게이트 미통과** (≥0.52) · report-only 유지 |
-| **4-C** | `[Research]` | **Fold 안정성 (variance 축소)** | [x] | `fold_stability_experiment.py` · `run_fold_stability_experiment.sh` — BULL `xgb_reg_0.5` std **0.005** (gate pass) · BEAR/NEUTRAL 여전히 >0.05 · label challenger 검토만 |
-| **4-D** | `[Research]` | **피처 고도화 (RS/VCP/gap) — IC + 재학습** | [x] **채택 보류** | IC: `gap_vol_20d` 단독 최강(0.0657,t=6.83) but 직교 잔차 IC=0.0166(t=1.84). **재학습 OOS(`rank_gap_feature_retrain`):** baseline AUC **0.649** IC **0.0815** gap **+36.1%** vs challenger AUC **0.643** IC **0.080** gap **+14.1%** → **gate FAIL**. `gap_vol_20d`는 `build_features`에만 추가(연구용), `FEATURE_COLUMNS`/paper 모델 **미변경**. 산출물: `scripts/rank_feature_research.py`, `scripts/rank_gap_feature_retrain.py`, `logs/ml/rank_gap_feature_retrain/` |
-| **4-E** | `[Research]` | **Rank AI 3트랙 강화 (label·exit·sizing)** | [x] | `scripts/rank_enhancement_suite.py` · holdout 2025-12-23..2026-06-23 · **label:** raw AUC **0.644** IC **0.083** gap **+37.6%** (winner) · risk-adj IC **-0.022** FAIL · spy-excess IC **0.082** gap **+32.7%** → **미채택**. **exit:** best **sl0.05/tr0.15/tp0.08** gap **-2.76%** sharpe **1.015** vs current gap **-8.66%** sharpe **0.677** → **gate PASS** · paper `trailing_stop_pct` **0.15**, `take_profit_pct` **0.08** 반영. **sizing:** flat sharpe **0.677** > rank-linear variants → **미채택** (`rank_position_sizing_enabled` backtester only). 산출물: `reports/rank_enhancement_suite.json` |
-
-**순서:** 4-A-R → 4-A-C → 4-D(IC) → 4-E → IC 통과 시 재학습 → `[AGY-test]` (스키마·연결 회귀) → Codex. 각 항목 DoD: pytest + 리포트 산출물 + scoped review.
-
-**4-D 원칙 (PBA 교훈):** "좋아 보이는 규칙/피처"는 도입 전 반드시 IC·이벤트스터디로 엣지를 먼저 증명한다. 엣지 없으면 추가하지 않는다.
-
----
-
-### 5. Research — 미스윕 파라미터 (2순위)
-
-한 번도 스윕된 적 없는 하드코딩 파라미터. 기존 `portfolio_backtester` 재사용.
-
-| # | Owner | 항목 | 상태 | 작업 내용 |
-|---|-------|------|------|----------|
-| **5-A** | `[Research]` | **진입 시그널 스윕** | [x] | entry — **17/48 pass** · best OOS **ma5/ma50/rsi75** gap **+21.5pp** (holdout) · `logs/strategy_parameter_sweep/entry_signal_sweep_report.json` |
-| **5-B** | `[Research]` | **사이징·익절 스윕** | [x] | sizing — **32/64 pass** (baseline OOS gap -18pp) · best **pos0.15/tp0.10/hold45** · backtester `max_holding_days` 추가 · `sizing_exit_sweep_report.json` |
-| **5-adopt** | `[Cursor]` | **채택 시 config 반영** | [ ] | **2026-06-16 검토:** **5-B 거절** (train −17pp·OOS 과대·pos/tp 이미 반영). **5-A는 crowding A/B(~06-30) 평가 후** paper trial — 후보 **AGGRESSIVE ma_slow 30 / rsi 75** (5/50 비채택). §7과 동시 레버 금지 · `run_research_promotion_gates.sh` 경로만 (자동 반영 금지) |
-
-**주의:** 5-A/5-B는 AGY `[Research]` 세션. 채택은 5-adopt `[Cursor]`만. **순서:** §7 crowding A/B 평가 → 5-A partial trial → 유지/롤백 합산 판단.
-
----
-
-### 6. Backlog (차단·대기·낮은 우선)
+### 3. Backlog (낮은 우선 · 선택)
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
-| **Toss Open API** (Phase 33) | [ ] 보류(키 확보) | **API 키 발급됨(2026-06)** · 적용 보류 — paper P&L 마이너스라 **Alpaca paper 계속 관측** 후 적용 |
-| **Live 전환** (Phase 34 foundation 완료) | [ ] 보류 | Rank 2주 **충족** · 코드 블로커 해소 · 단 operator가 **paper 흑자 전환까지 보류 결정(2026-06-16)** + sign-off |
-| **Champion / rank live 승격** | [ ] blocked | AI authority gates |
-| **Gemini 429 quota 대응** | [x] | `_call_with_retry` — 429/RESOURCE_EXHAUSTED/503 한정 capped exp-backoff+jitter (server `retry_delay` 우선), 그 다음 vLLM→degraded 폴백 체인. env: `LLM_MAX_RETRIES`(2)·`LLM_RETRY_BASE_DELAY`(2s)·`LLM_RETRY_MAX_DELAY`(8s) |
-| **Tournament sleeve 성과 리포트 자동 판정** | [x] | `tournament_score_report` verdict **PASS/FAIL/INSUFFICIENT_DATA** (excess vs best benchmark · `--min-excess-return-pct`) + `format_tournament_score_summary` CLI 출력 · 현재 sleeve NAV 0 → `INSUFFICIENT_DATA` |
-| **Untracked logs 정리** | [x] | `.gitignore` — `logs/ml/*` 화이트리스트 정리(curated 3종만 추적) + `reports/agent_pipeline/<timestamp>/` 무시 + `.claude-account-2/` · untracked 103→37 |
-| **LLM×AI 불일치 시그널 연구** | [ ] | score↔llm r=0.031 직교 (`logs/llm_ai_comparison`) — 불일치(AI pass + LLM fail) 시 포지션 축소 연구. 낮은 우선 |
+| **Gemini 유료 전환** | [ ] 선택 | 라이브 veto가 무료티어 **일 20콜** 위에서 아슬아슬 (캐시 미스 → degraded PASS). 유료 시 ~$1/월 수준으로 해소 |
+| **테스트 커버리지 보강** | [ ] 선택 | 실행 경로 중 테스트 0인 곳에서 버그 2개씩 나온 전례 (슬리브 트림). 후보: partial_exit·dust_exit·cash_surplus_deploy 경로에 fake-broker 회귀 테스트 |
+| **BRK-B→BRK.B 뉴스 매핑** | [ ] 선택 | Alpaca 뉴스 심볼 표기 차이 — 뉴스 리서치 재개 시에만 |
+| **LLM×AI 불일치 시그널 연구** | [ ] 보류 | 1-A 결과 확인 후 판단 (같은 데이터 재사용 가능) |
+| **Champion / rank live 승격** | [ ] blocked | AI authority gates — 변동 없음 |
 
 ---
 
-### 7. 현금 과다 / 매수 차단 조사 (2026-06-16)
+## Shipped — 2026-06/07 리서치 소진 + 계측/하드닝 패스
 
-**질문:** paper 현금 ~72% (목표 ~20%), "매수 차단 과다"?
-
-**테스트 결론 — 강제 배포는 현 장세에서 손해. 높은 현금은 대체로 정상.**
+**리서치 레버 전수 검증 — 전부 기각** (원칙: IC 통과 ≠ 모델 게이트 통과, 6연속 확인):
 
 | 레버 | 결과 | 산출물 |
 |------|------|--------|
-| 가드 완화 (sector/crowding 3/3) | **배포 ↓·수익 ↓** (3/3 = 투자 13.9%, −0.06%). 차단 종목 5d fwd: crowding **−3.9%**, sector −2.5% → 손실 종목 거름 | `logs/guard_scenario_2w/` |
-| signal-SELL 밴드 (MA10/50 히스테리시스) | 배포 ↑(12→37%)이나 **수익·MDD 악화**, 전체기간 비단조(noise). 비채택 | `logs/signal_relax_2w/` (`trend_signal_band_pct` 실험 후 backtester revert) |
-| 레거시 리태깅 | 보유 $27.4k 전부 tournament (BAC $12.9k). **기존 `build_sleeve_retag_actions`는 core→tournament 단방향 → 빈 결과**. 정합성용 수동 편집만 가능, 배포엔 무효 | — |
+| 유니버스 110→255 확대 (3-arm A/B) | 수익 +2.8pp뿐, Sharpe 반토막·MDD 3배 → 기각. 학습만 확대도 −8.9pp | `scripts/rank_universe_ab.py` · `logs/ml/rank_universe_ab/` |
+| gap_vol_20d 피처 | 단독 IC 최강, 재학습 gap 36→14% → 기각 | `logs/ml/rank_gap_feature_retrain/` |
+| 실적 피처 (days_to/surprise_streak/last_surprise) | IC 3종 통과(t 2.7~3.9), 재학습 gap −17pp → 기각 | `scripts/earnings_feature_*` · `logs/ml/earnings_feature_retrain/` |
+| VADER 뉴스 센티먼트 4종 | IC 스크린 탈락 (best t=1.6) | `scripts/news_*` · `data/news_history/` (156k 헤드라인, 재사용 가능) |
+| 레짐 조건부 랭크 게이트 | 6m 통과, 12m 재현 실패 → 기각. 컷오프 조이기는 no-op | `scripts/rank_regime_gate_experiment.py` · `logs/ml/rank_regime_gate/` |
+| 랭크 게이트 그리드 (q80/85/90) | 기존 06-02 실험 — 현행 q85/top15 최고 확인 | `logs/ml/rank_label_experiment_*` |
 
-**유일하게 근거 있는 레버 → A/B 적용 중:**
-- [x] **`crowding_max_positions` 2→3 단독 적용 (2026-06-16)** — rank 관측 **14/14 완료**(`gate_ready=true`) 후 `scripts/crowding_ab_gate.py`로 적용. 배포 증가 기대(백테스트 12→38%), `max_sector_positions`는 2 유지. baseline/marker: `logs/crowding_ab/applied.json` · config 백업 `logs/crowding_ab/strategy_config.bak.json`.
-- [ ] **A/B 평가 ~2026-06-30** — 배포율·수익·MDD 추적. ⚠️ `do_not_relax_guards_when` 조건1(차단 종목 5d fwd 음수, crowding −3.9%)은 여전히 참 → **모니터링 A/B**. 롤백: `PYTHONPATH=. .venv/bin/python scripts/crowding_ab_gate.py --rollback` (MDD만 악화·배포/수익 이득 없으면).
-- [ ] **이후 §5-adopt (5-A)** — crowding 결과 확정 뒤 **AGGRESSIVE ma_slow 20→30, rsi 80→75** paper trial (5-B·5/50 후보는 비채택). 레버 겹치지 않게 순차 적용.
+**갭 어트리뷰션 (핵심 발견):** 6월 paper **+3.1%** > EW +1.1% > 무제약 시뮬 +0.2% > SPY −0.9% — 백테스트 gap은 라이브 기대치 아님. 최대 누수 = **슬리브 예산 소진**(차단 종목 +3.2% fwd), correlation 가드는 패자 차단(유지). → 주간 리포트화 + 8주 판정 규칙 사전 등록.
+
+**크라우딩 A/B (06-16, 2→3) 종결:** 3 유지 — 6월 차단 종목 사후수익 ~중립, 이후 가드 계측은 주간 어트리뷰션으로 일원화. §5-A(ma_slow/rsi 트라이얼)는 근거 부족으로 보류 전환.
+
+**버그 수리:** ATR <14봉 IndexError(신규상장 매수 전멸) · sleeve 리포트 계좌 미조회(0-기록 22일) · 슬리브 트림 `limit_price`+`log_order`(트림 전멸) · 테스트→프로덕션 audit CSV 오염 · 시간 썩은 테스트 2건. **suite 503 green.**
+
+**신규 계측:** `market_regime_snapshot`(데일리+전환 알림) · `sim_paper_gap_attribution`(주간, systemd timer) · sleeve P&L 실데이터 데일리. `universe_master.csv` 죽은 티커 6종 정리(SQ→XYZ, WRK→SW 등).
 
 ---
 
@@ -282,14 +225,15 @@ bash scripts/run_live_readiness.sh
 bash scripts/run_data_health_check.sh
 bash scripts/run_llm_block_precision.sh   # → logs/llm_advisory/precision.json (Active §1-A)
 
+# 증거 루프 (2026-07 신규)
+PYTHONPATH=. .venv/bin/python -m src.market_regime_snapshot          # 레짐 스냅샷 (데일리 자동)
+bash scripts/run_weekly_gap_attribution.sh                           # 갭 어트리뷰션 (일 18:00 ET 타이머)
+PYTHONPATH=. .venv/bin/python -m scripts.llm_retro_scoring --provider vllm --max-calls 10000  # 소급 스코어링 (resume)
+PYTHONPATH=. .venv/bin/python -m scripts.llm_feature_research        # LLM 피처 IC 스크린
+
 # Research gates
 bash scripts/run_research_promotion_gates.sh
-bash scripts/run_regime_stop_backtest.sh --followup
-PYTHONPATH=. .venv/bin/python -m src.ml_quality_report --rebuild-calibration-rows  # §4-A rows
 bash scripts/run_model_quality_report.sh   # calibration experiment + model_quality summary
-bash scripts/run_regime_feature_experiment.sh   # §4-B
-bash scripts/run_fold_stability_experiment.sh   # §4-C
-bash scripts/run_strategy_parameter_sweep.sh all  # §5 entry + sizing
 
 # Phase pass (Codex)
 RUN_ID=phase39_sleeve_alloc bash scripts/run_pass_complete.sh
