@@ -9,8 +9,32 @@ from src.settings import StrategySettings
 
 class LiveReadinessTest(unittest.TestCase):
     def test_paper_environment_reports_no_go_with_rank_gate(self) -> None:
-        settings = StrategySettings(rank_ai_buy_gate_enabled=True)
-        report = build_live_readiness_report(settings=settings, environment="paper")
+        # hermetic: synthetic not-ready tracker (the real logs may legitimately be ready)
+        with TemporaryDirectory() as tmp:
+            pv_path = Path(tmp) / "latest_summary.json"
+            pv_path.write_text(
+                json.dumps(
+                    {
+                        "rank_gate_paper_tracker": {
+                            "gate_ready": False,
+                            "calendar_days_with_rank_events": 3,
+                            "min_calendar_days_required": 14,
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            import src.live_readiness as lr
+
+            old_pv = lr.PAPER_VALIDATION_PATH
+            try:
+                lr.PAPER_VALIDATION_PATH = pv_path
+                settings = StrategySettings(rank_ai_buy_gate_enabled=True)
+                report = build_live_readiness_report(settings=settings, environment="paper")
+            finally:
+                lr.PAPER_VALIDATION_PATH = old_pv
+
         self.assertEqual(report["overall"], "NO_GO")
         self.assertFalse(report["safe_to_execute_live"])
         self.assertTrue(any("rank_gate_ready" in r for r in report["reasons"]))
