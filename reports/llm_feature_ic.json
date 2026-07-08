@@ -1,0 +1,62 @@
+{
+  "horizon": 20,
+  "scored_ticker_days": 9866,
+  "base_best_ic": 0.0937,
+  "leakage_note": "LLM pretraining may know post-headline outcomes; optimistic bias",
+  "results": {
+    "return_20d": {
+      "mean_ic": 0.0713,
+      "ic_std": 0.2197,
+      "t_stat": 3.3,
+      "ir": 0.325,
+      "hit_rate": 59.2,
+      "n_days": 103,
+      "kind": "baseline"
+    },
+    "high_52w_ratio": {
+      "mean_ic": 0.0612,
+      "ic_std": 0.2192,
+      "t_stat": 2.83,
+      "ir": 0.279,
+      "hit_rate": 61.2,
+      "n_days": 103,
+      "kind": "baseline"
+    },
+    "ma_ratio_10_50": {
+      "mean_ic": 0.0937,
+      "ic_std": 0.2062,
+      "t_stat": 4.61,
+      "ir": 0.455,
+      "hit_rate": 64.1,
+      "n_days": 103,
+      "kind": "baseline"
+    },
+    "llm_approved": {
+      "mean_ic": 0.0098,
+      "ic_std": 0.117,
+      "t_stat": 0.85,
+      "ir": 0.084,
+      "hit_rate": 50.5,
+      "n_days": 103,
+      "kind": "candidate"
+    },
+    "llm_outlook": {
+      "mean_ic": 0.0267,
+      "ic_std": 0.1317,
+      "t_stat": 2.06,
+      "ir": 0.203,
+      "hit_rate": 57.3,
+      "n_days": 103,
+      "kind": "candidate"
+    },
+    "llm_risk_flag": {
+      "mean_ic": -0.0095,
+      "ic_std": 0.1199,
+      "t_stat": -0.8,
+      "ir": -0.079,
+      "hit_rate": 48.5,
+      "n_days": 103,
+      "kind": "candidate"
+    }
+  }
+}

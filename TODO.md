@@ -52,8 +52,8 @@
 
 | # | 항목 | 상태 | 비고 |
 |---|------|------|------|
-| 1-A | **LLM 소급 스코어링 완주 + IC 최종 판정** | [ ] 진행 중 (오늘 ~17:40) | 로컬 vLLM gemma4-26B, 9,861 ticker-days · 완주 후 `scripts/llm_feature_research.py` — **마지막 리서치 카드**. 중간(36d): 전부 no-edge, `llm_approved` 음수 관찰 · 사전학습 누출 편향 주의 (통과해도 paper A/B 필수) |
-| 1-B | **BB/GRAB 슬리브 트림 재시도 확인** | [ ] 내일 04:45 런 | `limit_price` 수정(dd1a91e)은 07-07 15:00 런에서 무에러 검증 완료. 트림 자체는 다음 리밸런스 트리거에서 `SELL_SUBMITTED` 확인 → 완료 시 memory `bb-trim-verification-pending` 삭제 |
+| 1-A | **LLM 소급 스코어링 완주 + IC 최종 판정** | [x] **기각 (07-08)** | 9,866 ticker-days 완주 (vLLM gemma4-26B). `llm_outlook`만 유의(t=2.06)했으나 IC 0.027 < 기준 0.094×0.9 + 누출 편향 → 미채택. **리서치 카드 7연속 기각으로 리서치 트랙 종료.** 데이터셋은 재사용 가능 (`data/research/llm_retro_scores.jsonl`) |
+| 1-B | **슬리브 트림 수정 검증** | [x] **종결 (07-08)** | 수정 후 2일간 SELL_ERROR 0 (이전엔 매 리밸런스마다 발생) · 07-08 10:30 REBALANCE_TRIM(OPEN) 정상 제출 · 회귀 테스트 2건이 경로 커버. 슬리브 오버웨이트 트림 자체는 드리프트 임계 미달로 미발동 — 다음 발동 시 정상 동작 예상 |
 | 1-C | **stop5_trail10 트라이얼 종결 처리** | [ ] | `READY_TO_EVALUATE`(06-26)인데 06-24 exit 스윕 승격(**tr 0.15 / tp 0.08**)이 트라이얼 config(tr 0.10)를 덮어씀 — 평가 불능 상태. 트라이얼 공식 종료 + 리포트에 superseded 기록 |
 
 ### 2. 예정된 판단 (증거 축적 대기 — 손대지 말 것)
