@@ -4,6 +4,7 @@ import pandas as pd
 
 from src.stop_trail_trial_report import (
     build_stop_trail_trial_report,
+    close_trial,
     start_trial,
 )
 
@@ -47,6 +48,26 @@ def test_report_not_started(tmp_path):
         audit_path=tmp_path / "missing.csv",
     )
     assert report["status"] == "NOT_STARTED"
+
+
+def test_close_trial_freezes_report(tmp_path):
+    state_path = _write_state(tmp_path)
+    state = close_trial(state_path, reason="superseded by exit-sweep promotion")
+    assert state["closed_at"]
+    assert state["close_reason"] == "superseded by exit-sweep promotion"
+
+    # idempotent — second close keeps the original date/reason
+    again = close_trial(state_path, reason="different reason")
+    assert again["closed_at"] == state["closed_at"]
+    assert again["close_reason"] == "superseded by exit-sweep promotion"
+
+    report = build_stop_trail_trial_report(
+        state_path=state_path,
+        audit_path=tmp_path / "missing.csv",
+    )
+    assert report["status"] == "CLOSED"
+    assert report["close_reason"] == "superseded by exit-sweep promotion"
+    assert "window_metrics" not in report
 
 
 def test_report_window_metrics_and_exit_mix(tmp_path):

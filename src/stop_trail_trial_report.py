@@ -83,6 +83,23 @@ def start_trial(
     return state
 
 
+def close_trial(
+    state_path: str | Path = DEFAULT_STATE_PATH,
+    *,
+    reason: str,
+) -> dict[str, Any]:
+    """Officially close the trial (e.g. superseded by a config promotion). Idempotent."""
+    path = Path(state_path)
+    state = _read_json(path)
+    if not state.get("started_at"):
+        raise SystemExit("No trial state to close (never started)")
+    if not state.get("closed_at"):
+        state["closed_at"] = _utc_now().strftime("%Y-%m-%d")
+        state["close_reason"] = reason
+        path.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+    return state
+
+
 def _max_drawdown_pct(equity: pd.Series) -> float | None:
     values = pd.to_numeric(equity, errors="coerce").dropna()
     values = values[values > 0]
@@ -175,6 +192,19 @@ def build_stop_trail_trial_report(
             ],
         }
 
+    if state.get("closed_at"):
+        return {
+            "generated_at": _utc_now_iso(),
+            "trial": state.get("trial", "stop5_trail10"),
+            "status": "CLOSED",
+            "started_at": state["started_at"],
+            "closed_at": state["closed_at"],
+            "close_reason": state.get("close_reason", ""),
+            "config": state.get("config"),
+            "baseline": state.get("baseline"),
+            "notes": ["Trial closed; no further evaluation. See close_reason."],
+        }
+
     now_ts = now if now is not None else _utc_now()
     if now_ts.tzinfo is not None:
         now_ts = now_ts.tz_localize(None)
@@ -252,12 +282,20 @@ def write_stop_trail_trial_report(
 def main() -> None:
     parser = argparse.ArgumentParser(description="stop5_trail10 paper trial tracker")
     parser.add_argument("--start", action="store_true", help="Record trial start state")
+    parser.add_argument("--close", action="store_true", help="Officially close the trial")
+    parser.add_argument("--close-reason", default="", help="Why the trial is closed")
     parser.add_argument("--state-path", default=str(DEFAULT_STATE_PATH))
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
     args = parser.parse_args()
 
     if args.start:
         state = start_trial(args.state_path)
+        print(json.dumps(state, indent=2, ensure_ascii=False))
+
+    if args.close:
+        if not args.close_reason:
+            raise SystemExit("--close requires --close-reason")
+        state = close_trial(args.state_path, reason=args.close_reason)
         print(json.dumps(state, indent=2, ensure_ascii=False))
 
     path = write_stop_trail_trial_report(args.output, state_path=args.state_path)
