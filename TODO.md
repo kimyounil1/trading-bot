@@ -62,6 +62,7 @@
 |------|------|------------|
 | **~2026-09 초** | 토너먼트 배분 30%→확대 여부 | `logs/sleeves/history.jsonl` 8주+ (07-06 이전 기록은 0-버그, `portfolio_value>0` 필터) |
 | **~2026-09 초** | core 슬리브 예산 +15% A/B 착수 여부 | `logs/sim_paper_gap/trend_summary.json` — **사전 등록 규칙(8주 연속 플래그) 고정, 중간 수정 금지** |
+| **~2026-09 초** | **cash 목표 20% 축소 검토** (예산 A/B와 패키지) | 오프라인 스윕 완료 (07-08, `logs/cash_floor_sweep/`): **20%가 0%/10%를 Sharpe·MDD에서 압도, 12m에선 수익도 +2.2pp 우위 · 30%는 12m 붕괴(비단조)** → 사전 기대는 "20% 유지". 9월에 어트리뷰션 실측과 합산 최종 판단 |
 | **레짐 전환 알림 시** | 노가드 토너먼트 재평가 | `logs/market_regime/` — BULL 이탈 시 텔레그램 알림 |
 | **paper 흑자 지속 시** | Live 전환 논의 재개 (Toss 키 보유) | `logs/portfolio_pnl/` + `run_live_readiness.sh` |
 
