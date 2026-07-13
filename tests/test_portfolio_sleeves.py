@@ -72,6 +72,32 @@ class PortfolioSleevesTest(unittest.TestCase):
         self.assertFalse(snapshot.enabled)
         self.assertIn(CORE_SLEEVE_ID, snapshot.sleeves)
 
+    def test_conditional_margin_scales_sleeve_targets_and_uses_buying_power(self) -> None:
+        settings = self._settings()
+        settings.margin_leverage_paper_enabled = True
+        settings.leverage_factor = 2.0
+        account = {
+            "portfolio_value": 100_000.0,
+            "cash": -1_000.0,
+            "buying_power": 100_000.0,
+        }
+        allocator = PortfolioSleeveAllocator(
+            settings,
+            account=account,
+            positions=[
+                {"symbol": "NVDA", "market_value": 50_000.0},
+                {"symbol": "MSFT", "market_value": 30_000.0},
+            ],
+            sleeve_position_map={"NVDA": "core", "MSFT": "tournament"},
+        )
+
+        snapshot = allocator.build_snapshot()
+
+        self.assertEqual(snapshot.sleeves["core"].target_notional, 100_000.0)
+        self.assertEqual(snapshot.sleeves["tournament"].target_notional, 60_000.0)
+        self.assertGreater(snapshot.sleeves["core"].order_budget, 0.0)
+        self.assertGreater(snapshot.sleeves["tournament"].order_budget, 0.0)
+
     def test_trim_candidates_enforces_running_budget(self) -> None:
         candidates = [
             {"ticker": "A", "order_amount": 800.0},

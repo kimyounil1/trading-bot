@@ -16,6 +16,7 @@ import requests
 from src.broker_adapter import get_broker_adapter
 from src.daily_bar_session import drop_incomplete_session_bar
 from src.data_loader import load_price_data_batch
+from src.conditional_margin_leverage import resolve_conditional_margin_leverage
 from src.features import MAX_FEATURE_LOOKBACK
 from src.macro_loader import load_macro_data
 from src.market_clock import get_market_clock
@@ -26,9 +27,13 @@ from src.buy_guards import (
 )
 from src.llm_analyst import llm_cache_only_for_run
 from src.macro_events import get_macro_event_risk
-from src.margin_leverage_paper_gate import evaluate_margin_leverage_buy_block
+from src.margin_leverage_paper_gate import (
+    apply_margin_leverage_paper_overrides,
+    evaluate_margin_leverage_buy_block,
+)
 from src.risk_manager import (
     apply_buy_safety_limits,
+    apply_effective_leverage_exposure_limits,
     apply_portfolio_exposure_limits,
     check_additional_buy_allowed,
     check_buy_allowed,
@@ -370,6 +375,16 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
     if vix_df is None or (hasattr(vix_df, "empty") and vix_df.empty):
         vix_df = ticker_data.get("VIX")
     spy_df = ticker_data.get("SPY")
+    if getattr(settings, "margin_leverage_paper_enabled", False):
+        leverage_decision = resolve_conditional_margin_leverage(
+            settings,
+            spy_df=spy_df,
+            vix_df=vix_df,
+        )
+        settings = apply_margin_leverage_paper_overrides(
+            settings,
+            effective_leverage_factor=leverage_decision.leverage_factor,
+        )
     macro_df = (
         load_macro_data(period=AI_PRICE_HISTORY_PERIOD)
         if getattr(settings, "use_ai_score", False)
@@ -477,6 +492,9 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
         margin_leverage_stress_gate_required=bool(
             getattr(settings, "margin_leverage_stress_gate_required", True)
         ),
+        conditional_margin_leverage_enabled=bool(
+            getattr(settings, "conditional_margin_leverage_enabled", False)
+        ),
     )
     for ticker in watchlist:
         frame = ticker_data.get(ticker)
@@ -509,8 +527,10 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
                     cash=cash,
                     portfolio_value=float(account["portfolio_value"]),
                     current_position_value=float(position["market_value"]),
+                    ticker=ticker,
                     position_mult=conviction.position_mult,
                     cash_buffer_mult=conviction.cash_buffer_mult,
+                    settings=settings,
                 )
                 risk_allowed = risk.allowed
                 reason = risk.reason
@@ -524,6 +544,7 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
                     ticker=ticker,
                     position_mult=conviction.position_mult,
                     cash_buffer_mult=conviction.cash_buffer_mult,
+                    settings=settings,
                 )
                 risk_allowed = risk.allowed
                 reason = risk.reason
@@ -590,6 +611,7 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
                     submitted_notional_today=simulated_daily_notional,
                     recent_buy_symbols=recent_buy_symbols,
                     portfolio_value=float(account["portfolio_value"]),
+                    settings=settings,
                 )
                 risk_allowed = safety.allowed
                 reason = safety.reason if not safety.allowed else reason
@@ -600,18 +622,30 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
                     ticker=ticker,
                     order_amount=order_amount,
                     cash=cash,
-                    portfolio_value=float(account["portfolio_value"])
-                    * float(getattr(settings, "leverage_factor", 1.0)),
+                    portfolio_value=float(account["portfolio_value"]),
                     buying_power=float(account.get("buying_power", 0.0)),
                     current_gross_exposure=current_gross_exposure,
                     current_position_value=(
                         float(position["market_value"]) if position is not None else 0.0
                     ),
                     cash_buffer_mult=conviction.cash_buffer_mult,
+                    settings=settings,
                 )
                 risk_allowed = exposure.allowed
                 reason = exposure.reason if not exposure.allowed else reason
                 order_amount = exposure.target_amount
+
+            if risk_allowed:
+                leverage_cap = apply_effective_leverage_exposure_limits(
+                    ticker=ticker,
+                    order_amount=order_amount,
+                    portfolio_value=float(account["portfolio_value"]),
+                    positions_by_symbol=positions_by_symbol,
+                    settings=settings,
+                )
+                risk_allowed = leverage_cap.allowed
+                reason = leverage_cap.reason if not leverage_cap.allowed else reason
+                order_amount = leverage_cap.target_amount
 
             buy_rows.append(
                 {

@@ -22,6 +22,11 @@ from src.rank_buy_allocator import (
     truncate_ticker_frames_asof,
 )
 from src.sector import is_sector_allowed
+from src.instrument_meta import (
+    adjust_position_cap_for_instrument,
+    count_leveraged_etf_positions,
+    get_instrument,
+)
 
 
 @dataclass
@@ -342,6 +347,13 @@ def run_portfolio_backtest(
     rank_position_sizing_enabled: bool = False,
     rank_position_sizing_min_mult: float = 0.6,
     rank_position_sizing_max_mult: float = 1.25,
+    allow_leveraged_etfs: bool = False,
+    leveraged_etf_allowlist: list[str] | None = None,
+    max_leveraged_etf_positions: int = 1,
+    max_effective_leverage_exposure_pct: float = 1.25,
+    block_leveraged_etfs_vix_above: float = 0.0,
+    leverage_factor: float = 1.0,
+    annual_margin_interest_rate: float = 0.0,
 ) -> tuple[PortfolioBacktestResult, pd.DataFrame, pd.DataFrame]:
     if relative_strength_lookback_days <= 0:
         raise ValueError("relative_strength_lookback_days must be positive")
@@ -361,6 +373,16 @@ def run_portfolio_backtest(
         raise ValueError("trailing_stop_pct must be between 0 and 1")
     if max_holding_days < 0:
         raise ValueError("max_holding_days must be non-negative")
+    if max_leveraged_etf_positions <= 0:
+        raise ValueError("max_leveraged_etf_positions must be positive")
+    if max_effective_leverage_exposure_pct <= 0:
+        raise ValueError("max_effective_leverage_exposure_pct must be positive")
+    if block_leveraged_etfs_vix_above < 0:
+        raise ValueError("block_leveraged_etfs_vix_above must be non-negative")
+    if leverage_factor < 1.0:
+        raise ValueError("leverage_factor must be at least 1.0")
+    if annual_margin_interest_rate < 0:
+        raise ValueError("annual_margin_interest_rate must be non-negative")
 
     ai_model_bundle = None
     if use_ai_score:
@@ -446,7 +468,10 @@ def run_portfolio_backtest(
 
     # VIX lookup index for dynamic AI exit threshold
     _vix_by_date: dict = {}
-    if ai_exit_dynamic_enabled and vix_df is not None and not vix_df.empty:
+    if (
+        ai_exit_dynamic_enabled
+        or (allow_leveraged_etfs and block_leveraged_etfs_vix_above > 0)
+    ) and vix_df is not None and not vix_df.empty:
         _vix_tmp = vix_df.copy()
         _vix_tmp["date"] = pd.to_datetime(_vix_tmp["date"])
         _vix_tmp = _vix_tmp.sort_values("date")
@@ -455,11 +480,26 @@ def run_portfolio_backtest(
 
     cash = initial_cash
     positions: dict[str, dict] = {}
+    cumulative_margin_interest = 0.0
+    previous_trading_date: pd.Timestamp | None = None
 
     trades: list[dict] = []
     equity_rows: list[dict] = []
 
     for current_date in trading_dates:
+        current_ts = pd.Timestamp(current_date)
+        if previous_trading_date is not None and cash < 0:
+            calendar_days = max((current_ts - previous_trading_date).days, 1)
+            margin_interest = (
+                -cash
+                * annual_margin_interest_rate
+                * calendar_days
+                / 360.0
+            )
+            cash -= margin_interest
+            cumulative_margin_interest += margin_interest
+        previous_trading_date = current_ts
+
         day_df = market_df[market_df["date"] == current_date].copy()
         day_prices = {
             row["ticker"]: float(row["close"])
@@ -515,12 +555,14 @@ def run_portfolio_backtest(
                 exit_reason = "STOP_LOSS"
             elif day_trailing_stop_pct > 0 and drawdown_from_high <= -day_trailing_stop_pct:
                 exit_reason = "TRAILING_STOP"
-            elif max_holding_days > 0:
-                held_days = (
+            elif (
+                max_holding_days > 0
+                and (
                     pd.Timestamp(current_date) - pd.Timestamp(position["entry_date"])
                 ).days
-                if held_days >= max_holding_days:
-                    exit_reason = "MAX_HOLDING"
+                >= max_holding_days
+            ):
+                exit_reason = "MAX_HOLDING"
             elif ai_exit_triggered:
                 exit_reason = "AI_EXIT"
             elif bool(row["sell_signal"]):
@@ -570,10 +612,47 @@ def run_portfolio_backtest(
                 (~day_df["ticker"].isin(positions.keys()))
             ].copy()
 
+            if not buy_candidates.empty:
+                leveraged_mask = buy_candidates["ticker"].map(
+                    lambda symbol: get_instrument(str(symbol)).is_leveraged_etf
+                )
+                allowed_leveraged = {
+                    str(symbol).strip().upper()
+                    for symbol in (leveraged_etf_allowlist or [])
+                    if str(symbol).strip()
+                }
+                if allowed_leveraged:
+                    disallowed_mask = leveraged_mask & ~buy_candidates["ticker"].isin(
+                        allowed_leveraged
+                    )
+                    buy_candidates = buy_candidates[~disallowed_mask].copy()
+                    leveraged_mask = buy_candidates["ticker"].map(
+                        lambda symbol: get_instrument(str(symbol)).is_leveraged_etf
+                    )
+                leveraged_count = count_leveraged_etf_positions(set(positions))
+                block_leveraged = (
+                    not allow_leveraged_etfs
+                    or leveraged_count >= max_leveraged_etf_positions
+                )
+                if not block_leveraged and _vix_by_date:
+                    ts = pd.Timestamp(current_date)
+                    past_vix = {k: v for k, v in _vix_by_date.items() if k <= ts}
+                    vix_value = past_vix[max(past_vix)] if past_vix else None
+                    block_leveraged = (
+                        vix_value is not None
+                        and float(vix_value) >= block_leveraged_etfs_vix_above
+                    )
+                if block_leveraged and not buy_candidates.empty:
+                    buy_candidates = buy_candidates.loc[
+                        ~leveraged_mask.astype(bool)
+                    ].copy()
+
             ops_settings = operational_settings
             use_rank_gate = bool(rank_ai_buy_gate_enabled and ops_settings is not None)
 
-            if use_rank_gate:
+            if buy_candidates.empty:
+                selected = buy_candidates
+            elif use_rank_gate:
                 trunc = truncate_ticker_frames_asof(ticker_data, current_date)
                 vix_asof = None
                 if vix_df is not None and not vix_df.empty:
@@ -665,8 +744,12 @@ def run_portfolio_backtest(
                     min_weight=mvo_min_weight,
                     max_weight=mvo_max_weight,
                 )
-                # Total capital same as equal-weight baseline: N * target_position_pct * equity
-                total_to_deploy = len(candidate_tickers) * target_position_pct * equity
+                total_to_deploy = (
+                    len(candidate_tickers)
+                    * target_position_pct
+                    * equity
+                    * leverage_factor
+                )
             else:
                 alloc_weights = {t: 1.0 / max(len(candidate_tickers), 1) for t in candidate_tickers}
                 total_to_deploy = None  # use original target_position_pct per ticker
@@ -674,8 +757,16 @@ def run_portfolio_backtest(
             for _, row in selected.iterrows():
                 ticker = row["ticker"]
                 close = float(row["close"])
+                instrument = get_instrument(ticker)
 
                 if close <= 0:
+                    continue
+
+                if (
+                    instrument.is_leveraged_etf
+                    and count_leveraged_etf_positions(set(positions))
+                    >= max_leveraged_etf_positions
+                ):
                     continue
 
                 if crowding_guard_enabled:
@@ -719,7 +810,15 @@ def run_portfolio_backtest(
                         ticker, 1.0 / len(candidate_tickers)
                     )
                 else:
-                    target_value = equity * target_position_pct
+                    target_value = equity * target_position_pct * leverage_factor
+
+                target_value = min(
+                    target_value,
+                    equity * adjust_position_cap_for_instrument(
+                        target_position_pct * leverage_factor,
+                        ticker,
+                    ),
+                )
 
                 if rank_position_sizing_enabled and use_rank_gate:
                     pct = row.get("rank_ai_percentile")
@@ -733,7 +832,45 @@ def run_portfolio_backtest(
                         )
                         target_value *= mult
 
-                available_value = min(cash, target_value)
+                target_value = min(
+                    target_value,
+                    equity * adjust_position_cap_for_instrument(
+                        target_position_pct * leverage_factor,
+                        ticker,
+                    ),
+                )
+
+                current_effective_exposure = sum(
+                    float(pos["qty"])
+                    * float(day_prices.get(symbol, pos["last_price"]))
+                    * get_instrument(symbol).abs_multiple
+                    for symbol, pos in positions.items()
+                )
+                current_gross_exposure = sum(
+                    float(pos["qty"])
+                    * float(day_prices.get(symbol, pos["last_price"]))
+                    for symbol, pos in positions.items()
+                )
+                current_account_equity = cash + current_gross_exposure
+                effective_limit = (
+                    current_account_equity
+                    * max_effective_leverage_exposure_pct
+                )
+                effective_capacity = max(
+                    0.0,
+                    (effective_limit - current_effective_exposure)
+                    / instrument.abs_multiple,
+                )
+                margin_capacity = max(
+                    0.0,
+                    current_account_equity * leverage_factor
+                    - current_gross_exposure,
+                )
+                available_value = min(
+                    target_value,
+                    effective_capacity,
+                    margin_capacity,
+                )
 
                 if available_value <= 0:
                     continue
@@ -772,6 +909,11 @@ def run_portfolio_backtest(
                 "cash": cash,
                 "positions_value": positions_value,
                 "equity": equity,
+                "borrowed_cash": max(-cash, 0.0),
+                "gross_exposure_pct": (
+                    positions_value / equity if equity > 0 else float("inf")
+                ),
+                "cumulative_margin_interest": cumulative_margin_interest,
                 "positions_count": len(positions),
                 "open_symbols": ",".join(sorted(positions.keys())),
             }

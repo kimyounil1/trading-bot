@@ -14,11 +14,11 @@ def pct(value: float) -> str:
 
 def main() -> None:
     settings = load_settings()
-    # 후보 B: 표본/안정성 우선
+    # Keep the selected-strategy runner aligned with the active entry signal.
     params = {
-        "ma_fast": 10,
-        "ma_slow": 50,
-        "rsi_buy_limit": 65,
+        "ma_fast": settings.ma_fast,
+        "ma_slow": settings.ma_slow,
+        "rsi_buy_limit": settings.rsi_buy_limit,
         "max_positions": 2,
         "target_position_pct": 0.40,
         "transaction_cost_pct": 0.001,

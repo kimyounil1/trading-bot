@@ -120,6 +120,7 @@ def check_instrument_buy_allowed(
     open_symbols: set[str],
     *,
     allow_leveraged_etfs: bool = False,
+    leveraged_etf_allowlist: list[str] | None = None,
     max_leveraged_etf_positions: int = 1,
     block_leveraged_etfs_vix_above: float = 0.0,
     vix_df=None,
@@ -132,6 +133,16 @@ def check_instrument_buy_allowed(
             return (
                 False,
                 f"{kind_tag}; leveraged ETF buys disabled (allow_leveraged_etfs=false)",
+            )
+        allowed_symbols = {
+            str(symbol).strip().upper()
+            for symbol in (leveraged_etf_allowlist or [])
+            if str(symbol).strip()
+        }
+        if allowed_symbols and str(ticker).strip().upper() not in allowed_symbols:
+            return (
+                False,
+                f"{kind_tag}; leveraged ETF not in allowlist",
             )
         vix_floor = float(block_leveraged_etfs_vix_above or 0.0)
         if vix_floor > 0:

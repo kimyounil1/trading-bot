@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -18,6 +19,9 @@ DEFAULT_STRESS_SUMMARY_PATH = Path("logs/leverage_stress/latest_summary.json")
 DEFAULT_OUTPUT_DIR = Path("logs/margin_leverage_paper")
 DEFAULT_CONFIG_PATH = Path("config/margin_leverage_paper_config.json")
 PROPOSAL_PATH = Path("config/margin_leverage_paper_proposal.json")
+DEFAULT_CONDITIONAL_SUMMARY_PATH = Path(
+    "config/margin_leverage_conditional_validation.csv"
+)
 
 MARGIN_LEVERAGE_GATE_REPORT_KEYS = (
     "generated_at",
@@ -36,6 +40,11 @@ class MarginLeverageGateConfig:
     stress_summary_path: Path = DEFAULT_STRESS_SUMMARY_PATH
     require_stress_alerts_passed: bool = True
     proposal_path: Path = PROPOSAL_PATH
+    conditional_summary_path: Path = DEFAULT_CONDITIONAL_SUMMARY_PATH
+    conditional_policy: str = "spy_bull_vix22_2x_else_1x"
+    conditional_max_drawdown_floor: float = -0.25
+    conditional_require_sharpe_not_below_1x: bool = True
+    conditional_validation_max_age_days: int = 7
 
 
 def _utc_now_iso() -> str:
@@ -54,7 +63,122 @@ def load_margin_leverage_paper_config(
         stress_summary_path=Path(raw.get("stress_summary_path", DEFAULT_STRESS_SUMMARY_PATH)),
         require_stress_alerts_passed=bool(raw.get("require_stress_alerts_passed", True)),
         proposal_path=Path(raw.get("proposal_path", PROPOSAL_PATH)),
+        conditional_summary_path=Path(
+            raw.get("conditional_summary_path", DEFAULT_CONDITIONAL_SUMMARY_PATH)
+        ),
+        conditional_policy=str(
+            raw.get("conditional_policy", "spy_bull_vix22_2x_else_1x")
+        ),
+        conditional_max_drawdown_floor=float(
+            raw.get("conditional_max_drawdown_floor", -0.25)
+        ),
+        conditional_require_sharpe_not_below_1x=bool(
+            raw.get("conditional_require_sharpe_not_below_1x", True)
+        ),
+        conditional_validation_max_age_days=int(
+            raw.get("conditional_validation_max_age_days", 7)
+        ),
     )
+
+
+def evaluate_conditional_margin_validation(
+    configured_leverage_factor: float,
+    *,
+    config: MarginLeverageGateConfig | None = None,
+    summary_path: Path | None = None,
+) -> dict[str, Any]:
+    """Validate the selected conditional 2x policy against its 1x baseline."""
+    config = config or load_margin_leverage_paper_config()
+    path = summary_path or config.conditional_summary_path
+    if not path.is_file():
+        raise FileNotFoundError(f"Conditional margin summary missing: {path}")
+
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    selected = next(
+        (
+            row
+            for row in rows
+            if row.get("mode") == "operational"
+            and row.get("window") == "1y"
+            and row.get("policy") == config.conditional_policy
+        ),
+        None,
+    )
+    baseline = next(
+        (
+            row
+            for row in rows
+            if row.get("mode") == "operational"
+            and row.get("window") == "1y"
+            and row.get("policy") == "always_1x"
+        ),
+        None,
+    )
+    if selected is None or baseline is None:
+        raise ValueError(
+            "Conditional margin summary requires operational/1y policy and always_1x rows"
+        )
+
+    total_return = float(selected["total_return"])
+    baseline_return = float(baseline["total_return"])
+    max_drawdown = float(selected["max_drawdown"])
+    sharpe = float(selected["sharpe_ratio"])
+    baseline_sharpe = float(baseline["sharpe_ratio"])
+    max_gross = float(selected["max_gross_exposure"])
+    end_date = datetime.fromisoformat(str(selected["end"])).date()
+    age_days = (datetime.now(timezone.utc).date() - end_date).days
+
+    checks: list[dict[str, Any]] = [
+        {
+            "id": "conditional_leverage_within_cap",
+            "pass": configured_leverage_factor <= config.max_allowed_leverage_factor,
+            "detail": (
+                f"leverage_factor={configured_leverage_factor} "
+                f"(max {config.max_allowed_leverage_factor})"
+            ),
+        },
+        {
+            "id": "conditional_validation_fresh",
+            "pass": 0 <= age_days <= config.conditional_validation_max_age_days,
+            "detail": (
+                f"validation_end={end_date.isoformat()}, age_days={age_days} "
+                f"(max {config.conditional_validation_max_age_days})"
+            ),
+        },
+        {
+            "id": "conditional_return_beats_1x",
+            "pass": total_return > baseline_return,
+            "detail": f"return={total_return:.6f}, always_1x={baseline_return:.6f}",
+        },
+        {
+            "id": "conditional_drawdown_within_floor",
+            "pass": max_drawdown >= config.conditional_max_drawdown_floor,
+            "detail": (
+                f"max_drawdown={max_drawdown:.6f} "
+                f"(floor {config.conditional_max_drawdown_floor:.6f})"
+            ),
+        },
+        {
+            "id": "conditional_sharpe_not_below_1x",
+            "pass": (
+                not config.conditional_require_sharpe_not_below_1x
+                or sharpe >= baseline_sharpe
+            ),
+            "detail": f"sharpe={sharpe:.6f}, always_1x={baseline_sharpe:.6f}",
+        },
+        {
+            "id": "conditional_observed_gross_within_factor",
+            "pass": max_gross <= configured_leverage_factor + 1e-6,
+            "detail": f"max_gross={max_gross:.6f}, factor={configured_leverage_factor:.6f}",
+        },
+    ]
+    return {
+        "decision": "GO_MARGIN_PAPER" if all(c["pass"] for c in checks) else "NO_GO",
+        "checklist": checks,
+        "summary_path": str(path),
+        "policy": config.conditional_policy,
+    }
 
 
 def load_stress_summary(path: Path) -> dict[str, Any]:
@@ -137,7 +261,9 @@ def evaluate_margin_leverage_buy_block(
     *,
     margin_leverage_paper_enabled: bool = False,
     margin_leverage_stress_gate_required: bool = True,
+    conditional_margin_leverage_enabled: bool = False,
     stress_summary_path: Path | None = None,
+    conditional_summary_path: Path | None = None,
 ) -> tuple[bool, str]:
     """Return (block_new_buys, reason) for main.py when margin leverage is active."""
     leverage_factor = float(leverage_factor)
@@ -148,6 +274,21 @@ def evaluate_margin_leverage_buy_block(
         return False, ""
 
     config = load_margin_leverage_paper_config()
+    if conditional_margin_leverage_enabled:
+        try:
+            gate = evaluate_conditional_margin_validation(
+                leverage_factor,
+                config=config,
+                summary_path=conditional_summary_path,
+            )
+        except (FileNotFoundError, ValueError, KeyError, TypeError) as exc:
+            return True, f"conditional margin leverage gate: {exc}"
+        if gate["decision"] == "GO_MARGIN_PAPER":
+            return False, ""
+        failed = [c for c in gate["checklist"] if not c["pass"]]
+        detail = "; ".join(f"{c['id']}: {c['detail']}" for c in failed)
+        return True, f"conditional margin leverage gate NO_GO ({detail})"
+
     summary_path = stress_summary_path or config.stress_summary_path
 
     try:
@@ -176,7 +317,11 @@ def load_margin_leverage_paper_proposal(
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def apply_margin_leverage_paper_overrides(settings: Any) -> Any:
+def apply_margin_leverage_paper_overrides(
+    settings: Any,
+    *,
+    effective_leverage_factor: float | None = None,
+) -> Any:
     """Return a copy-like settings object with proposal order/risk caps (paper only)."""
     from dataclasses import replace
 
@@ -193,6 +338,18 @@ def apply_margin_leverage_paper_overrides(settings: Any) -> Any:
         )
         if k in proposal
     }
+    factor = float(
+        effective_leverage_factor
+        if effective_leverage_factor is not None
+        else overrides.get("leverage_factor", getattr(settings, "leverage_factor", 1.0))
+    )
+    overrides["leverage_factor"] = factor
+    overrides["max_gross_exposure_pct"] = factor
+    overrides["max_effective_leverage_exposure_pct"] = factor
+    overrides["max_position_pct"] = min(
+        1.0,
+        float(getattr(settings, "max_position_pct", 0.0)) * factor,
+    )
     return replace(settings, **overrides)
 
 

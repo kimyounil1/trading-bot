@@ -98,6 +98,7 @@ class ExitPriorityTest(unittest.TestCase):
             stop_loss_pct=0.0,
             take_profit_pct=0.10,
             trailing_stop_pct=0.0,
+            max_holding_days=365,
             ai_exit_enabled=True,
             ai_exit_threshold=0.30,
         )

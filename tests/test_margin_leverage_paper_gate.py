@@ -1,10 +1,13 @@
 """Margin leverage paper gate ([AGY])."""
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 from src.margin_leverage_paper_gate import (
     evaluate_margin_leverage_buy_block,
+    evaluate_conditional_margin_validation,
     evaluate_margin_leverage_paper_gate,
+    MarginLeverageGateConfig,
     load_stress_summary,
     validate_margin_leverage_gate_report,
 )
@@ -62,3 +65,42 @@ def test_buy_unblocked_when_gate_passes(monkeypatch):
     )
     block, _ = evaluate_margin_leverage_buy_block(1.25)
     assert block is False
+
+
+def test_conditional_gate_accepts_validated_2x_policy(tmp_path):
+    summary = tmp_path / "conditional.csv"
+    end = datetime.now(timezone.utc).date().isoformat()
+    summary.write_text(
+        "mode,window,policy,total_return,max_drawdown,sharpe_ratio,max_gross_exposure,end\n"
+        f"operational,1y,always_1x,1.30,-0.14,3.25,1.0,{end}\n"
+        f"operational,1y,spy_bull_vix22_2x_else_1x,3.60,-0.21,3.42,2.0,{end}\n",
+        encoding="utf-8",
+    )
+    config = MarginLeverageGateConfig(
+        max_allowed_leverage_factor=2.0,
+        conditional_summary_path=summary,
+    )
+
+    gate = evaluate_conditional_margin_validation(2.0, config=config)
+
+    assert gate["decision"] == "GO_MARGIN_PAPER"
+
+
+def test_conditional_buy_gate_fails_closed_when_validation_missing(tmp_path, monkeypatch):
+    config = MarginLeverageGateConfig(
+        max_allowed_leverage_factor=2.0,
+        conditional_summary_path=tmp_path / "missing.csv",
+    )
+    monkeypatch.setattr(
+        "src.margin_leverage_paper_gate.load_margin_leverage_paper_config",
+        lambda: config,
+    )
+
+    block, reason = evaluate_margin_leverage_buy_block(
+        2.0,
+        margin_leverage_paper_enabled=True,
+        conditional_margin_leverage_enabled=True,
+    )
+
+    assert block is True
+    assert "missing" in reason.lower()

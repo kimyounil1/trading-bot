@@ -1,7 +1,12 @@
 {
-  "max_allowed_leverage_factor": 1.5,
+  "max_allowed_leverage_factor": 2.0,
   "stress_leverage": 2.0,
   "stress_summary_path": "logs/leverage_stress/latest_summary.json",
   "require_stress_alerts_passed": true,
-  "proposal_path": "config/margin_leverage_paper_proposal.json"
+  "proposal_path": "config/margin_leverage_paper_proposal.json",
+  "conditional_summary_path": "config/margin_leverage_conditional_validation.csv",
+  "conditional_policy": "spy_bull_vix22_2x_else_1x",
+  "conditional_max_drawdown_floor": -0.25,
+  "conditional_require_sharpe_not_below_1x": true,
+  "conditional_validation_max_age_days": 7
 }

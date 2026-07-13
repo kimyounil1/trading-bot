@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from src.buy_guards import apply_sector_score_bonus, apply_shared_buy_guards
-from src.instrument_meta import format_audit_reason
+from src.instrument_meta import (
+    adjust_position_cap_for_instrument,
+    format_audit_reason,
+    get_instrument,
+)
 from src.llm_analyst import llm_cache_only_for_run
 from src.logger import log_order, log_order_status, log_signal
 from src.macro_events import get_macro_event_risk
@@ -108,8 +112,10 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
                     cash=ctx.cash,
                     portfolio_value=float(ctx.account["portfolio_value"]),
                     current_position_value=float(held_position["market_value"]),
+                    ticker=ticker,
                     position_mult=conviction.position_mult,
                     cash_buffer_mult=conviction.cash_buffer_mult,
+                    settings=ctx.settings,
                 )
                 risk_allowed = risk.allowed
                 risk_reason = risk.reason
@@ -129,6 +135,7 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
                     ticker=ticker,
                     position_mult=conviction.position_mult,
                     cash_buffer_mult=conviction.cash_buffer_mult,
+                    settings=ctx.settings,
                 )
                 risk_allowed = risk.allowed
                 risk_reason = risk.reason
@@ -215,6 +222,7 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
                     submitted_notional_today=ctx.submitted_notional_today,
                     recent_buy_symbols=ctx.recent_buy_symbols,
                     portfolio_value=float(ctx.account["portfolio_value"]),
+                    settings=ctx.settings,
                 )
                 risk_allowed = safety.allowed
                 risk_reason = safety.reason if not safety.allowed else risk_reason
@@ -225,11 +233,12 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
                     ticker=ticker,
                     order_amount=order_amount,
                     cash=float(ctx.cash),
-                    portfolio_value=float(ctx.account["portfolio_value"]) * float(getattr(ctx.settings, "leverage_factor", 1.0)),
+                    portfolio_value=float(ctx.account["portfolio_value"]),
                     buying_power=float(ctx.account.get("buying_power", 0.0)),
                     current_gross_exposure=ctx.current_gross_exposure,
                     current_position_value=float(held_position["market_value"]) if held_position is not None else 0.0,
                     cash_buffer_mult=conviction.cash_buffer_mult,
+                    settings=ctx.settings,
                 )
                 risk_allowed = exposure.allowed
                 risk_reason = exposure.reason if not exposure.allowed else risk_reason
@@ -241,6 +250,7 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
                     order_amount=order_amount,
                     portfolio_value=float(ctx.account["portfolio_value"]),
                     positions_by_symbol=ctx.positions_by_symbol,
+                    settings=ctx.settings,
                 )
                 risk_allowed = leverage_cap.allowed
                 risk_reason = leverage_cap.reason if not leverage_cap.allowed else risk_reason
@@ -259,8 +269,8 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
                 ticker=ticker,
                 signal=signal,
                 close=latest["close"],
-                ma20=latest["ma20"],
-                ma50=latest["ma50"],
+                ma20=latest["ma_fast"],
+                ma50=latest["ma_slow"],
                 rsi=latest["rsi"],
                 ai_score=ai_score,
             )
@@ -315,6 +325,11 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
                     "llm_verdict": format_llm_verdict(llm_is_ok, llm_reason),
                     "limit_price": float(latest["close"]),
                     "is_new_position": held_position is None,
+                    "current_position_value": (
+                        float(held_position["market_value"])
+                        if held_position is not None
+                        else 0.0
+                    ),
                 })
     
         except Exception as exc:
@@ -392,6 +407,24 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
                 f"{c['ticker']}={mvo_weights.get(c['ticker'], 0):.3f}"
                 for c in approved_buys
             )
+        )
+
+    # MVO/conviction sizing must not expand a leveraged ETF above its
+    # leverage-adjusted single-position cap (15% / 3x = 5% for SOXL).
+    portfolio_value = float(ctx.account["portfolio_value"])
+    for candidate in approved_buys:
+        ticker = candidate["ticker"]
+        if not get_instrument(ticker).is_leveraged_etf:
+            continue
+        position_cap = portfolio_value * adjust_position_cap_for_instrument(
+            float(ctx.settings.max_position_pct), ticker
+        )
+        remaining_cap = max(
+            0.0,
+            position_cap - float(candidate.get("current_position_value", 0.0)),
+        )
+        candidate["order_amount"] = min(
+            float(candidate["order_amount"]), remaining_cap
         )
     
     approved_buys = sort_approved_buys_for_execution(
@@ -553,6 +586,9 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
             ctx.orders_submitted += 1
             ctx.submitted_notional_today += order_amount
             ctx.sleeve_ctx.consume_submit_budget(order_amount)
+            # Reserve immediately, including pending limit orders, so the
+            # tournament sleeve cannot submit the same leveraged ticker again.
+            ctx.guard_open_symbols.add(ticker)
     
             log_order(
                 ticker=ticker,
@@ -686,4 +722,3 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
             )
 
     run_tournament_buy_pipeline(ctx)
-

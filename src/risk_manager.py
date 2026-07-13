@@ -18,6 +18,12 @@ class RiskDecision:
     target_amount: float = 0.0
 
 
+def _margin_borrowing_enabled(settings: Any) -> bool:
+    return bool(getattr(settings, "margin_leverage_paper_enabled", False)) and float(
+        getattr(settings, "leverage_factor", 1.0)
+    ) > 1.0
+
+
 @dataclass
 class ExitDecision:
     should_exit: bool
@@ -44,7 +50,7 @@ def check_buy_allowed(
     if current_positions_count >= settings.max_total_positions:
         return RiskDecision(False, "max total positions reached")
 
-    if cash <= 0:
+    if cash <= 0 and not _margin_borrowing_enabled(settings):
         return RiskDecision(False, "cash is zero or negative")
 
     equity_base = portfolio_value if portfolio_value is not None and portfolio_value > 0 else cash
@@ -60,12 +66,15 @@ def check_buy_allowed(
     from src.position_sizing import max_deployable_cash
 
     target_amount = equity_base * position_pct
-    deployable = max_deployable_cash(
-        cash,
-        equity_base,
-        settings,
-        cash_buffer_mult=cash_buffer_mult,
-    )
+    if _margin_borrowing_enabled(settings):
+        deployable = target_amount
+    else:
+        deployable = max_deployable_cash(
+            cash,
+            equity_base,
+            settings,
+            cash_buffer_mult=cash_buffer_mult,
+        )
     target_amount = min(target_amount, deployable)
 
     if target_amount <= 0:
@@ -80,23 +89,29 @@ def check_additional_buy_allowed(
     portfolio_value: float,
     current_position_value: float,
     *,
+    ticker: str | None = None,
     position_mult: float = 1.0,
     cash_buffer_mult: float = 1.0,
+    settings: Any | None = None,
 ) -> RiskDecision:
-    settings = load_settings()
+    if settings is None:
+        settings = load_settings()
 
     if signal != "BUY":
         return RiskDecision(False, f"signal is {signal}")
 
-    if cash <= 0:
+    if cash <= 0 and not _margin_borrowing_enabled(settings):
         return RiskDecision(False, "cash is zero or negative")
 
     if portfolio_value <= 0:
         return RiskDecision(False, "portfolio value is zero or negative")
 
-    target_position_value = portfolio_value * settings.max_position_pct * max(
-        1.0, float(position_mult)
-    )
+    position_pct = float(settings.max_position_pct) * max(1.0, float(position_mult))
+    if ticker:
+        from src.instrument_meta import adjust_position_cap_for_instrument
+
+        position_pct = adjust_position_cap_for_instrument(position_pct, ticker)
+    target_position_value = portfolio_value * position_pct
     remaining_to_target = target_position_value - max(current_position_value, 0.0)
 
     if remaining_to_target <= 0:
@@ -104,12 +119,15 @@ def check_additional_buy_allowed(
 
     from src.position_sizing import max_deployable_cash
 
-    deployable = max_deployable_cash(
-        cash,
-        portfolio_value,
-        settings,
-        cash_buffer_mult=cash_buffer_mult,
-    )
+    if _margin_borrowing_enabled(settings):
+        deployable = remaining_to_target
+    else:
+        deployable = max_deployable_cash(
+            cash,
+            portfolio_value,
+            settings,
+            cash_buffer_mult=cash_buffer_mult,
+        )
     target_amount = min(deployable, remaining_to_target)
     if target_amount <= 0:
         return RiskDecision(False, "target amount is zero or negative")
@@ -187,8 +205,10 @@ def apply_buy_safety_limits(
     recent_buy_symbols: set[str],
     *,
     portfolio_value: float | None = None,
+    settings: Any | None = None,
 ) -> RiskDecision:
-    settings = load_settings()
+    if settings is None:
+        settings = load_settings()
 
     cooldown_days = int(getattr(settings, "buy_cooldown_days", 0))
     if cooldown_days > 0 and ticker.upper() in recent_buy_symbols:
@@ -229,8 +249,10 @@ def apply_portfolio_exposure_limits(
     current_position_value: float = 0.0,
     *,
     cash_buffer_mult: float = 1.0,
+    settings: Any | None = None,
 ) -> RiskDecision:
-    settings = load_settings()
+    if settings is None:
+        settings = load_settings()
 
     if order_amount <= 0:
         return RiskDecision(False, "target amount is zero or negative", 0.0)
@@ -256,23 +278,24 @@ def apply_portfolio_exposure_limits(
 
     from src.position_sizing import effective_min_cash_buffer_pct
 
-    min_cash_buffer = portfolio_value * effective_min_cash_buffer_pct(
-        settings, cash_buffer_mult
-    )
-    projected_cash = cash - order_amount
-    if projected_cash < min_cash_buffer:
-        allowed_amount = max(0.0, cash - min_cash_buffer)
-        if allowed_amount <= 0:
-            return RiskDecision(
-                False,
-                f"cash buffer breached (projected=${projected_cash:.2f}, min=${min_cash_buffer:.2f})",
-                0.0,
-            )
-        return RiskDecision(
-            True,
-            f"cash buffer capped order (min=${min_cash_buffer:.2f})",
-            allowed_amount,
+    if not _margin_borrowing_enabled(settings):
+        min_cash_buffer = portfolio_value * effective_min_cash_buffer_pct(
+            settings, cash_buffer_mult
         )
+        projected_cash = cash - order_amount
+        if projected_cash < min_cash_buffer:
+            allowed_amount = max(0.0, cash - min_cash_buffer)
+            if allowed_amount <= 0:
+                return RiskDecision(
+                    False,
+                    f"cash buffer breached (projected=${projected_cash:.2f}, min=${min_cash_buffer:.2f})",
+                    0.0,
+                )
+            return RiskDecision(
+                True,
+                f"cash buffer capped order (min=${min_cash_buffer:.2f})",
+                allowed_amount,
+            )
 
     max_single_name_loss = portfolio_value * float(getattr(settings, "max_single_name_loss_pct", 0.02))
     stop_loss_pct = float(getattr(settings, "stop_loss_pct", 0.0))
@@ -293,9 +316,12 @@ def apply_effective_leverage_exposure_limits(
     order_amount: float,
     portfolio_value: float,
     positions_by_symbol: dict[str, dict],
+    *,
+    settings: Any | None = None,
 ) -> RiskDecision:
     """Cap sum(market_value * |leverage_multiple|) including the proposed buy."""
-    settings = load_settings()
+    if settings is None:
+        settings = load_settings()
 
     if order_amount <= 0:
         return RiskDecision(False, "target amount is zero or negative", 0.0)

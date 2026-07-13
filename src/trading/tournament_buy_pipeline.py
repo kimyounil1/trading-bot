@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from src.instrument_meta import (
+    adjust_position_cap_for_instrument,
+    check_instrument_buy_allowed,
+)
 from src.order_intent import build_buy_intent
 from src.portfolio_sleeves import TOURNAMENT_SLEEVE_ID, load_sleeve_definitions
 from src.position_dust import effective_position
 from src.position_sizing import cap_single_order_amount
+from src.risk_manager import apply_effective_leverage_exposure_limits
 from src.settings import merge_settings_overlay
 from src.tournament_alpha_model import select_tournament_candidates
 from src.trading.bot_helpers import (
@@ -129,6 +134,33 @@ def run_tournament_buy_pipeline(ctx: TradingRunContext) -> None:
             )
             continue
 
+        instrument_ok, instrument_reason = check_instrument_buy_allowed(
+            ticker,
+            ctx.guard_open_symbols,
+            allow_leveraged_etfs=bool(
+                getattr(tournament_settings, "allow_leveraged_etfs", False)
+            ),
+            leveraged_etf_allowlist=list(
+                getattr(tournament_settings, "leveraged_etf_allowlist", [])
+            ),
+            max_leveraged_etf_positions=int(
+                getattr(tournament_settings, "max_leveraged_etf_positions", 1)
+            ),
+            block_leveraged_etfs_vix_above=float(
+                getattr(
+                    tournament_settings,
+                    "block_leveraged_etfs_vix_above",
+                    0.0,
+                )
+            ),
+            vix_df=ctx.vix_df,
+        )
+        if not instrument_ok:
+            ctx.buy_summary_rows.append(
+                f"{ticker}: TOURNAMENT_NOT_ALLOWED {instrument_reason}"
+            )
+            continue
+
         sleeve_cash = float(
             ctx.sleeve_ctx.budget_remaining.get(TOURNAMENT_SLEEVE_ID, 0.0)
         )
@@ -145,6 +177,7 @@ def run_tournament_buy_pipeline(ctx: TradingRunContext) -> None:
             continue
 
         position_pct = float(getattr(tournament_settings, "max_position_pct", 0.35))
+        position_pct = adjust_position_cap_for_instrument(position_pct, ticker)
         target_amount = min(sleeve_cash, portfolio_value * position_pct)
         if target_amount < 10.0:
             ctx.buy_summary_rows.append(
@@ -162,6 +195,19 @@ def run_tournament_buy_pipeline(ctx: TradingRunContext) -> None:
             portfolio_value,
             tournament_settings,
         )
+        leverage_cap = apply_effective_leverage_exposure_limits(
+            ticker=ticker,
+            order_amount=order_amount,
+            portfolio_value=portfolio_value,
+            positions_by_symbol=ctx.positions_by_symbol,
+            settings=ctx.settings,
+        )
+        if not leverage_cap.allowed:
+            ctx.buy_summary_rows.append(
+                f"{ticker}: TOURNAMENT_NOT_ALLOWED {leverage_cap.reason}"
+            )
+            continue
+        order_amount = leverage_cap.target_amount
         if order_amount < 10.0:
             continue
 
@@ -223,6 +269,7 @@ def run_tournament_buy_pipeline(ctx: TradingRunContext) -> None:
             ctx.orders_submitted += 1
             pending_tournament_buys += 1
             ctx.submitted_notional_today += order_amount
+            ctx.guard_open_symbols.add(ticker)
             ctx.sleeve_ctx.consume_submit_budget(
                 order_amount,
                 sleeve_id=TOURNAMENT_SLEEVE_ID,

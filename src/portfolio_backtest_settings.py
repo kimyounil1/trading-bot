@@ -73,4 +73,9 @@ def portfolio_backtest_kwargs(
         "rank_ai_buy_top_k_enabled": getattr(settings, "rank_ai_buy_top_k_enabled", True),
         "max_orders_per_run": settings.max_orders_per_run,
         "operational_settings": settings,
+        "allow_leveraged_etfs": settings.allow_leveraged_etfs,
+        "leveraged_etf_allowlist": list(settings.leveraged_etf_allowlist),
+        "max_leveraged_etf_positions": settings.max_leveraged_etf_positions,
+        "max_effective_leverage_exposure_pct": settings.max_effective_leverage_exposure_pct,
+        "block_leveraged_etfs_vix_above": settings.block_leveraged_etfs_vix_above,
     }

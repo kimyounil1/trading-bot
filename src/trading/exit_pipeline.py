@@ -328,13 +328,31 @@ def run_exit_pipeline(ctx: TradingRunContext) -> None:
                 rebalance_thr = float(getattr(ctx.settings, "rebalance_threshold_pct", 0.20))
                 portfolio_val = float(ctx.account["portfolio_value"])
                 target_weight = float(ctx.settings.max_position_pct)
-                current_weight = float(position["market_value"]) / portfolio_val if portfolio_val > 0 else 0
-    
-                if not exit_decision.should_exit and current_weight > target_weight * (1 + rebalance_thr):
-                    excess_value = float(position["market_value"]) - (portfolio_val * target_weight)
+                position_value = float(position["market_value"])
+                current_weight = position_value / portfolio_val if portfolio_val > 0 else 0
+                gross_limit = portfolio_val * float(
+                    getattr(ctx.settings, "max_gross_exposure_pct", 1.0)
+                )
+                gross_deleverage_active = (
+                    gross_limit > 0
+                    and float(ctx.current_gross_exposure) > gross_limit + 1e-6
+                )
+                gross_target_value = position_value
+                if gross_deleverage_active:
+                    gross_target_value *= gross_limit / float(ctx.current_gross_exposure)
+                target_value = min(portfolio_val * target_weight, gross_target_value)
+                trim_trigger_value = (
+                    target_value
+                    if gross_deleverage_active
+                    else target_value * (1 + rebalance_thr)
+                )
+
+                if not exit_decision.should_exit and position_value > trim_trigger_value:
+                    excess_value = position_value - target_value
                     if excess_value > 50: # 최소 50달러 이상일 때만 리밸런싱
                         trim_qty = round(excess_value / current_price, 4)
-                        print(f"  REBALANCE_TRIM: {ticker} weight {current_weight*100:.1f}% > target {target_weight*100:.1f}%. Trimming {trim_qty}")
+                        trim_reason = "gross deleverage" if gross_deleverage_active else "rebalance trim"
+                        print(f"  REBALANCE_TRIM: {ticker} weight {current_weight*100:.1f}% > target {target_value/portfolio_val*100:.1f}%. Trimming {trim_qty}")
                         if ctx.can_submit_orders:
                             try:
                                 trim_submission = ctx.broker_adapter.submit_sell_qty(
@@ -355,7 +373,7 @@ def run_exit_pipeline(ctx: TradingRunContext) -> None:
                                     ticker=ticker,
                                     action="SELL",
                                     status=trim_submission.status,
-                                    reason=f"rebalance trim (weight={current_weight:.4f})",
+                                    reason=f"{trim_reason} (weight={current_weight:.4f})",
                                     profile_name=ctx.profile_name,
                                     regime=ctx.current_regime,
                                     signal=signal,
@@ -454,12 +472,15 @@ def run_exit_pipeline(ctx: TradingRunContext) -> None:
                 )
     
                 checked_order = ctx.broker_adapter.wait_for_order_status(exit_submission.order_id)
+                checked_order_type = (
+                    checked_order.get("type") or exit_submission.order_type
+                )
                 log_order_status(
                     ticker=ticker,
                     order_id=checked_order["id"],
                     status=checked_order["status"],
                     side=checked_order["side"],
-                    order_type=checked_order["type"],
+                    order_type=checked_order_type,
                     filled_qty=checked_order["filled_qty"],
                     filled_avg_price=checked_order["filled_avg_price"],
                     reason=exit_decision.reason,
@@ -481,7 +502,7 @@ def run_exit_pipeline(ctx: TradingRunContext) -> None:
                     signal=signal,
                     ai_score=ai_score,
                     order_id=str(checked_order["id"]),
-                    order_type=str(checked_order["type"]),
+                    order_type=str(checked_order_type),
                     side=str(checked_order["side"]),
                     filled_qty=checked_order["filled_qty"],
                     filled_avg_price=checked_order["filled_avg_price"],

@@ -33,11 +33,23 @@ def test_leveraged_buy_allowed_when_enabled_and_vix_low():
         "TQQQ",
         set(),
         allow_leveraged_etfs=True,
+        leveraged_etf_allowlist=["TQQQ"],
         max_leveraged_etf_positions=1,
         block_leveraged_etfs_vix_above=28.0,
         vix_df=vix,
     )
     assert allowed is True
+
+
+def test_leveraged_buy_blocked_outside_allowlist():
+    allowed, reason = check_instrument_buy_allowed(
+        "SOXS",
+        set(),
+        allow_leveraged_etfs=True,
+        leveraged_etf_allowlist=["SOXL"],
+    )
+    assert allowed is False
+    assert "allowlist" in reason
 
 
 def test_leveraged_buy_blocked_when_vix_high():
@@ -46,6 +58,7 @@ def test_leveraged_buy_blocked_when_vix_high():
         "SOXL",
         set(),
         allow_leveraged_etfs=True,
+        leveraged_etf_allowlist=["SOXL"],
         block_leveraged_etfs_vix_above=28.0,
         vix_df=vix,
     )

@@ -79,9 +79,9 @@ class StrategySettings(StrategyProfile):
 
     name: str = "default"
     tickers: List[str] = field(default_factory=lambda: ["NVDA", "MSFT", "GOOGL", "AMZN", "AMD"])
-    ma_fast: int = 10
-    ma_slow: int = 50
-    rsi_buy_limit: float = 65.0
+    ma_fast: int = 30
+    ma_slow: int = 200
+    rsi_buy_limit: float = 100.0
     use_ai_score: bool = False
     ai_score_buy_threshold: float = 0.55
     ai_score_calibration_enabled: bool = False
@@ -139,11 +139,16 @@ class StrategySettings(StrategyProfile):
     dynamic_universe_enabled: bool = False
     dynamic_count: int = 50
     allow_leveraged_etfs: bool = False
+    leveraged_etf_allowlist: List[str] = field(default_factory=list)
     max_leveraged_etf_positions: int = 1
     max_effective_leverage_exposure_pct: float = 1.25
     block_leveraged_etfs_vix_above: float = 28.0
     margin_leverage_paper_enabled: bool = False
     margin_leverage_stress_gate_required: bool = True
+    conditional_margin_leverage_enabled: bool = False
+    conditional_margin_leverage_bull_factor: float = 2.0
+    conditional_margin_leverage_defensive_factor: float = 1.0
+    conditional_margin_leverage_vix_max: float = 22.0
     trailing_stop_pct: float = 0.05
     regime_adaptive_stop_enabled: bool = False
     regime_stop_profile: str = "bear_only"  # standard | conservative | bear_only
@@ -165,7 +170,7 @@ class StrategySettings(StrategyProfile):
     rank_ai_buy_gate_min_score_quantile: float = 0.85
     rank_ai_buy_gate_fail_closed: bool = True
     rank_ai_buy_top_k_enabled: bool = True
-    broker_provider: str = "alpaca"  # alpaca | paper (fake) | toss (future)
+    broker_provider: str = "alpaca"  # alpaca | paper (fake) | toss (reads live, orders not wired)
     live_safety_enabled: bool = False
     live_safety_kill_switch_path: str = "data/runtime/KILL_SWITCH"
     live_safety_state_path: str = "data/runtime/live_safety_state.json"
@@ -361,12 +366,34 @@ def validate_settings(settings: StrategySettings) -> StrategySettings:
         raise ValueError("crowding_trend_gap_threshold must be non-negative")
     if settings.dynamic_count <= 0:
         raise ValueError("dynamic_count must be positive")
+    settings.leveraged_etf_allowlist = list(
+        dict.fromkeys(
+            str(ticker).strip().upper()
+            for ticker in settings.leveraged_etf_allowlist
+            if str(ticker).strip()
+        )
+    )
+    if settings.allow_leveraged_etfs and not settings.leveraged_etf_allowlist:
+        raise ValueError(
+            "leveraged_etf_allowlist must not be empty when leveraged ETFs are enabled"
+        )
     if settings.max_leveraged_etf_positions <= 0:
         raise ValueError("max_leveraged_etf_positions must be positive")
     if settings.max_effective_leverage_exposure_pct <= 0:
         raise ValueError("max_effective_leverage_exposure_pct must be positive")
     if settings.block_leveraged_etfs_vix_above < 0:
         raise ValueError("block_leveraged_etfs_vix_above must be non-negative")
+    if settings.conditional_margin_leverage_bull_factor < 1.0:
+        raise ValueError("conditional margin bull factor must be at least 1.0")
+    if settings.conditional_margin_leverage_defensive_factor < 1.0:
+        raise ValueError("conditional margin defensive factor must be at least 1.0")
+    if (
+        settings.conditional_margin_leverage_defensive_factor
+        > settings.conditional_margin_leverage_bull_factor
+    ):
+        raise ValueError("conditional margin defensive factor must not exceed bull factor")
+    if settings.conditional_margin_leverage_vix_max <= 0:
+        raise ValueError("conditional margin VIX maximum must be positive")
     if settings.rebalance_threshold_pct < 0:
         raise ValueError("rebalance_threshold_pct must be non-negative")
     settings.broker_provider = str(settings.broker_provider).strip().lower()

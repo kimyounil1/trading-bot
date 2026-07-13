@@ -132,6 +132,12 @@ def sleeves_enabled(settings: Any) -> bool:
     return bool(getattr(settings, "portfolio_sleeves_enabled", False))
 
 
+def _paper_margin_factor(settings: Any) -> float:
+    if not bool(getattr(settings, "margin_leverage_paper_enabled", False)):
+        return 1.0
+    return max(1.0, float(getattr(settings, "leverage_factor", 1.0)))
+
+
 def load_sleeve_definitions(settings: Any) -> dict[str, SleeveDefinition]:
     if not sleeves_enabled(settings):
         return {}
@@ -247,18 +253,26 @@ class PortfolioSleeveAllocator:
         portfolio_value = float(self.account.get("portfolio_value") or 0.0)
         account_cash = float(self.account.get("cash") or 0.0)
         buying_power = float(self.account.get("buying_power") or account_cash)
+        margin_factor = _paper_margin_factor(self.settings)
         warnings: list[str] = []
 
         if not self.enabled:
             invested = _position_market_value(
                 _meaningful_positions(self.positions, dust_min_usd=self.dust_min_usd)
             )
-            order_budget = max(0.0, min(buying_power, account_cash, portfolio_value - invested))
+            target_notional = portfolio_value * margin_factor
+            if margin_factor > 1.0:
+                order_budget = max(0.0, min(buying_power, target_notional - invested))
+            else:
+                order_budget = max(
+                    0.0,
+                    min(buying_power, account_cash, target_notional - invested),
+                )
             core_budget = SleeveBudget(
                 sleeve_id=CORE_SLEEVE_ID,
                 strategy="current_core",
                 target_weight=1.0,
-                target_notional=portfolio_value,
+                target_notional=target_notional,
                 current_notional=invested,
                 available_cash=max(0.0, account_cash),
                 order_budget=order_budget,
@@ -306,9 +320,35 @@ class PortfolioSleeveAllocator:
         open_core_reserved = reserved_by_sleeve.get(CORE_SLEEVE_ID, 0.0)
         open_tournament_reserved = reserved_by_sleeve.get(TOURNAMENT_SLEEVE_ID, 0.0)
 
+        investable_defs = [
+            definition
+            for definition in enabled_defs
+            if definition.sleeve_id != CASH_SLEEVE_ID
+        ]
+        investable_weight = sum(
+            max(0.0, definition.target_weight) for definition in investable_defs
+        )
+        invested_total = sum(
+            invested_by_sleeve.get(definition.sleeve_id, 0.0)
+            for definition in investable_defs
+        )
+        leveraged_gross_target = portfolio_value * investable_weight * margin_factor
+        leveraged_deploy_capacity = max(
+            0.0,
+            min(
+                buying_power - open_buy_reserved,
+                leveraged_gross_target - invested_total - open_buy_reserved,
+            ),
+        )
+
         sleeves: dict[str, SleeveBudget] = {}
         for definition in enabled_defs:
-            target_notional = portfolio_value * definition.target_weight
+            target_multiplier = (
+                1.0 if definition.sleeve_id == CASH_SLEEVE_ID else margin_factor
+            )
+            target_notional = (
+                portfolio_value * definition.target_weight * target_multiplier
+            )
             current_notional = invested_by_sleeve.get(definition.sleeve_id, 0.0)
             if definition.sleeve_id == CASH_SLEEVE_ID:
                 available_cash = max(0.0, min(account_cash, target_notional))
@@ -316,32 +356,44 @@ class PortfolioSleeveAllocator:
                 rebalance_needed = account_cash < target_notional * 0.95
                 sleeve_reserved = 0.0
             elif definition.sleeve_id == TOURNAMENT_SLEEVE_ID:
-                tradable_cash = max(0.0, account_cash - cash_reserve_target)
-                sleeve_cash_share = tradable_cash * (
-                    definition.target_weight
-                    / max(total_weight - self._cash_weight(enabled_defs), 1e-9)
-                )
                 sleeve_reserved = open_tournament_reserved
-                available_cash = max(0.0, sleeve_cash_share - sleeve_reserved)
                 headroom = max(0.0, target_notional - current_notional - sleeve_reserved)
-                order_budget = max(
-                    0.0,
-                    min(available_cash, headroom, buying_power - cash_reserve_target),
-                )
+                if margin_factor > 1.0:
+                    available_cash = leveraged_deploy_capacity * (
+                        definition.target_weight / max(investable_weight, 1e-9)
+                    )
+                    order_budget = max(0.0, min(available_cash, headroom))
+                else:
+                    tradable_cash = max(0.0, account_cash - cash_reserve_target)
+                    sleeve_cash_share = tradable_cash * (
+                        definition.target_weight
+                        / max(total_weight - self._cash_weight(enabled_defs), 1e-9)
+                    )
+                    available_cash = max(0.0, sleeve_cash_share - sleeve_reserved)
+                    order_budget = max(
+                        0.0,
+                        min(available_cash, headroom, buying_power - cash_reserve_target),
+                    )
                 rebalance_needed = current_notional > target_notional * 1.05
             else:
-                tradable_cash = max(0.0, account_cash - cash_reserve_target)
-                sleeve_cash_share = tradable_cash * (
-                    definition.target_weight
-                    / max(total_weight - self._cash_weight(enabled_defs), 1e-9)
-                )
                 sleeve_reserved = open_core_reserved
-                available_cash = max(0.0, sleeve_cash_share - sleeve_reserved)
                 headroom = max(0.0, target_notional - current_notional - sleeve_reserved)
-                order_budget = max(
-                    0.0,
-                    min(available_cash, headroom, buying_power - cash_reserve_target),
-                )
+                if margin_factor > 1.0:
+                    available_cash = leveraged_deploy_capacity * (
+                        definition.target_weight / max(investable_weight, 1e-9)
+                    )
+                    order_budget = max(0.0, min(available_cash, headroom))
+                else:
+                    tradable_cash = max(0.0, account_cash - cash_reserve_target)
+                    sleeve_cash_share = tradable_cash * (
+                        definition.target_weight
+                        / max(total_weight - self._cash_weight(enabled_defs), 1e-9)
+                    )
+                    available_cash = max(0.0, sleeve_cash_share - sleeve_reserved)
+                    order_budget = max(
+                        0.0,
+                        min(available_cash, headroom, buying_power - cash_reserve_target),
+                    )
                 rebalance_needed = current_notional > target_notional * 1.05
 
             sleeves[definition.sleeve_id] = SleeveBudget(

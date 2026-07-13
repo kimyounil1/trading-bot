@@ -16,6 +16,7 @@ from src.risk_manager import (
     apply_factor_crowding_limits,
     apply_portfolio_exposure_limits,
     check_additional_buy_allowed,
+    check_buy_allowed,
 )
 from src.settings import StrategySettings
 
@@ -146,6 +147,40 @@ class CandidateCacheAndRiskTest(unittest.TestCase):
         self.assertEqual(under_target.target_amount, 500.0)
         self.assertFalse(at_target.allowed)
         self.assertEqual(at_target.reason, "position target allocation reached")
+
+    def test_paper_margin_risk_uses_buying_power_after_cash_is_deployed(self) -> None:
+        settings = StrategySettings(
+            max_position_pct=0.30,
+            max_total_positions=6,
+            stop_loss_pct=0.05,
+            leverage_factor=2.0,
+            max_gross_exposure_pct=2.0,
+            max_effective_leverage_exposure_pct=2.0,
+            margin_leverage_paper_enabled=True,
+        )
+
+        initial = check_buy_allowed(
+            signal="BUY",
+            cash=-100.0,
+            current_positions_count=2,
+            portfolio_value=10_000.0,
+            ticker="AAPL",
+            settings=settings,
+        )
+        exposure = apply_portfolio_exposure_limits(
+            ticker="AAPL",
+            order_amount=300.0,
+            cash=-100.0,
+            portfolio_value=1_000.0,
+            buying_power=1_000.0,
+            current_gross_exposure=1_000.0,
+            settings=settings,
+        )
+
+        self.assertTrue(initial.allowed)
+        self.assertEqual(initial.target_amount, 3_000.0)
+        self.assertTrue(exposure.allowed)
+        self.assertEqual(exposure.target_amount, 300.0)
 
     def test_load_latest_candidate_cache_full_reads_optional_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

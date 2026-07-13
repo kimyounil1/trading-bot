@@ -91,6 +91,9 @@ def apply_shared_buy_guards(
         ticker,
         open_symbols,
         allow_leveraged_etfs=bool(getattr(settings, "allow_leveraged_etfs", False)),
+        leveraged_etf_allowlist=list(
+            getattr(settings, "leveraged_etf_allowlist", [])
+        ),
         max_leveraged_etf_positions=int(getattr(settings, "max_leveraged_etf_positions", 1)),
         block_leveraged_etfs_vix_above=float(
             getattr(settings, "block_leveraged_etfs_vix_above", 0.0)

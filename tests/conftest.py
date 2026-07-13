@@ -10,6 +10,8 @@ import tempfile
 
 def pytest_configure() -> None:
     os.environ.setdefault("TRADING_BOT_SKIP_LLM", "1")
+    # Test runs must never inherit a developer's live Telegram setting.
+    os.environ["TELEGRAM_ENABLED"] = "False"
 
     log_dir = tempfile.mkdtemp(prefix="trading-bot-test-logs-")
     os.environ.setdefault("EXECUTION_AUDIT_LOG_PATH", os.path.join(log_dir, "execution_audit.csv"))

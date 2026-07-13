@@ -12,6 +12,22 @@ from src.settings import StrategySettings
 
 class TestMainE2E(unittest.TestCase):
     def setUp(self):
+        telegram_patcher = patch(
+            "src.notifier.send_telegram_message", return_value=False
+        )
+        telegram_patcher.start()
+        self.addCleanup(telegram_patcher.stop)
+        exit_error_patcher = patch(
+            "src.trading.exit_pipeline.notify_error"
+        )
+        self.exit_error_notify = exit_error_patcher.start()
+        self.addCleanup(exit_error_patcher.stop)
+        buy_error_patcher = patch(
+            "src.trading.buy_pipeline.notify_error"
+        )
+        self.buy_error_notify = buy_error_patcher.start()
+        self.addCleanup(buy_error_patcher.stop)
+
         # Common mock data
         self.settings = StrategySettings(
             tickers=["AAPL"],
@@ -123,7 +139,11 @@ class TestMainE2E(unittest.TestCase):
         mock_load_data.return_value = {"AAPL": pd.DataFrame(), "SPY": pd.DataFrame(), "^VIX": pd.DataFrame()}
         
         # Mock valid BUY signal
-        buy_signal = ("BUY", {"close": 150.0, "ma20": 140.0, "ma50": 130.0, "rsi": 50.0}, 0.8)
+        buy_signal = (
+            "BUY",
+            {"close": 150.0, "ma_fast": 140.0, "ma_slow": 130.0, "rsi": 50.0},
+            0.8,
+        )
         mock_buy_signal.return_value = buy_signal
         mock_exit_signal.return_value = buy_signal
         mock_fresh.return_value = (True, "")
@@ -137,6 +157,8 @@ class TestMainE2E(unittest.TestCase):
         
         main()
         mock_broker.return_value.submit_buy_notional.assert_called_once()
+        self.exit_error_notify.assert_not_called()
+        self.buy_error_notify.assert_not_called()
         print("E2E Buy Flow Verified")
 
     @patch("src.main.parse_args")
@@ -175,7 +197,11 @@ class TestMainE2E(unittest.TestCase):
         mock_fresh.return_value = (True, "")
         
         # Signal is HOLD but time is up
-        hold_signal = ("HOLD", {"close": 100.0}, 0.5)
+        hold_signal = (
+            "HOLD",
+            {"close": 100.0, "ma_fast": 105.0, "ma_slow": 100.0, "rsi": 50.0},
+            0.5,
+        )
         mock_buy_signal.return_value = hold_signal
         mock_exit_signal.return_value = hold_signal
         
@@ -193,6 +219,8 @@ class TestMainE2E(unittest.TestCase):
 
         main()
         mock_broker.return_value.submit_sell_qty.assert_called_once()
+        self.exit_error_notify.assert_not_called()
+        self.buy_error_notify.assert_not_called()
         print("E2E Time-based Exit Verified")
 
     @patch("src.main.parse_args")
@@ -232,7 +260,11 @@ class TestMainE2E(unittest.TestCase):
         mock_broker.return_value = broker
         mock_load_data.return_value = {"AAPL": pd.DataFrame(), "SPY": pd.DataFrame(), "^VIX": pd.DataFrame()}
         mock_fresh.return_value = (True, "")
-        hold_signal = ("HOLD", {"close": 100.0}, 0.5)
+        hold_signal = (
+            "HOLD",
+            {"close": 100.0, "ma_fast": 105.0, "ma_slow": 100.0, "rsi": 50.0},
+            0.5,
+        )
         mock_buy_signal.return_value = hold_signal
         mock_exit_signal.return_value = hold_signal
         mock_load_peaks.return_value = {"AAPL": 110.0}
@@ -249,6 +281,8 @@ class TestMainE2E(unittest.TestCase):
         self.assertEqual(mock_broker.return_value.submit_sell_qty.call_count, 1)
         args, kwargs = mock_broker.return_value.submit_sell_qty.call_args
         self.assertIn("exit_", kwargs["client_order_id"])
+        self.exit_error_notify.assert_not_called()
+        self.buy_error_notify.assert_not_called()
         print("E2E Precedence (Full Exit > Trim) Verified")
 
 if __name__ == "__main__":

@@ -162,6 +162,22 @@ class SettingsTest(unittest.TestCase):
         self.assertTrue(loaded.rank_ai_buy_gate_enabled)
         self.assertEqual(loaded.rank_ai_buy_gate_top_bucket_pct, 0.15)
         self.assertEqual(loaded.rank_ai_buy_gate_min_score_quantile, 0.85)
+        self.assertEqual(loaded.ma_fast, 30)
+        self.assertEqual(loaded.ma_slow, 200)
+        self.assertEqual(loaded.rsi_buy_limit, 100.0)
+        self.assertFalse(loaded.allow_leveraged_etfs)
+        self.assertEqual(loaded.leveraged_etf_allowlist, [])
+        self.assertTrue(loaded.margin_leverage_paper_enabled)
+        self.assertTrue(loaded.conditional_margin_leverage_enabled)
+        self.assertEqual(loaded.conditional_margin_leverage_bull_factor, 2.0)
+        self.assertEqual(loaded.conditional_margin_leverage_defensive_factor, 1.0)
+        self.assertEqual(loaded.conditional_margin_leverage_vix_max, 22.0)
+
+        bull_settings, profile_name = apply_dynamic_profile(loaded, "BULL")
+        self.assertEqual(profile_name, "AGGRESSIVE")
+        self.assertEqual(bull_settings.ma_fast, 30)
+        self.assertEqual(bull_settings.ma_slow, 200)
+        self.assertEqual(bull_settings.rsi_buy_limit, 100.0)
 
     def test_load_settings_rejects_unknown_json_keys(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

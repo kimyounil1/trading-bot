@@ -13,6 +13,7 @@ import json
 from src.broker_adapter import get_broker_adapter
 from src.buy_guards import apply_sector_score_bonus  # noqa: F401
 from src.candidate_cache import get_dynamic_universe
+from src.conditional_margin_leverage import resolve_conditional_margin_leverage
 from src.data_loader import load_price_data_batch
 from src.live_deploy_guard import assert_live_execution_allowed
 from src.live_readiness import assert_live_readiness_for_execute
@@ -285,12 +286,6 @@ def build_trading_run_context(*, execute_orders: bool) -> TradingRunContext:
     except Exception as exc:
         print(f"Warning: open orders unavailable for sleeve allocator: {exc}")
         open_orders_for_sleeves = []
-    sleeve_ctx = init_sleeve_run_context(
-        settings,
-        broker_adapter=broker_adapter,
-        account=account,
-        positions=positions,
-    )
     # 다이내믹 유니버스 적용 (Phase 13)
     original_tickers = list(settings.tickers)
     if getattr(settings, "dynamic_universe_enabled", False):
@@ -397,8 +392,21 @@ def build_trading_run_context(*, execute_orders: bool) -> TradingRunContext:
 
     if getattr(settings, "margin_leverage_paper_enabled", False):
         try:
-            settings = apply_margin_leverage_paper_overrides(settings)
-            print("Margin leverage paper proposal overrides applied.")
+            leverage_decision = resolve_conditional_margin_leverage(
+                settings,
+                spy_df=spy_df,
+                vix_df=vix_df,
+            )
+            settings = apply_margin_leverage_paper_overrides(
+                settings,
+                effective_leverage_factor=leverage_decision.leverage_factor,
+            )
+            print(
+                "Conditional margin leverage: "
+                f"factor={leverage_decision.leverage_factor:.2f}, "
+                f"active={leverage_decision.active}, "
+                f"reason={leverage_decision.reason}"
+            )
         except FileNotFoundError as exc:
             print(f"Warning: margin leverage paper proposal not applied: {exc}")
 
@@ -410,9 +418,21 @@ def build_trading_run_context(*, execute_orders: bool) -> TradingRunContext:
         margin_leverage_stress_gate_required=bool(
             getattr(settings, "margin_leverage_stress_gate_required", True)
         ),
+        conditional_margin_leverage_enabled=bool(
+            getattr(settings, "conditional_margin_leverage_enabled", False)
+        ),
     )
     if margin_leverage_block_active:
         print(f"MARGIN_LEVERAGE_GATE_BLOCK: {margin_leverage_block_reason}")
+
+    # Build sleeve budgets only after the dynamic profile and conditional
+    # leverage factor are known, otherwise the cash-only 1x budget blocks margin.
+    sleeve_ctx = init_sleeve_run_context(
+        settings,
+        broker_adapter=broker_adapter,
+        account=account,
+        positions=positions,
+    )
 
     print(f"Applied Strategy Profile: {profile_name}")
     print(f"  - Max Positions: {settings.max_total_positions}")
