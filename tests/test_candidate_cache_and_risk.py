@@ -293,8 +293,9 @@ class CandidateCacheAndRiskTest(unittest.TestCase):
         self.assertTrue(cash_buffer.allowed)
         self.assertIn("cash buffer", cash_buffer.reason)
         self.assertEqual(cash_buffer.target_amount, 100.0)
-        self.assertFalse(single_name.allowed)
+        self.assertTrue(single_name.allowed)
         self.assertIn("single-name max loss", single_name.reason)
+        self.assertEqual(single_name.target_amount, 200.0)
 
     def test_apply_factor_crowding_limits_blocks_overcrowded_momentum_trade(self) -> None:
         settings = StrategySettings(

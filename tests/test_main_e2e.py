@@ -219,6 +219,9 @@ class TestMainE2E(unittest.TestCase):
 
         main()
         mock_broker.return_value.submit_sell_qty.assert_called_once()
+        self.assertTrue(
+            mock_broker.return_value.submit_sell_qty.call_args.kwargs["close_all"]
+        )
         self.exit_error_notify.assert_not_called()
         self.buy_error_notify.assert_not_called()
         print("E2E Time-based Exit Verified")

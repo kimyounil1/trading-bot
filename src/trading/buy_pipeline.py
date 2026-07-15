@@ -5,6 +5,7 @@ from __future__ import annotations
 from src.buy_guards import apply_sector_score_bonus, apply_shared_buy_guards
 from src.instrument_meta import (
     adjust_position_cap_for_instrument,
+    check_instrument_buy_allowed,
     format_audit_reason,
     get_instrument,
 )
@@ -16,12 +17,17 @@ from src.order_intent import build_buy_intent
 from src.portfolio_optimizer import compute_weights_from_ticker_data
 from src.position_dust import effective_position
 from src.position_sizing import cap_single_order_amount, conviction_adjustments
-from src.rank_ai_gate import apply_rank_ai_buy_gate
+from src.rank_ai_gate import (
+    apply_rank_ai_buy_gate,
+    rank_ai_entry_signal,
+    rank_ai_primary_selector_enabled,
+)
 from src.rank_buy_allocator import (
     SKIP_RANK_TOP_K_REASON,
     apply_rank_top_k_new_buy_selection,
     sort_approved_buys_for_execution,
 )
+from src.rank_quality_risk import evaluate_rank_quality_risk
 from src.risk_manager import (
     apply_buy_safety_limits,
     apply_effective_leverage_exposure_limits,
@@ -38,6 +44,7 @@ from src.trading.bot_helpers import (
     order_is_filled,
 )
 from src.trading.run_context import TradingRunContext
+from src.trading.leveraged_product_routing import resolve_leveraged_product_route
 from src.trading.tournament_buy_pipeline import run_tournament_buy_pipeline
 
 
@@ -93,26 +100,42 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
                 macro_df=ctx.macro_df,
                 market_clock=ctx.market_clock,
             )
+            entry_signal = rank_ai_entry_signal(signal, ctx.settings)
+            quality_risk = evaluate_rank_quality_risk(
+                ctx.ticker_data[ticker],
+                ctx.settings,
+            )
     
             ai_score = apply_sector_score_bonus(ticker, ai_score, ctx.top_sectors)
             conviction = conviction_adjustments(ctx.settings, ai_score)
             if conviction.label != "neutral":
                 print(f"{ticker}: sizing {conviction.label}")
+
+            # Run the expensive broker/data product check only after the
+            # underlying has passed its normal signal and ranking gates.
+            route = resolve_leveraged_product_route(
+                ctx,
+                ticker,
+                signal="HOLD",
+                fallback_price=float(latest["close"]),
+            )
+            execution_ticker = ticker
     
             llm_is_ok = None
             llm_reason = ""
     
             held_position = effective_position(
-                ctx.positions_by_symbol.get(ticker), min_usd=ctx.dust_min_usd
+                ctx.positions_by_symbol.get(execution_ticker),
+                min_usd=ctx.dust_min_usd,
             )
             if held_position is not None:
                 # 13-A: 이미 보유 중인 종목이라도 목표 비중에 미달하면 추가 매수 (Averaging up/down)
                 risk = check_additional_buy_allowed(
-                    signal=signal,
+                    signal=entry_signal,
                     cash=ctx.cash,
                     portfolio_value=float(ctx.account["portfolio_value"]),
                     current_position_value=float(held_position["market_value"]),
-                    ticker=ticker,
+                    ticker=execution_ticker,
                     position_mult=conviction.position_mult,
                     cash_buffer_mult=conviction.cash_buffer_mult,
                     settings=ctx.settings,
@@ -128,11 +151,11 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
                     target_amount = 0.0
             else:
                 risk = check_buy_allowed(
-                    signal=signal,
+                    signal=entry_signal,
                     cash=ctx.cash,
                     current_positions_count=ctx.meaningful_positions_count,
                     portfolio_value=float(ctx.account["portfolio_value"]),
-                    ticker=ticker,
+                    ticker=execution_ticker,
                     position_mult=conviction.position_mult,
                     cash_buffer_mult=conviction.cash_buffer_mult,
                     settings=ctx.settings,
@@ -144,6 +167,7 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
             if (
                 risk_allowed
                 and getattr(ctx.settings, "use_ai_score", False)
+                and not rank_ai_primary_selector_enabled(ctx.settings)
                 and (
                     ai_score is None
                     or ai_score < float(ctx.settings.ai_score_buy_threshold)
@@ -167,6 +191,7 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
                 open_symbols=ctx.guard_open_symbols,
                 ticker_data=ctx.ticker_data,
                 vix_df=ctx.vix_df,
+                instrument_ticker=execution_ticker,
                 macro_risk_active=macro_risk_active,
                 macro_risk_reason=macro_risk_reason,
                 margin_leverage_block_active=ctx.margin_leverage_block_active,
@@ -190,6 +215,120 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
             risk_allowed = rank_gate.risk_allowed
             risk_reason = rank_gate.risk_reason
             target_amount = rank_gate.target_amount
+
+            if risk_allowed:
+                route = resolve_leveraged_product_route(
+                    ctx,
+                    ticker,
+                    signal=entry_signal,
+                    fallback_price=float(latest["close"]),
+                    allow_leveraged=quality_risk.allow_leveraged,
+                )
+                execution_ticker = route.execution_ticker
+                if not route.route_allowed:
+                    risk_allowed = False
+                    risk_reason = route.reason
+                    target_amount = 0.0
+                    print(f"{ticker}: leveraged product routing blocked ({route.reason})")
+                elif route.leveraged:
+                    print(
+                        f"{ticker}: leveraged product route -> {execution_ticker} "
+                        f"({route.reason})"
+                    )
+                    held_position = effective_position(
+                        ctx.positions_by_symbol.get(execution_ticker),
+                        min_usd=ctx.dust_min_usd,
+                    )
+                    if held_position is not None:
+                        product_risk = check_additional_buy_allowed(
+                            signal=entry_signal,
+                            cash=ctx.cash,
+                            portfolio_value=float(ctx.account["portfolio_value"]),
+                            current_position_value=float(held_position["market_value"]),
+                            ticker=execution_ticker,
+                            position_mult=conviction.position_mult,
+                            cash_buffer_mult=conviction.cash_buffer_mult,
+                            settings=ctx.settings,
+                        )
+                    else:
+                        product_risk = check_buy_allowed(
+                            signal=entry_signal,
+                            cash=ctx.cash,
+                            current_positions_count=ctx.meaningful_positions_count,
+                            portfolio_value=float(ctx.account["portfolio_value"]),
+                            ticker=execution_ticker,
+                            position_mult=conviction.position_mult,
+                            cash_buffer_mult=conviction.cash_buffer_mult,
+                            settings=ctx.settings,
+                        )
+                    if not product_risk.allowed:
+                        risk_allowed = False
+                        risk_reason = product_risk.reason
+                        target_amount = 0.0
+                    else:
+                        target_amount = product_risk.target_amount
+                        instrument_ok, instrument_reason = check_instrument_buy_allowed(
+                            execution_ticker,
+                            ctx.guard_open_symbols,
+                            allow_leveraged_etfs=bool(
+                                getattr(ctx.settings, "allow_leveraged_etfs", False)
+                            ),
+                            leveraged_etf_allowlist=list(
+                                getattr(ctx.settings, "leveraged_etf_allowlist", [])
+                            ),
+                            max_leveraged_etf_positions=int(
+                                getattr(ctx.settings, "max_leveraged_etf_positions", 1)
+                            ),
+                            block_leveraged_etfs_vix_above=float(
+                                getattr(
+                                    ctx.settings,
+                                    "block_leveraged_etfs_vix_above",
+                                    0.0,
+                                )
+                            ),
+                            vix_df=ctx.vix_df,
+                        )
+                        if not instrument_ok:
+                            risk_allowed = False
+                            risk_reason = instrument_reason
+                            target_amount = 0.0
+                elif bool(getattr(ctx.settings, "auto_discover_leveraged_products", False)):
+                    print(f"{ticker}: ordinary-stock fallback ({route.reason})")
+
+            equivalent_existing_value = (
+                float(held_position["market_value"])
+                if held_position is not None
+                else 0.0
+            )
+            if risk_allowed and route.leveraged:
+                source_position = effective_position(
+                    ctx.positions_by_symbol.get(ticker),
+                    min_usd=ctx.dust_min_usd,
+                )
+                source_value = (
+                    float(source_position["market_value"])
+                    if source_position is not None
+                    else 0.0
+                )
+                source_equivalent = source_value / get_instrument(
+                    execution_ticker
+                ).abs_multiple
+                equivalent_existing_value += source_equivalent
+                target_amount = max(0.0, target_amount - source_equivalent)
+                if target_amount < 10.0:
+                    risk_allowed = False
+                    risk_reason = "combined underlying/product target allocation reached"
+                    target_amount = 0.0
+
+            if risk_allowed:
+                target_amount *= quality_risk.notional_multiplier
+                if target_amount < 10.0:
+                    risk_allowed = False
+                    risk_reason = (
+                        "rank quality risk reduced order below minimum "
+                        f"({quality_risk.reason})"
+                    )
+                    target_amount = 0.0
     
             if risk_allowed and held_position is None and llm_is_ok is False:
                 llm_advisory_only = bool(getattr(ctx.settings, "llm_advisory_only", True))
@@ -217,7 +356,7 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
     
             if risk_allowed:
                 safety = apply_buy_safety_limits(
-                    ticker=ticker,
+                    ticker=execution_ticker,
                     order_amount=order_amount,
                     submitted_notional_today=ctx.submitted_notional_today,
                     recent_buy_symbols=ctx.recent_buy_symbols,
@@ -230,7 +369,7 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
     
             if risk_allowed:
                 exposure = apply_portfolio_exposure_limits(
-                    ticker=ticker,
+                    ticker=execution_ticker,
                     order_amount=order_amount,
                     cash=float(ctx.cash),
                     portfolio_value=float(ctx.account["portfolio_value"]),
@@ -246,7 +385,7 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
     
             if risk_allowed:
                 leverage_cap = apply_effective_leverage_exposure_limits(
-                    ticker=ticker,
+                    ticker=execution_ticker,
                     order_amount=order_amount,
                     portfolio_value=float(ctx.account["portfolio_value"]),
                     positions_by_symbol=ctx.positions_by_symbol,
@@ -276,11 +415,13 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
             )
     
             print(
-                f"{ticker}: signal={signal}, "
+                f"{ticker}{'->' + execution_ticker if route.leveraged else ''}: signal={signal}, "
+                f"entry_signal={entry_signal}, "
                 f"risk_allowed={risk_allowed}, "
                 f"reason='{risk_reason}', "
                 f"target_amount={target_amount:.2f}, "
                 f"order_amount={order_amount:.2f}, "
+                f"quality='{quality_risk.reason}', "
                 f"ai_score={ai_score}, "
                 f"close={latest['close']:.2f}, "
                 f"rsi={latest['rsi']:.2f}"
@@ -289,7 +430,7 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
             ctx.buy_summary_rows.append(
                 f"{ticker}: signal={signal}, allowed={risk_allowed}, "
                 f"reason={risk_reason}, order=${order_amount:.2f}, "
-                f"ai_score={ai_score}"
+                f"quality={quality_risk.reason}, ai_score={ai_score}"
             )
             if not risk_allowed:
                 ctx.skipped_reasons[f"buy:{risk_reason}"] += 1
@@ -315,21 +456,31 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
     
             if risk_allowed:
                 approved_buys.append({
-                    "ticker": ticker,
+                    "ticker": execution_ticker,
+                    "signal_ticker": ticker,
+                    "route_reason": route.reason,
                     "order_amount": order_amount,
+                    "quality_notional_multiplier": quality_risk.notional_multiplier,
+                    "quality_reason": quality_risk.reason,
+                    "quality_allow_leveraged": quality_risk.allow_leveraged,
+                    "quality_high_drawdown": quality_risk.high_drawdown,
+                    "quality_downtrend": quality_risk.downtrend,
+                    "decision_market_date": quality_risk.market_date,
+                    "route_leveraged": route.leveraged,
                     "ai_score": ai_score,
                     "rank_ai_score": rank_gate.score,
                     "rank_ai_percentile": rank_gate.percentile,
                     "risk_reason": risk_reason,
-                    "signal": signal,
+                    "signal": entry_signal,
                     "llm_verdict": format_llm_verdict(llm_is_ok, llm_reason),
-                    "limit_price": float(latest["close"]),
+                    "limit_price": route.reference_price,
                     "is_new_position": held_position is None,
                     "current_position_value": (
                         float(held_position["market_value"])
                         if held_position is not None
                         else 0.0
                     ),
+                    "equivalent_existing_value": equivalent_existing_value,
                 })
     
         except Exception as exc:
@@ -397,6 +548,7 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
         for candidate in approved_buys:
             t = candidate["ticker"]
             mvo_amount = portfolio_value * mvo_weights.get(t, 1.0 / len(approved_buys))
+            mvo_amount *= float(candidate.get("quality_notional_multiplier", 1.0))
             # Respect individual order cap
             candidate["order_amount"] = cap_single_order_amount(
                 mvo_amount, portfolio_value, ctx.settings
@@ -421,7 +573,7 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
         )
         remaining_cap = max(
             0.0,
-            position_cap - float(candidate.get("current_position_value", 0.0)),
+            position_cap - float(candidate.get("equivalent_existing_value", 0.0)),
         )
         candidate["order_amount"] = min(
             float(candidate["order_amount"]), remaining_cap
@@ -441,6 +593,51 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
         ai_score = candidate["ai_score"]
         signal = candidate["signal"]
         llm_verdict = candidate["llm_verdict"]
+
+        portfolio_value = float(ctx.account["portfolio_value"])
+        plan_budget_before = ctx.sleeve_ctx.core_budget_remaining
+        plan_budget_after = (
+            max(0.0, float(plan_budget_before) - order_amount)
+            if plan_budget_before is not None
+            else None
+        )
+        audit_log(
+            ctx.audit_ctx,
+            event_type="BUY_PLAN",
+            ticker=candidate.get("signal_ticker", ticker),
+            action="BUY",
+            status="PLANNED",
+            reason=(
+                f"{candidate.get('quality_reason', '')}; "
+                f"route={candidate.get('route_reason', '')}"
+            ).strip("; "),
+            profile_name=ctx.profile_name,
+            regime=ctx.current_regime,
+            signal=signal,
+            ai_score=ai_score,
+            rank_ai_score=candidate.get("rank_ai_score"),
+            rank_ai_percentile=candidate.get("rank_ai_percentile"),
+            notional=order_amount,
+            signal_ticker=candidate.get("signal_ticker", ticker),
+            execution_ticker=ticker,
+            decision_market_date=candidate.get("decision_market_date"),
+            quality_notional_multiplier=candidate.get(
+                "quality_notional_multiplier"
+            ),
+            quality_allow_leveraged=candidate.get("quality_allow_leveraged"),
+            quality_high_drawdown=candidate.get("quality_high_drawdown"),
+            quality_downtrend=candidate.get("quality_downtrend"),
+            route_leveraged=candidate.get("route_leveraged"),
+            portfolio_value=portfolio_value,
+            planned_notional_pct=(
+                order_amount / portfolio_value if portfolio_value > 0 else None
+            ),
+            reference_price=candidate.get("limit_price"),
+            **ctx.sleeve_ctx.audit_fields(
+                budget_before=plan_budget_before,
+                budget_after=plan_budget_after,
+            ),
+        )
     
         if ctx.orders_submitted >= ctx.settings.max_orders_per_run:
             print("  SKIP_ORDER: max orders per run reached")
@@ -666,6 +863,7 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
                 notional=order_amount,
                 filled_qty=checked_order["filled_qty"],
                 filled_avg_price=checked_order["filled_avg_price"],
+                reference_price=candidate.get("limit_price"),
             )
     
             if order_is_filled(checked_order["status"]):

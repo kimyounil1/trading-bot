@@ -20,8 +20,12 @@ class _FakeSubmission(SimpleNamespace):
 
 
 class _FakeBroker:
-    def __init__(self) -> None:
+    def __init__(self, *, fractionable: bool = True) -> None:
         self.calls: list[dict] = []
+        self.fractionable = fractionable
+
+    def get_asset_info(self, ticker: str) -> dict:
+        return {"symbol": ticker, "fractionable": self.fractionable}
 
     def submit_sell_qty(
         self,
@@ -32,9 +36,16 @@ class _FakeBroker:
         market_clock,
         slippage_pct: float,
         client_order_id: Optional[str] = None,
+        close_all: bool = False,
     ):
         self.calls.append(
-            {"ticker": ticker, "qty": qty, "limit_price": limit_price}
+            {
+                "ticker": ticker,
+                "qty": qty,
+                "limit_price": limit_price,
+                "client_order_id": client_order_id,
+                "close_all": close_all,
+            }
         )
         return _FakeSubmission(
             order_id="o1", status="FILLED", side="sell", order_type="limit"
@@ -108,6 +119,47 @@ class SleeveRebalanceSellTest(unittest.TestCase):
         self.assertEqual(len(ctx.broker_adapter.calls), 0)
         self.assertEqual(ctx.api_error_count, 0)
         self.assertTrue(any("no current price" in row for row in ctx.exit_summary_rows))
+
+    def test_trim_clamps_to_exact_position_and_uses_full_close(self) -> None:
+        held_qty = 9.921550245
+        ctx = _make_ctx({"PANW": {"qty": held_qty, "current_price": 325.91}})
+        actions = [
+            SleeveRebalanceAction(
+                ticker="PANW",
+                sleeve_id="core",
+                sell_qty=9.9216,
+                reason="trim",
+            )
+        ]
+
+        _execute_sell_actions(ctx, actions, event_prefix="SLEEVE_TRIM")
+
+        self.assertEqual(ctx.broker_adapter.calls[0]["qty"], held_qty)
+        self.assertTrue(ctx.broker_adapter.calls[0]["close_all"])
+
+    def test_duplicate_ticker_actions_are_coalesced(self) -> None:
+        ctx = _make_ctx({"PLUG": {"qty": 755.120535, "current_price": 9.5}})
+        actions = [
+            SleeveRebalanceAction("PLUG", "core", 700.0, "cash raise"),
+            SleeveRebalanceAction("PLUG", "core", 500.0, "core trim"),
+        ]
+
+        _execute_sell_actions(ctx, actions, event_prefix="SLEEVE_TRIM")
+
+        self.assertEqual(len(ctx.broker_adapter.calls), 1)
+        self.assertEqual(ctx.broker_adapter.calls[0]["qty"], 700.0)
+
+    def test_nonfractionable_partial_trim_rounds_down_to_whole_share(self) -> None:
+        ctx = _make_ctx({"PLUL": {"qty": 762.0, "current_price": 8.94}})
+        ctx.broker_adapter = _FakeBroker(fractionable=False)
+        actions = [
+            SleeveRebalanceAction("PLUL", "core", 100.75, "cash raise")
+        ]
+
+        _execute_sell_actions(ctx, actions, event_prefix="SLEEVE_TRIM")
+
+        self.assertEqual(ctx.broker_adapter.calls[0]["qty"], 100.0)
+        self.assertFalse(ctx.broker_adapter.calls[0]["close_all"])
 
 
 if __name__ == "__main__":

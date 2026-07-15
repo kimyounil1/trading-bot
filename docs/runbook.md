@@ -211,7 +211,15 @@ print(len(s.tickers), 'tickers cached')
   ```
   타이머 일괄 설치: `bash scripts/install_ops_report_timers.sh`  
   일일 paper (rank tracker): `bash scripts/install_paper_daily_timer.sh`  
+  paper/backtest 진입 동등성: `bash scripts/install_daily_paper_backtest_parity_timer.sh`
   (슬리피지 주간 타이머는 별도: `bash scripts/install_slippage_report_timer.sh`)
+- **일일 paper/backtest 동등성** (평일 23:30 ET, paper ops 완료 후):
+  ```bash
+  bash scripts/run_daily_paper_backtest_parity.sh
+  bash scripts/install_daily_paper_backtest_parity_timer.sh
+  systemctl --user enable --now trading-bot-paper-backtest-parity.timer
+  ```
+  `BUY_PLAN`의 Rank 점수·원종목/주문종목·품질 배율·레버리지 허용·주문 비중을 `portfolio_entries.csv`와 비교한다. 체결률과 기준가 대비 매수 슬리피지, 최근 주문 오류도 함께 집계하며 이상이 있을 때만 Telegram 오류 알림을 보낸다. 최신 캐시가 부분 갱신 중이면 기본 유니버스 80% 이상이 완성된 마지막 시장일까지 자동으로 잘라 비교한다. 산출물: `logs/paper_backtest_parity/latest_summary.json`, `latest_comparison.csv`.
 - **일간**: Telegram 요약 + audit JSON
   ```bash
   bash scripts/run_daily_audit_summary.sh

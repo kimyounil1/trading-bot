@@ -7,6 +7,8 @@ from src.instrument_meta import (
     check_instrument_buy_allowed,
 )
 from src.order_intent import build_buy_intent
+from src.rank_ai_gate import rank_ai_entry_signal
+from src.rank_quality_risk import evaluate_rank_quality_risk
 from src.portfolio_sleeves import TOURNAMENT_SLEEVE_ID, load_sleeve_definitions
 from src.position_dust import effective_position
 from src.position_sizing import cap_single_order_amount
@@ -22,6 +24,7 @@ from src.trading.bot_helpers import (
     order_is_filled,
 )
 from src.trading.run_context import TradingRunContext
+from src.trading.leveraged_product_routing import resolve_leveraged_product_route
 from src.trading_config_guard import load_named_profile_overlay
 
 
@@ -39,6 +42,14 @@ def _tournament_open_position_count(ctx: TradingRunContext) -> int:
         if effective_position(position, min_usd=ctx.dust_min_usd):
             count += 1
     return count
+
+
+def _rank_audit_fields(payload) -> tuple[float | None, float | None]:
+    if payload is None:
+        return None, None
+    if isinstance(payload, dict):
+        return payload.get("score"), payload.get("percentile")
+    return getattr(payload, "score", None), getattr(payload, "percentile", None)
 
 
 def run_tournament_buy_pipeline(ctx: TradingRunContext) -> None:
@@ -128,14 +139,46 @@ def run_tournament_buy_pipeline(ctx: TradingRunContext) -> None:
             ctx.buy_summary_rows.append(f"{ticker}: TOURNAMENT_ERROR {exc}")
             continue
 
-        if signal != "BUY":
+        entry_signal = rank_ai_entry_signal(signal, tournament_settings)
+        if entry_signal != "BUY":
             ctx.buy_summary_rows.append(
                 f"{ticker}: TOURNAMENT_SKIP signal={signal} alpha={alpha.alpha_score:.3f}"
             )
             continue
 
-        instrument_ok, instrument_reason = check_instrument_buy_allowed(
+        quality_risk = evaluate_rank_quality_risk(
+            ctx.ticker_data[ticker],
+            tournament_settings,
+        )
+
+        route = resolve_leveraged_product_route(
+            ctx,
             ticker,
+            signal=entry_signal,
+            fallback_price=float(latest["close"]),
+            allow_leveraged=quality_risk.allow_leveraged,
+        )
+        if not route.route_allowed:
+            ctx.buy_summary_rows.append(
+                f"{ticker}: TOURNAMENT_NOT_ALLOWED {route.reason}"
+            )
+            continue
+        execution_ticker = route.execution_ticker
+        if effective_position(
+            ctx.positions_by_symbol.get(execution_ticker),
+            min_usd=ctx.dust_min_usd,
+        ):
+            continue
+        if route.leveraged:
+            print(
+                f"{ticker}: tournament leveraged product route -> "
+                f"{execution_ticker}"
+            )
+        elif bool(getattr(ctx.settings, "auto_discover_leveraged_products", False)):
+            print(f"{ticker}: tournament ordinary-stock fallback ({route.reason})")
+
+        instrument_ok, instrument_reason = check_instrument_buy_allowed(
+            execution_ticker,
             ctx.guard_open_symbols,
             allow_leveraged_etfs=bool(
                 getattr(tournament_settings, "allow_leveraged_etfs", False)
@@ -177,11 +220,16 @@ def run_tournament_buy_pipeline(ctx: TradingRunContext) -> None:
             continue
 
         position_pct = float(getattr(tournament_settings, "max_position_pct", 0.35))
-        position_pct = adjust_position_cap_for_instrument(position_pct, ticker)
+        position_pct = adjust_position_cap_for_instrument(
+            position_pct,
+            execution_ticker,
+        )
         target_amount = min(sleeve_cash, portfolio_value * position_pct)
+        target_amount *= quality_risk.notional_multiplier
         if target_amount < 10.0:
             ctx.buy_summary_rows.append(
-                f"{ticker}: TOURNAMENT_NOT_ALLOWED target amount below minimum"
+                f"{ticker}: TOURNAMENT_NOT_ALLOWED target amount below minimum "
+                f"({quality_risk.reason})"
             )
             continue
 
@@ -196,7 +244,7 @@ def run_tournament_buy_pipeline(ctx: TradingRunContext) -> None:
             tournament_settings,
         )
         leverage_cap = apply_effective_leverage_exposure_limits(
-            ticker=ticker,
+            ticker=execution_ticker,
             order_amount=order_amount,
             portfolio_value=portfolio_value,
             positions_by_symbol=ctx.positions_by_symbol,
@@ -221,6 +269,51 @@ def run_tournament_buy_pipeline(ctx: TradingRunContext) -> None:
         if order_amount < 10.0:
             continue
 
+        rank_score, rank_percentile = _rank_audit_fields(
+            ctx.rank_ai_gate_scores.get(ticker)
+        )
+        plan_budget_before = ctx.sleeve_ctx.budget_remaining.get(
+            TOURNAMENT_SLEEVE_ID
+        )
+        plan_budget_after = (
+            max(0.0, float(plan_budget_before) - order_amount)
+            if plan_budget_before is not None
+            else None
+        )
+        audit_log(
+            ctx.audit_ctx,
+            event_type="BUY_PLAN",
+            ticker=ticker,
+            action="BUY",
+            status="PLANNED",
+            reason=f"{quality_risk.reason}; {route.reason}",
+            profile_name=ctx.profile_name,
+            regime=ctx.current_regime,
+            signal=entry_signal,
+            ai_score=ai_score,
+            rank_ai_score=rank_score,
+            rank_ai_percentile=rank_percentile,
+            notional=order_amount,
+            signal_ticker=ticker,
+            execution_ticker=execution_ticker,
+            decision_market_date=quality_risk.market_date,
+            quality_notional_multiplier=quality_risk.notional_multiplier,
+            quality_allow_leveraged=quality_risk.allow_leveraged,
+            quality_high_drawdown=quality_risk.high_drawdown,
+            quality_downtrend=quality_risk.downtrend,
+            route_leveraged=route.leveraged,
+            portfolio_value=portfolio_value,
+            planned_notional_pct=(
+                order_amount / portfolio_value if portfolio_value > 0 else None
+            ),
+            reference_price=route.reference_price,
+            **ctx.sleeve_ctx.audit_fields(
+                sleeve_id=TOURNAMENT_SLEEVE_ID,
+                budget_before=plan_budget_before,
+                budget_after=plan_budget_after,
+            ),
+        )
+
         submit_ok, submit_reason = ctx.sleeve_ctx.check_submit_budget(
             order_amount,
             sleeve_id=TOURNAMENT_SLEEVE_ID,
@@ -236,19 +329,16 @@ def run_tournament_buy_pipeline(ctx: TradingRunContext) -> None:
             )
             continue
 
-        limit_price = execution_reference_price(
-            latest.to_dict() if hasattr(latest, "to_dict") else None,
-            fallback=float(latest["close"]),
-        )
+        limit_price = route.reference_price
         budget_before = ctx.sleeve_ctx.budget_remaining.get(TOURNAMENT_SLEEVE_ID)
         buy_intent = build_buy_intent(
             run_id=ctx.run_id,
-            ticker=ticker,
+            ticker=execution_ticker,
             notional=order_amount,
-            signal=signal,
+            signal=entry_signal,
             ai_score=ai_score,
             risk_reason=alpha.reason,
-            client_order_id=f"tour_{ctx.run_id}_{ticker}",
+            client_order_id=f"tour_{ctx.run_id}_{execution_ticker}",
             **ctx.sleeve_ctx.buy_intent_sleeve_kwargs(
                 order_amount,
                 sleeve_id=TOURNAMENT_SLEEVE_ID,
@@ -258,7 +348,7 @@ def run_tournament_buy_pipeline(ctx: TradingRunContext) -> None:
 
         try:
             submission = ctx.broker_adapter.submit_buy_notional(
-                ticker=ticker,
+                ticker=execution_ticker,
                 notional=order_amount,
                 limit_price=limit_price,
                 market_clock=ctx.market_clock,
@@ -269,7 +359,7 @@ def run_tournament_buy_pipeline(ctx: TradingRunContext) -> None:
             ctx.orders_submitted += 1
             pending_tournament_buys += 1
             ctx.submitted_notional_today += order_amount
-            ctx.guard_open_symbols.add(ticker)
+            ctx.guard_open_symbols.add(execution_ticker)
             ctx.sleeve_ctx.consume_submit_budget(
                 order_amount,
                 sleeve_id=TOURNAMENT_SLEEVE_ID,
@@ -277,13 +367,13 @@ def run_tournament_buy_pipeline(ctx: TradingRunContext) -> None:
             audit_log(
                 ctx.audit_ctx,
                 event_type="BUY_SUBMITTED",
-                ticker=ticker,
+                ticker=execution_ticker,
                 action="BUY",
                 status=submission.status,
                 reason=alpha.reason,
                 profile_name=ctx.profile_name,
                 regime=ctx.current_regime,
-                signal=signal,
+                signal=entry_signal,
                 ai_score=ai_score,
                 order_id=submission.order_id,
                 notional=order_amount,
@@ -295,16 +385,42 @@ def run_tournament_buy_pipeline(ctx: TradingRunContext) -> None:
                 ),
             )
             checked = ctx.broker_adapter.wait_for_order_status(submission.order_id)
+            audit_log(
+                ctx.audit_ctx,
+                event_type="BUY_STATUS",
+                ticker=execution_ticker,
+                action="BUY",
+                status=str(checked["status"]),
+                reason=alpha.reason,
+                profile_name=ctx.profile_name,
+                regime=ctx.current_regime,
+                signal=entry_signal,
+                ai_score=ai_score,
+                order_id=str(checked["id"]),
+                order_type=str(checked["type"]),
+                side=str(checked["side"]),
+                notional=order_amount,
+                filled_qty=checked["filled_qty"],
+                filled_avg_price=checked["filled_avg_price"],
+                reference_price=route.reference_price,
+                **ctx.sleeve_ctx.audit_fields(
+                    sleeve_id=TOURNAMENT_SLEEVE_ID,
+                ),
+            )
             if order_is_filled(checked["status"]):
-                ctx.sleeve_ctx.record_fill(ticker, sleeve_id=TOURNAMENT_SLEEVE_ID)
+                ctx.sleeve_ctx.record_fill(
+                    execution_ticker,
+                    sleeve_id=TOURNAMENT_SLEEVE_ID,
+                )
                 filled = filled_notional(checked, order_amount)
                 if filled > 0:
                     ctx.cash -= filled
                     ctx.current_gross_exposure += filled
-                    ctx.guard_open_symbols.add(ticker)
-                    ctx.open_symbols.add(ticker)
+                    ctx.guard_open_symbols.add(execution_ticker)
+                    ctx.open_symbols.add(execution_ticker)
             ctx.buy_summary_rows.append(
-                f"{ticker}: TOURNAMENT_BUY status={checked['status']} "
+                f"{ticker}->{execution_ticker}: TOURNAMENT_BUY "
+                f"status={checked['status']} "
                 f"alpha={alpha.alpha_score:.3f} notional=${order_amount:.2f}"
             )
         except Exception as exc:

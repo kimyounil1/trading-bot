@@ -1,0 +1,129 @@
+{
+  "generated_at": "2026-07-15T06:38:12Z",
+  "audit_path": "logs/execution_audit.csv",
+  "lookback_days": 90,
+  "horizons_trading_days": [
+    5,
+    10,
+    20
+  ],
+  "blocked": {
+    "events": 197,
+    "priced_events": 197,
+    "h5": {
+      "n": 112,
+      "mean_pct": 0.647,
+      "median_pct": 0.657,
+      "win_rate_pct": 56.2,
+      "mean_excess_spy_pct": 0.73
+    },
+    "h10": {
+      "n": 83,
+      "mean_pct": 1.008,
+      "median_pct": 0.859,
+      "win_rate_pct": 61.4,
+      "mean_excess_spy_pct": 0.768
+    },
+    "h20": {
+      "n": 22,
+      "mean_pct": 0.105,
+      "median_pct": 1.516,
+      "win_rate_pct": 54.5,
+      "mean_excess_spy_pct": -1.282
+    },
+    "to_latest": {
+      "n": 177,
+      "mean_pct": 0.671,
+      "median_pct": 0.248,
+      "win_rate_pct": 53.7,
+      "mean_excess_spy_pct": -0.107
+    }
+  },
+  "submitted": {
+    "events": 58,
+    "priced_events": 58,
+    "h5": {
+      "n": 27,
+      "mean_pct": 2.223,
+      "median_pct": 1.061,
+      "win_rate_pct": 51.9,
+      "mean_excess_spy_pct": 1.572
+    },
+    "h10": {
+      "n": 13,
+      "mean_pct": 6.494,
+      "median_pct": 11.175,
+      "win_rate_pct": 76.9,
+      "mean_excess_spy_pct": 4.668
+    },
+    "h20": {
+      "n": 0,
+      "mean_pct": null,
+      "median_pct": null,
+      "win_rate_pct": null,
+      "mean_excess_spy_pct": null
+    },
+    "to_latest": {
+      "n": 44,
+      "mean_pct": -0.182,
+      "median_pct": 0.113,
+      "win_rate_pct": 52.3,
+      "mean_excess_spy_pct": -1.037
+    }
+  },
+  "diff": {
+    "h5": {
+      "submitted_minus_blocked_mean_pct": 1.575,
+      "welch_t": 0.79
+    },
+    "h10": {
+      "submitted_minus_blocked_mean_pct": 5.486,
+      "welch_t": 1.8
+    },
+    "to_latest": {
+      "submitted_minus_blocked_mean_pct": -0.854,
+      "welch_t": -0.6
+    }
+  },
+  "diff_ticker_clustered": {
+    "h5": {
+      "submitted_n_tickers": 13,
+      "submitted_mean_pct": 0.768,
+      "blocked_n_tickers": 49,
+      "blocked_mean_pct": 0.778,
+      "diff_pct": -0.01,
+      "welch_t": -0.0
+    },
+    "h10": {
+      "submitted_n_tickers": 7,
+      "submitted_mean_pct": 2.575,
+      "blocked_n_tickers": 39,
+      "blocked_mean_pct": 0.728,
+      "diff_pct": 1.848,
+      "welch_t": 0.45
+    },
+    "to_latest": {
+      "submitted_n_tickers": 19,
+      "submitted_mean_pct": -0.263,
+      "blocked_n_tickers": 63,
+      "blocked_mean_pct": 0.713,
+      "diff_pct": -0.976,
+      "welch_t": -0.41
+    }
+  },
+  "blocked_category_counts": {
+    "Guidance": 159,
+    "Other": 122,
+    "Financials": 64,
+    "Lawsuit": 31,
+    "Fraud": 5,
+    "unparsed": 3,
+    "Product": 1
+  },
+  "notes": [
+    "Cohorts: paper env, TEST_PROFILE excluded; one event per (ticker, ET date).",
+    "Entry = first cached close on/after event ET date; equal-weighted close-to-close returns.",
+    "Positive diff (submitted - blocked) means the LLM gate added value at that horizon.",
+    "Repeated daily blocks of the same ticker are serially correlated — treat t-stats as optimistic."
+  ]
+}

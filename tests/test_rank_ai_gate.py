@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from src.rank_ai_gate import (
     RankAIGateScore,
     apply_rank_ai_buy_gate,
+    rank_ai_entry_signal,
     rank_ai_gate_effective_cutoff,
 )
 
@@ -29,6 +30,17 @@ def test_rank_ai_gate_effective_cutoff_uses_top_bucket_and_score_quantile():
         rank_ai_buy_gate_top_bucket_pct=0.20,
     )
     assert rank_ai_gate_effective_cutoff(settings_loose_bucket) == 0.85
+
+
+def test_rank_primary_selector_replaces_conventional_entry_signal():
+    settings = _settings(rank_ai_primary_selector_enabled=True)
+
+    assert rank_ai_entry_signal("HOLD", settings) == "BUY"
+    assert rank_ai_entry_signal("SELL", settings) == "BUY"
+    assert rank_ai_entry_signal(
+        "HOLD",
+        _settings(rank_ai_primary_selector_enabled=False),
+    ) == "HOLD"
 
 
 def test_apply_rank_ai_buy_gate_blocks_below_cutoff():

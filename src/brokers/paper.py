@@ -233,6 +233,7 @@ class PaperBrokerAdapter(BrokerAdapter):
         market_clock: MarketClock,
         slippage_pct: float,
         client_order_id: Optional[str] = None,
+        close_all: bool = False,
     ) -> OrderSubmission:
         if self.fail_submit:
             raise ConnectionError("paper broker submit failure (test)")
@@ -253,7 +254,7 @@ class PaperBrokerAdapter(BrokerAdapter):
         pos = self.positions.get(symbol)
         if pos is None or qty <= 0:
             raise ValueError(f"No position to sell for {ticker}")
-        sell_qty = min(qty, pos.qty)
+        sell_qty = pos.qty if close_all else min(qty, pos.qty)
         price = self._price(ticker, limit_price)
         pos.qty -= sell_qty
         if pos.qty <= 1e-9:

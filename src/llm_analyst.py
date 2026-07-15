@@ -211,8 +211,21 @@ def _generate_gemini_text(prompt: str, *, model: str | None = None) -> str:
     return _call_with_retry(_call)
 
 
-def _generate_llm_text_with_provider(prompt: str, *, model: str | None = None) -> Tuple[str, str]:
-    """Return (text, provider) where provider is 'gemini' or 'vllm'."""
+def _generate_llm_text_with_provider(
+    prompt: str,
+    *,
+    model: str | None = None,
+    force_provider: str | None = None,
+) -> Tuple[str, str]:
+    """Return (text, provider) where provider is 'gemini' or 'vllm'.
+
+    force_provider: 'gemini' or 'vllm' skips auto/fallback routing (batch jobs).
+    """
+    if force_provider == "vllm":
+        return generate_vllm_text(prompt, model=model), "vllm"
+    if force_provider == "gemini":
+        return _generate_gemini_text(prompt, model=model), "gemini"
+
     gemini_error: BaseException | None = None
     if _resolve_api_key():
         try:

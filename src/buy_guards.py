@@ -51,6 +51,7 @@ def apply_shared_buy_guards(
     open_symbols: set[str],
     ticker_data: dict[str, pd.DataFrame],
     vix_df: pd.DataFrame | None,
+    instrument_ticker: str | None = None,
     macro_risk_active: bool = False,
     macro_risk_reason: str = "",
     margin_leverage_block_active: bool = False,
@@ -88,7 +89,7 @@ def apply_shared_buy_guards(
         return BuyGuardResult(False, sector_reason, 0.0, llm_is_ok, llm_reason)
 
     inst_ok, inst_reason = check_instrument_buy_allowed(
-        ticker,
+        instrument_ticker or ticker,
         open_symbols,
         allow_leveraged_etfs=bool(getattr(settings, "allow_leveraged_etfs", False)),
         leveraged_etf_allowlist=list(

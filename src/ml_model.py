@@ -14,7 +14,7 @@ from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score, brier_score_loss, precision_score, recall_score, roc_auc_score
 from sklearn.model_selection import TimeSeriesSplit
 
-from src.features import FEATURE_COLUMNS, build_features
+from src.features import FEATURE_COLUMNS, build_features, build_inference_features
 from src.market_regime import compute_daily_regime, get_current_regime
 from src.ai_score_calibration import calibrate_ai_score
 from src.settings import load_settings
@@ -86,7 +86,7 @@ class RegimeAwareModelWrapper(BaseModel):
         spy_df: pd.DataFrame | None = None,
         macro_df: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
-        return build_features(
+        return build_inference_features(
             df,
             prediction_horizon=self.prediction_horizon,
             target_return_threshold=self.target_return_threshold,
@@ -94,6 +94,25 @@ class RegimeAwareModelWrapper(BaseModel):
             spy_df=spy_df,
             macro_df=macro_df,
         )
+
+    def _feature_regimes(
+        self,
+        feature_df: pd.DataFrame,
+        spy_df: pd.DataFrame | None,
+        vix_df: pd.DataFrame | None,
+    ) -> pd.Series:
+        """Return the market regime known on each feature row's date."""
+        if spy_df is None or vix_df is None:
+            return pd.Series("NEUTRAL", index=feature_df.index, dtype="object")
+        regimes = compute_daily_regime(spy_df, vix_df)
+        if regimes.empty:
+            return pd.Series("NEUTRAL", index=feature_df.index, dtype="object")
+        regimes = regimes.copy()
+        regimes.index = pd.to_datetime(regimes.index, errors="coerce")
+        regimes = regimes[~regimes.index.isna()].sort_index()
+        dates = pd.to_datetime(feature_df["date"], errors="coerce")
+        aligned = regimes.reindex(pd.DatetimeIndex(dates), method="ffill")
+        return pd.Series(aligned.fillna("NEUTRAL").to_numpy(), index=feature_df.index)
 
     def _get_model_for_regime(self, spy_df, vix_df):
         regime = get_current_regime(spy_df, vix_df)
@@ -108,17 +127,17 @@ class RegimeAwareModelWrapper(BaseModel):
         macro_df: pd.DataFrame | None = None,
     ) -> pd.Series:
         feature_df = self._prepare_features(df, vix_df=vix_df, spy_df=spy_df, macro_df=macro_df)
-        model = self._get_model_for_regime(spy_df, vix_df)
-        
         available_cols = [c for c in self.feature_columns if c in feature_df.columns]
         X = feature_df[available_cols]
-        
-        # SoftVotingEnsemble 또는 일반 모델 호환성 유지
-        if hasattr(model, "predict_proba"):
-            proba = model.predict_proba(X)
-            return pd.Series(proba[:, 1], index=feature_df.index)
-        
-        return pd.Series([0.5] * len(X), index=feature_df.index)
+        regimes = self._feature_regimes(feature_df, spy_df, vix_df)
+        output = pd.Series(0.5, index=feature_df.index, dtype=float)
+        for regime, row_index in regimes.groupby(regimes).groups.items():
+            model = self.models.get(str(regime), self.models.get("NEUTRAL"))
+            if model is None or not hasattr(model, "predict_proba"):
+                continue
+            proba = model.predict_proba(X.loc[row_index])
+            output.loc[row_index] = proba[:, 1]
+        return output
 
     def predict(
         self,
@@ -128,12 +147,16 @@ class RegimeAwareModelWrapper(BaseModel):
         macro_df: pd.DataFrame | None = None,
     ) -> pd.Series:
         feature_df = self._prepare_features(df, vix_df=vix_df, spy_df=spy_df, macro_df=macro_df)
-        model = self._get_model_for_regime(spy_df, vix_df)
-        
         available_cols = [c for c in self.feature_columns if c in feature_df.columns]
         X = feature_df[available_cols]
-        pred = model.predict(X)
-        return pd.Series(pred, index=feature_df.index)
+        regimes = self._feature_regimes(feature_df, spy_df, vix_df)
+        output = pd.Series(0, index=feature_df.index, dtype=int)
+        for regime, row_index in regimes.groupby(regimes).groups.items():
+            model = self.models.get(str(regime), self.models.get("NEUTRAL"))
+            if model is None:
+                continue
+            output.loc[row_index] = model.predict(X.loc[row_index])
+        return output
 
 
 def _utc_now_iso() -> str:

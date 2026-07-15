@@ -9,7 +9,7 @@ from typing import Any
 import joblib
 import pandas as pd
 
-from src.features import FEATURE_COLUMNS, build_features
+from src.features import FEATURE_COLUMNS, MAX_FEATURE_LOOKBACK, build_inference_features
 
 
 @dataclass(frozen=True)
@@ -32,6 +32,21 @@ class RankAIGateDecision:
 
 def _rank_gate_enabled(settings: Any) -> bool:
     return bool(getattr(settings, "rank_ai_buy_gate_enabled", False))
+
+
+def rank_ai_primary_selector_enabled(settings: Any) -> bool:
+    """Return whether Rank AI replaces conventional entry direction filters."""
+    return bool(
+        _rank_gate_enabled(settings)
+        and getattr(settings, "rank_ai_primary_selector_enabled", False)
+    )
+
+
+def rank_ai_entry_signal(signal: str, settings: Any) -> str:
+    """Use BUY for risk sizing when the fail-closed Rank gate owns selection."""
+    if rank_ai_primary_selector_enabled(settings):
+        return "BUY"
+    return str(signal).upper()
 
 
 def rank_ai_gate_effective_cutoff(settings: Any, config: dict | None = None) -> float:
@@ -85,30 +100,15 @@ def _build_latest_inference_features(
 
     if df.empty:
         raise ValueError("empty price frame")
-    working = df.copy().sort_values("date").reset_index(drop=True)
-    last = working.iloc[-1].copy()
-    last_date = pd.to_datetime(last["date"])
-    synthetic_rows = []
-    for offset in range(1, prediction_horizon + 1):
-        row = last.copy()
-        row["date"] = last_date + pd.Timedelta(days=offset)
-        synthetic_rows.append(row)
-    if synthetic_rows:
-        working = pd.concat([working, pd.DataFrame(synthetic_rows)], ignore_index=True)
-
-    features = build_features(
-        working,
+    features = build_inference_features(
+        df,
         prediction_horizon=prediction_horizon,
         target_return_threshold=0.0,
         vix_df=vix_df,
         spy_df=spy_df,
         macro_df=macro_df,
     )
-    original_last_date = pd.to_datetime(df["date"]).max()
-    latest_features = features[pd.to_datetime(features["date"]) <= original_last_date]
-    if latest_features.empty:
-        raise ValueError("no current inference feature row")
-    return latest_features.tail(1)
+    return features.tail(1)
 
 
 def build_rank_ai_gate_scores(
@@ -187,6 +187,143 @@ def build_rank_ai_gate_scores(
             reason=reason,
         )
     return scores
+
+
+def build_rank_ai_gate_score_history(
+    ticker_data: dict[str, pd.DataFrame],
+    settings: Any,
+    *,
+    vix_df: pd.DataFrame | None = None,
+    spy_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
+    historical_universe_by_date: dict[Any, list[str]] | None = None,
+    base_universe: set[str] | list[str] | None = None,
+) -> dict[pd.Timestamp, dict[str, RankAIGateScore]]:
+    """Precompute causal daily rank scores for point-in-time backtests.
+
+    Every feature row uses only data available through that row's date. Ranking
+    is then performed cross-sectionally within each date, matching repeated
+    calls to :func:`build_rank_ai_gate_scores` without reloading the model and
+    rebuilding the full feature history on every simulated trading day.
+    """
+    if not _rank_gate_enabled(settings):
+        return {}
+
+    path = _model_path(settings)
+    if not path.is_file():
+        if bool(getattr(settings, "rank_ai_buy_gate_fail_closed", True)):
+            raise FileNotFoundError(f"rank AI gate model not found: {path}")
+        return {}
+
+    bundle = joblib.load(path)
+    classifier = bundle["classifier"]
+    regressor = bundle["regressor"]
+    config = bundle.get("config") or {}
+    horizon = int(
+        getattr(
+            settings,
+            "rank_ai_buy_gate_prediction_horizon",
+            config.get("prediction_horizon", 20),
+        )
+    )
+    minimum_observations = MAX_FEATURE_LOOKBACK + horizon
+    records: list[pd.DataFrame] = []
+
+    for ticker, frame in ticker_data.items():
+        symbol = str(ticker).upper()
+        if symbol.startswith("^") or symbol == "SPY" or frame is None or frame.empty:
+            continue
+        try:
+            ordered = frame.copy()
+            ordered["date"] = pd.to_datetime(ordered["date"])
+            ordered = ordered.sort_values("date").drop_duplicates("date", keep="last")
+            if len(ordered) < minimum_observations:
+                continue
+            feature_frame = build_inference_features(
+                ordered,
+                prediction_horizon=horizon,
+                target_return_threshold=0.0,
+                vix_df=vix_df,
+                spy_df=spy_df,
+                macro_df=macro_df,
+            )
+            feature_frame = feature_frame[
+                pd.to_datetime(feature_frame["date"])
+                >= pd.Timestamp(ordered.iloc[minimum_observations - 1]["date"])
+            ].copy()
+            if feature_frame.empty:
+                continue
+            x = feature_frame[FEATURE_COLUMNS]
+            clf_score = classifier.predict_proba(x)[:, 1]
+            reg_score = pd.Series(regressor.predict(x), index=feature_frame.index).clip(0.0, 1.0)
+            scored = feature_frame[["date"]].copy()
+            scored["ticker"] = symbol
+            scored["score"] = (clf_score + reg_score.to_numpy()) / 2.0
+            records.append(scored)
+        except Exception:
+            continue
+
+    if not records:
+        if bool(getattr(settings, "rank_ai_buy_gate_fail_closed", True)):
+            raise ValueError("rank AI gate produced no historical scores")
+        return {}
+
+    score_df = pd.concat(records, ignore_index=True)
+    score_df["date"] = pd.to_datetime(score_df["date"])
+    if historical_universe_by_date:
+        snapshots = {
+            pd.Timestamp(date).normalize(): {
+                str(ticker).strip().upper()
+                for ticker in tickers
+                if str(ticker).strip()
+            }
+            for date, tickers in historical_universe_by_date.items()
+        }
+        fallback = (
+            {str(ticker).strip().upper() for ticker in base_universe}
+            if base_universe is not None
+            else set(ticker_data)
+        )
+        snapshot_dates = sorted(snapshots)
+
+        def active_symbols(current_date: pd.Timestamp) -> set[str]:
+            eligible = [date for date in snapshot_dates if date <= current_date.normalize()]
+            return snapshots[max(eligible)] if eligible else fallback
+
+        score_df = pd.concat(
+            [
+                rows[rows["ticker"].isin(active_symbols(pd.Timestamp(current_date)))]
+                for current_date, rows in score_df.groupby("date", sort=False)
+            ],
+            ignore_index=True,
+        )
+        if score_df.empty:
+            raise ValueError("rank AI history is empty after point-in-time universe filter")
+    score_df["percentile"] = score_df.groupby("date")["score"].rank(
+        pct=True,
+        method="average",
+    )
+    cutoff = rank_ai_gate_effective_cutoff(settings, config)
+    history: dict[pd.Timestamp, dict[str, RankAIGateScore]] = {}
+    for current_date, rows in score_df.groupby("date", sort=True):
+        daily: dict[str, RankAIGateScore] = {}
+        for row in rows.itertuples(index=False):
+            percentile = float(row.percentile)
+            score = float(row.score)
+            allowed = percentile >= cutoff
+            status = "passed" if allowed else "blocked"
+            daily[str(row.ticker)] = RankAIGateScore(
+                ticker=str(row.ticker),
+                score=score,
+                percentile=percentile,
+                allowed=allowed,
+                reason=(
+                    f"rank ai gate {status} "
+                    f"(pct={percentile:.3f}, cutoff={cutoff:.3f})"
+                ),
+            )
+        history[pd.Timestamp(current_date)] = daily
+    return history
 
 
 def apply_rank_ai_buy_gate(

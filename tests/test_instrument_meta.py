@@ -1,12 +1,17 @@
 """Instrument registry and leverage gates ([AGY])."""
 
 import pandas as pd
+import src.instrument_meta as instrument_meta
 
 from src.instrument_meta import (
     check_instrument_buy_allowed,
     clear_instrument_registry_cache,
     get_instrument,
+    is_discovered_instrument,
     load_instrument_registry,
+    preferred_leveraged_long_product,
+    register_discovered_leveraged_product,
+    signal_source_ticker,
 )
 from src.risk_manager import apply_effective_leverage_exposure_limits
 
@@ -84,3 +89,40 @@ def test_registry_loads():
     reg = load_instrument_registry()
     assert "SPY" in reg
     assert reg["SPY"].kind == "etf"
+
+
+def test_preferred_direct_2x_product_uses_allowlist_order():
+    assert preferred_leveraged_long_product(
+        "PLUG",
+        allowlist=["PLUL"],
+    ) == "PLUL"
+    assert signal_source_ticker("PLUL") == "PLUG"
+
+
+def test_missing_direct_2x_product_returns_none():
+    assert preferred_leveraged_long_product("RIG", allowlist=["PLUL"]) is None
+
+
+def test_discovered_product_persists_and_bypasses_static_allowlist(
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "discovered_instruments.json"
+    monkeypatch.setattr(instrument_meta, "DISCOVERED_REGISTRY_PATH", path)
+    clear_instrument_registry_cache()
+
+    register_discovered_leveraged_product("XYZL", "XYZ", multiple=2.0)
+    clear_instrument_registry_cache()
+
+    meta = get_instrument("XYZL")
+    assert meta.is_leveraged_etf
+    assert meta.underlying == "XYZ"
+    assert signal_source_ticker("XYZL") == "XYZ"
+    assert is_discovered_instrument("XYZL") is True
+    allowed, _ = check_instrument_buy_allowed(
+        "XYZL",
+        set(),
+        allow_leveraged_etfs=True,
+        leveraged_etf_allowlist=["PLUL"],
+    )
+    assert allowed is True

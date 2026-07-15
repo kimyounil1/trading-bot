@@ -87,7 +87,17 @@ def score_tournament_candidate(
 
     rank_value = raw_score if raw_score is not None else confidence
     ai_component = float(ai_score) if ai_score is not None else 0.5
-    alpha_score = round(0.65 * confidence + 0.35 * ai_component, 4)
+    rank_weight = float(
+        getattr(settings, "tournament_alpha_rank_weight", 0.65)
+        if settings is not None
+        else 0.65
+    )
+    rank_weight = min(1.0, max(0.0, rank_weight))
+    ai_weight = 1.0 - rank_weight
+    alpha_score = round(
+        rank_weight * confidence + ai_weight * ai_component,
+        4,
+    )
     max_positions = int(getattr(settings, "max_total_positions", 5))
     max_position_pct = min(
         0.35,
@@ -103,7 +113,7 @@ def score_tournament_candidate(
         stop_policy="tight_trailing",
         reason=(
             f"tournament alpha pct={confidence:.3f} rank={rank_value:.3f} ai={ai_component:.3f} "
-            f"max_positions={max_positions}"
+            f"rank_weight={rank_weight:.2f} max_positions={max_positions}"
         ),
     )
 

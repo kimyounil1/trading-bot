@@ -8,6 +8,7 @@
   "rank_ai_buy_gate_enabled": true,
   "rank_ai_buy_gate_min_score_quantile": 0.85,
   "rank_ai_buy_gate_top_bucket_pct": 0.15,
+  "tournament_alpha_rank_weight": 1.0,
   "use_ai_score": true,
   "ai_score_buy_threshold": 0.4,
   "llm_advisory_only": false,

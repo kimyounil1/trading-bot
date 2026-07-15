@@ -2,7 +2,7 @@
   "description": "Paper-only margin leverage (not leveraged ETFs). Enable only after margin_leverage_paper_gate GO.",
   "leverage_factor": 2.0,
   "max_gross_exposure_pct": 2.0,
-  "max_test_order_amount": 500.0,
+  "max_test_order_amount": 0.0,
   "max_orders_per_run": 2,
   "max_daily_order_amount": 1500.0,
   "max_total_positions": 6

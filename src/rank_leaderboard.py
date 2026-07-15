@@ -129,7 +129,9 @@ def build_rank_leaderboard_live(settings: Any, positions: list[dict[str, Any]] |
     }
     tickers = list(settings.tickers)
     ticker_data = _load_cache_ticker_data(tickers, settings)
-    vix_df = ticker_data.get("^VIX") or ticker_data.get("VIX")
+    vix_df = ticker_data.get("^VIX")
+    if vix_df is None or vix_df.empty:
+        vix_df = ticker_data.get("VIX")
     spy_df = ticker_data.get("SPY")
     macro_df = (
         load_macro_data(period="2y") if getattr(settings, "use_ai_score", False) else None

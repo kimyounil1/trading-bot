@@ -33,6 +33,22 @@ class BrokerAdapter(ABC):
     def get_open_symbols(self) -> set[str]:
         return {str(position["symbol"]).upper() for position in self.get_positions()}
 
+    def get_asset_info(self, ticker: str) -> dict[str, Any]:
+        """Return broker asset capabilities used by product routing."""
+        return {
+            "symbol": str(ticker).strip().upper(),
+            "active": True,
+            "tradable": True,
+            "fractionable": True,
+        }
+
+    def discover_leveraged_long_products(
+        self,
+        underlying: str,
+    ) -> list[dict[str, Any]]:
+        """Return broker-validated direct 2x-long product candidates, if supported."""
+        return []
+
     @abstractmethod
     def get_open_orders(self, *, limit: int = 100) -> list[dict[str, Any]]:
         raise NotImplementedError
@@ -72,6 +88,7 @@ class BrokerAdapter(ABC):
         market_clock: MarketClock,
         slippage_pct: float,
         client_order_id: Optional[str] = None,
+        close_all: bool = False,
     ) -> OrderSubmission:
         raise NotImplementedError
 

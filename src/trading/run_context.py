@@ -44,6 +44,7 @@ from src.sleeve_runtime import SleeveRunContext, init_sleeve_run_context
 from src.strategy import is_bullish_market_regime
 from src.partial_exit_policy import load_partial_exit_state
 from src.trading.bot_helpers import load_peaks, offline_account_summary
+from src.instrument_meta import signal_source_ticker
 from src.trading_config_guard import (
     apply_environment_profile,
     resolve_trading_environment,
@@ -294,7 +295,10 @@ def build_trading_run_context(*, execute_orders: bool) -> TradingRunContext:
             limit=int(getattr(settings, "dynamic_count", 50))
         )
     
-    tickers_to_load = list(dict.fromkeys([*settings.tickers, *open_symbols]))
+    held_signal_sources = [signal_source_ticker(symbol) for symbol in open_symbols]
+    tickers_to_load = list(
+        dict.fromkeys([*settings.tickers, *open_symbols, *held_signal_sources])
+    )
     # Always include SPY and ^VIX for live market regime calculation
     if "SPY" not in tickers_to_load:
         tickers_to_load.append("SPY")

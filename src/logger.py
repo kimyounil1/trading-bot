@@ -138,6 +138,17 @@ def log_execution_audit(
     sleeve_budget_before: float = None,
     sleeve_budget_after: float = None,
     sleeve_risk_mode: str = "",
+    signal_ticker: str = "",
+    execution_ticker: str = "",
+    decision_market_date: str = "",
+    quality_notional_multiplier: float = None,
+    quality_allow_leveraged: bool | None = None,
+    quality_high_drawdown: bool | None = None,
+    quality_downtrend: bool | None = None,
+    route_leveraged: bool | None = None,
+    portfolio_value: float = None,
+    planned_notional_pct: float = None,
+    reference_price: float = None,
 ) -> None:
     log_file = Path(EXECUTION_AUDIT_LOG_PATH)
     log_file.parent.mkdir(parents=True, exist_ok=True)
@@ -146,6 +157,9 @@ def log_execution_audit(
         if value is None or value == "" or str(value).lower() in {"none", "null"}:
             return None
         return round(float(value), digits)
+
+    def _bool_or_none(value):
+        return None if value is None or value == "" else bool(value)
 
     row = {column: None for column in EXECUTION_AUDIT_COLUMNS}
     row.update(
@@ -186,6 +200,22 @@ def log_execution_audit(
             "sleeve_budget_before": _round_or_none(sleeve_budget_before, 2),
             "sleeve_budget_after": _round_or_none(sleeve_budget_after, 2),
             "sleeve_risk_mode": sleeve_risk_mode or None,
+            "signal_ticker": signal_ticker or None,
+            "execution_ticker": execution_ticker or None,
+            "decision_market_date": decision_market_date or None,
+            "quality_notional_multiplier": _round_or_none(
+                quality_notional_multiplier,
+                4,
+            ),
+            "quality_allow_leveraged": _bool_or_none(
+                quality_allow_leveraged
+            ),
+            "quality_high_drawdown": _bool_or_none(quality_high_drawdown),
+            "quality_downtrend": _bool_or_none(quality_downtrend),
+            "route_leveraged": _bool_or_none(route_leveraged),
+            "portfolio_value": _round_or_none(portfolio_value, 2),
+            "planned_notional_pct": _round_or_none(planned_notional_pct, 6),
+            "reference_price": _round_or_none(reference_price, 4),
         }
     )
 

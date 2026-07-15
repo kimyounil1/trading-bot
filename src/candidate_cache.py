@@ -60,6 +60,7 @@ from src.strategy import add_indicators, generate_signal
 CACHE_DIR = Path("logs/candidate_cache")
 LATEST_META_PATH = CACHE_DIR / "latest_meta.json"
 UNIVERSE_META_PATH = CACHE_DIR / "universe_meta.json"
+UNIVERSE_HISTORY_PATH = CACHE_DIR / "universe_history.jsonl"
 LATEST_BUY_PATH = CACHE_DIR / "latest_buy.csv"
 LATEST_EXIT_PATH = CACHE_DIR / "latest_exit.csv"
 LATEST_QUALITY_PATH = CACHE_DIR / "latest_quality.csv"
@@ -82,6 +83,40 @@ def _write_universe_meta(meta: dict) -> None:
     """Persist dynamic-universe snapshot without clobbering full candidate-cache meta."""
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     UNIVERSE_META_PATH.write_text(json.dumps(meta, indent=2, sort_keys=True), encoding="utf-8")
+    history_path = UNIVERSE_META_PATH.with_name(UNIVERSE_HISTORY_PATH.name)
+    try:
+        with history_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(meta, sort_keys=True) + "\n")
+    except OSError as exc:
+        print(f"Warning: failed to append dynamic-universe history: {exc}")
+
+
+def load_dynamic_universe_history(
+    path: Path = UNIVERSE_HISTORY_PATH,
+) -> dict[pd.Timestamp, list[str]]:
+    """Load point-in-time universe snapshots for operational backtests."""
+    if not path.is_file():
+        return {}
+    snapshots: dict[pd.Timestamp, list[str]] = {}
+    for line_number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not raw.strip():
+            continue
+        try:
+            payload = json.loads(raw)
+            generated_at = pd.Timestamp(payload["generated_at"]).tz_localize(None)
+            tickers = payload["tickers"]
+            if not isinstance(tickers, list):
+                raise ValueError("tickers must be a list")
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                f"Invalid universe history row {line_number} in {path}: {exc}"
+            ) from exc
+        snapshots[generated_at.normalize()] = [
+            str(ticker).strip().upper()
+            for ticker in tickers
+            if str(ticker).strip()
+        ]
+    return snapshots
 
 
 def _build_dynamic_universe_meta(

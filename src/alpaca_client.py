@@ -1,16 +1,28 @@
 from __future__ import annotations
 
-import math
+import json
+import re
+import threading
 import time
+from decimal import Decimal, ROUND_DOWN
+from pathlib import Path
 from typing import Optional
 from requests.exceptions import RequestException
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import LimitOrderRequest, MarketOrderRequest, ClosePositionRequest, GetOrdersRequest
-from alpaca.trading.enums import OrderSide, TimeInForce, QueryOrderStatus
+from alpaca.trading.requests import GetAssetsRequest
+from alpaca.trading.enums import AssetClass, AssetStatus, OrderSide, TimeInForce, QueryOrderStatus
 
 from src.config import ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_PAPER
+
+
+_ASSET_CATALOG_TTL_SEC = 6 * 60 * 60
+ASSET_CATALOG_CACHE_PATH = Path("data/runtime/alpaca_asset_catalog.json")
+_asset_catalog_lock = threading.Lock()
+_asset_catalog_cache: list[dict] | None = None
+_asset_catalog_expiry_epoch = 0.0
 
 
 def _safe_order_qty(qty: float) -> float:
@@ -21,12 +33,20 @@ def _safe_order_qty(qty: float) -> float:
     return safe
 
 
-def safe_order_qty_or_none(qty: float) -> float | None:
-    """Return truncated qty, or None when dust-sized holdings round to zero."""
-    scaled = math.floor(float(qty) * 1_000_000)
-    if scaled <= 0:
+def safe_order_qty_or_none(qty: float, *, decimal_places: int = 6) -> float | None:
+    """Return a downward-rounded qty, or None when it rounds to zero."""
+    if decimal_places < 0:
+        raise ValueError("decimal_places must be non-negative")
+    quantum = Decimal(1).scaleb(-decimal_places)
+    safe = Decimal(str(qty)).quantize(quantum, rounding=ROUND_DOWN)
+    if safe <= 0:
         return None
-    return scaled / 1_000_000
+    return float(safe)
+
+
+def safe_full_close_qty_or_none(qty: float) -> float | None:
+    """Preserve Alpaca's 9-decimal fractional position precision for full exits."""
+    return safe_order_qty_or_none(qty, decimal_places=9)
 
 
 def get_trading_client() -> TradingClient:
@@ -112,6 +132,149 @@ def get_positions_summary() -> list[dict]:
         }
         for position in positions
     ]
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RequestException, ConnectionError)),
+    reraise=True,
+)
+def get_asset_summary(ticker: str) -> dict:
+    client = get_trading_client()
+    symbol = str(ticker).strip().upper()
+    try:
+        asset = client.get_asset(symbol)
+    except RequestException as exc:
+        raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
+    return {
+        "symbol": symbol,
+        "active": str(asset.status).upper().endswith("ACTIVE"),
+        "tradable": bool(asset.tradable),
+        "fractionable": bool(asset.fractionable),
+        "marginable": bool(asset.marginable),
+        "name": str(asset.name),
+    }
+
+
+def reset_asset_catalog_cache() -> None:
+    global _asset_catalog_cache, _asset_catalog_expiry_epoch
+    with _asset_catalog_lock:
+        _asset_catalog_cache = None
+        _asset_catalog_expiry_epoch = 0.0
+
+
+def _read_asset_catalog_cache(now: float) -> tuple[list[dict], float] | None:
+    path = ASSET_CATALOG_CACHE_PATH
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        fetched_at = float(payload["fetched_at"])
+        assets = payload["assets"]
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Invalid Alpaca asset catalog cache {path}: {exc}") from exc
+    if not isinstance(assets, list) or any(not isinstance(row, dict) for row in assets):
+        raise ValueError(f"Invalid Alpaca asset catalog cache rows in {path}")
+    expiry = fetched_at + _ASSET_CATALOG_TTL_SEC
+    if now >= expiry:
+        return None
+    return assets, expiry
+
+
+def _write_asset_catalog_cache(assets: list[dict], fetched_at: float) -> None:
+    path = ASSET_CATALOG_CACHE_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_suffix(f"{path.suffix}.tmp")
+    try:
+        temp_path.write_text(
+            json.dumps({"fetched_at": fetched_at, "assets": assets}) + "\n",
+            encoding="utf-8",
+        )
+        temp_path.replace(path)
+    except OSError as exc:
+        raise OSError(f"Unable to persist Alpaca asset catalog cache: {exc}") from exc
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RequestException, ConnectionError)),
+    reraise=True,
+)
+def get_active_us_equity_assets(*, force_refresh: bool = False) -> list[dict]:
+    """Return a bounded-TTL normalized Alpaca US-equity asset catalog."""
+    global _asset_catalog_cache, _asset_catalog_expiry_epoch
+    now = time.time()
+    with _asset_catalog_lock:
+        if (
+            not force_refresh
+            and _asset_catalog_cache is not None
+            and now < _asset_catalog_expiry_epoch
+        ):
+            return list(_asset_catalog_cache)
+        if not force_refresh:
+            try:
+                disk_cache = _read_asset_catalog_cache(now)
+            except ValueError as exc:
+                print(f"Warning: {exc}; refreshing from Alpaca")
+                disk_cache = None
+            if disk_cache is not None:
+                cached_assets, expiry = disk_cache
+                _asset_catalog_cache = list(cached_assets)
+                _asset_catalog_expiry_epoch = expiry
+                return list(cached_assets)
+
+        client = get_trading_client()
+        try:
+            assets = client.get_all_assets(
+                GetAssetsRequest(
+                    status=AssetStatus.ACTIVE,
+                    asset_class=AssetClass.US_EQUITY,
+                )
+            )
+        except RequestException as exc:
+            raise ConnectionError(f"Unable to reach Alpaca asset catalog API: {exc}") from exc
+
+        normalized = [
+            {
+                "symbol": str(asset.symbol).upper(),
+                "name": str(asset.name or ""),
+                "active": str(asset.status).upper().endswith("ACTIVE"),
+                "tradable": bool(asset.tradable),
+                "fractionable": bool(asset.fractionable),
+                "marginable": bool(asset.marginable),
+            }
+            for asset in assets
+        ]
+        _asset_catalog_cache = normalized
+        _asset_catalog_expiry_epoch = now + _ASSET_CATALOG_TTL_SEC
+        _write_asset_catalog_cache(normalized, now)
+        return list(normalized)
+
+
+def discover_leveraged_long_assets(underlying: str) -> list[dict]:
+    """Find exact-name direct 2x-long ETF candidates for one underlying."""
+    source = str(underlying).strip().upper()
+    if not source:
+        return []
+    token = re.escape(source)
+    patterns = (
+        re.compile(rf"\b2X\s+LONG\s+{token}(?:\s+DAILY|\s+ETF|\b)", re.IGNORECASE),
+        re.compile(rf"\bDAILY\s+{token}\s+BULL\s+2X\b", re.IGNORECASE),
+        re.compile(rf"\bDAILY\s+{token}\s+LONG\s+2X\b", re.IGNORECASE),
+    )
+    candidates = []
+    for asset in get_active_us_equity_assets():
+        name = str(asset.get("name") or "")
+        if "ETF" not in name.upper():
+            continue
+        if not any(pattern.search(name) for pattern in patterns):
+            continue
+        if not bool(asset.get("active")) or not bool(asset.get("tradable")):
+            continue
+        candidates.append(dict(asset))
+    return sorted(candidates, key=lambda row: str(row.get("symbol") or ""))
 
 
 def _optional_str(value) -> str:
@@ -243,7 +406,8 @@ def get_order_summary(order_id: str) -> dict:
 def cancel_order_by_id(order_id: str) -> dict:
     client = get_trading_client()
     try:
-        order = client.cancel_order_by_id(order_id)
+        client.cancel_order_by_id(order_id)
+        order = client.get_order_by_id(order_id)
     except RequestException as exc:
         raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
     return serialize_alpaca_order(order)
@@ -283,6 +447,42 @@ def submit_market_buy_notional_order(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
     retry=retry_if_exception_type((RequestException, ConnectionError)),
+    reraise=True,
+)
+def submit_market_buy_qty_order(
+    ticker: str,
+    notional: float,
+    *,
+    reference_price: float,
+    client_order_id: Optional[str] = None,
+):
+    """Submit whole-share market buy for non-fractionable leveraged products."""
+    if notional <= 0:
+        raise ValueError("notional must be positive")
+    if reference_price <= 0:
+        raise ValueError("reference_price must be positive")
+    qty = int(float(notional) // float(reference_price))
+    if qty <= 0:
+        raise ValueError("notional is below one whole share")
+
+    client = get_trading_client()
+    order_request = MarketOrderRequest(
+        symbol=ticker,
+        qty=qty,
+        side=OrderSide.BUY,
+        time_in_force=TimeInForce.DAY,
+        client_order_id=client_order_id,
+    )
+    try:
+        return client.submit_order(order_data=order_request)
+    except RequestException as exc:
+        raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RequestException, ConnectionError)),
     reraise=True
 )
 def submit_limit_buy_notional_order(
@@ -292,6 +492,7 @@ def submit_limit_buy_notional_order(
     slippage_pct: float = 0.005,
     client_order_id: Optional[str] = None,
     extended_hours: bool = False,
+    whole_shares: bool = False,
 ):
     """지정가 매수 주문. limit_price 기준으로 수량을 계산해 제출한다.
 
@@ -304,7 +505,13 @@ def submit_limit_buy_notional_order(
         raise ValueError("limit_price must be positive")
 
     effective_limit = round(limit_price * (1 + slippage_pct), 2)
-    qty = _safe_order_qty(notional / effective_limit)
+    qty = (
+        int(float(notional) // effective_limit)
+        if whole_shares
+        else _safe_order_qty(notional / effective_limit)
+    )
+    if qty <= 0:
+        raise ValueError("notional is below one whole share")
 
     client = get_trading_client()
     order_request = LimitOrderRequest(
@@ -336,6 +543,7 @@ def submit_limit_sell_qty_order(
     slippage_pct: float = 0.005,
     client_order_id: Optional[str] = None,
     extended_hours: bool = False,
+    close_all: bool = False,
 ):
     if qty <= 0:
         raise ValueError("qty must be positive")
@@ -347,12 +555,17 @@ def submit_limit_sell_qty_order(
         raise ValueError("effective limit price must be positive")
 
     client = get_trading_client()
-    safe_qty = safe_order_qty_or_none(qty)
+    safe_qty = (
+        safe_full_close_qty_or_none(qty)
+        if close_all
+        else safe_order_qty_or_none(qty)
+    )
     if safe_qty is None:
         return close_position_by_symbol(
             ticker,
             qty=None,
             client_order_id=client_order_id,
+            close_all=True,
         )
 
     order_request = LimitOrderRequest(
@@ -380,10 +593,14 @@ def submit_limit_sell_qty_order(
 def close_position_by_symbol(
     ticker: str, 
     qty: Optional[float] = None, 
-    client_order_id: Optional[str] = None
+    client_order_id: Optional[str] = None,
+    close_all: bool = False,
 ):
     client = get_trading_client()
     try:
+        if close_all:
+            return client.close_position(ticker)
+
         # If client_order_id is provided, we use submit_order for idempotency.
         # Note: close_position API (DELETE /positions) does not support client_order_id.
         if client_order_id:
@@ -508,4 +725,3 @@ def get_position_entry_date(ticker: str) -> Optional[datetime]:
     except Exception as exc:
         print(f"Warning: Failed to fetch entry date for {ticker}: {exc}")
         return None
-

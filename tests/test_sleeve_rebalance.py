@@ -53,6 +53,14 @@ class SleeveRebalanceTest(unittest.TestCase):
         self.assertTrue(actions)
         self.assertEqual(actions[0].sleeve_id, CORE_SLEEVE_ID)
         self.assertGreater(actions[0].sell_qty, 0)
+        self.assertEqual(
+            len({action.ticker for action in actions}),
+            len(actions),
+        )
+        # $10k core overweight already contributes to the $15k cash deficit;
+        # the planner must sell $15k total, not add both and sell $25k.
+        planned_notional = sum(action.sell_qty * 600.0 for action in actions)
+        self.assertAlmostEqual(planned_notional, 15_000.0, delta=1.0)
 
     def test_all_core_book_gets_proportional_retag(self) -> None:
         settings = StrategySettings(
