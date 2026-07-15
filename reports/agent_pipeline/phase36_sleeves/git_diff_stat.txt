@@ -1,0 +1,21 @@
+ TODO.md                                     | 274 +++++++++++++++++++++-
+ app/streamlit_app.py                        |  67 ++++++
+ config/execution_lock.json                  |   4 +-
+ config/schema/trading_config.schema.json    |   4 +-
+ docs/ai_authority_gates.md                  |  20 ++
+ logs/crowding_paper/go_no_go_checklist.json |   2 +-
+ logs/crowding_paper/reassessment.json       |   6 +-
+ logs/llm_advisory/latest_summary.json       | 108 ++++++++-
+ logs/paper_validation/history.jsonl         |   4 +
+ logs/paper_validation/latest_summary.json   | 339 ++++++++++++++++++----------
+ logs/paper_validation/trend_summary.json    |  56 ++++-
+ scripts/run_paper_ops_bootstrap.sh          |   4 +
+ src/cms_helpers.py                          |  48 ++++
+ src/execution_audit_io.py                   |  12 +
+ src/live_readiness.py                       |  13 ++
+ src/logger.py                               |  12 +
+ src/main.py                                 | 106 ++++++++-
+ src/order_intent.py                         |  47 ++++
+ src/settings.py                             |  16 ++
+ src/trading_config_guard.py                 |  36 +++
+ 20 files changed, 1029 insertions(+), 149 deletions(-)

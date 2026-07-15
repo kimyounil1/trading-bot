@@ -1,0 +1,1140 @@
+$ codex --ask-for-approval never --sandbox read-only review /home/kimyo/trading-bot/reports/agent_pipeline/phase37_main_split/review_packet.md -c 'model_reasoning_effort="low"'
+exit_code=0
+
+## stdout
+The patch changes an execution gate from enabled to disabled, which materially alters paper execution behavior and appears unrelated to the requested main.py pipeline split.
+
+Review comment:
+
+- [P1] Restore CMS paper execution lock state — /home/kimyo/trading-bot/config/execution_lock.json:2-2
+  With this repository config committed, `is_cms_execution_enabled()` will now return `false` and the CMS paper execution path stays locked even when the previous checked-in state allowed paper execution. This change is unrelated to splitting `main.py` and will block normal paper execution workflows that rely on the committed lock being enabled.
+
+
+## stderr
+OpenAI Codex v0.135.0
+--------
+workdir: /home/kimyo/trading-bot
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: low
+reasoning summaries: none
+session id: 019ea59e-ce5b-7a01-a62f-056a5bb15e7d
+--------
+user
+/home/kimyo/trading-bot/reports/agent_pipeline/phase37_main_split/review_packet.md
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+exec
+/bin/bash -lc "sed -n '1,240p' reports/agent_pipeline/phase37_main_split/review_packet.md && git diff --stat && git diff --cached --stat" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+# Agent Review Packet - Run: phase37_main_split
+
+## Implementation Agent
+cursor
+
+## Task Description
+Phase 37 main.py pipeline split
+
+## Changed Files
+- config/execution_lock.json
+- logs/crowding_paper/go_no_go_checklist.json
+- logs/crowding_paper/reassessment.json
+- logs/llm_advisory/latest_summary.json
+- logs/paper_validation/history.jsonl
+- logs/paper_validation/latest_summary.json
+- logs/paper_validation/trend_summary.json
+- tests/fixtures/ml_quality/golden_fold_stability_report.json
+- tests/fixtures/ml_quality/golden_model_calibration_report.json
+
+## Git Diff Summary
+```
+ config/execution_lock.json                         |   4 +-
+ logs/crowding_paper/go_no_go_checklist.json        |   2 +-
+ logs/crowding_paper/reassessment.json              |   6 +-
+ logs/llm_advisory/latest_summary.json              | 108 ++++++-
+ logs/paper_validation/history.jsonl                |   4 +
+ logs/paper_validation/latest_summary.json          | 339 +++++++++++++--------
+ logs/paper_validation/trend_summary.json           |  56 +++-
+ .../ml_quality/golden_fold_stability_report.json   |   2 +-
+ .../golden_model_calibration_report.json           |   2 +-
+ 9 files changed, 375 insertions(+), 148 deletions(-)
+```
+
+## Test Execution Results (runtime_harness.log)
+```
+============================= test session starts ==============================
+platform linux -- Python 3.12.8, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/kimyo/trading-bot
+plugins: anyio-4.13.0
+collected 45 items
+
+tests/test_report_performance.py .....                                   [ 11%]
+tests/test_reappraise_regime.py ...                                      [ 17%]
+tests/test_portfolio_backtest_golden.py ...                              [ 24%]
+tests/test_portfolio_backtest_gate.py .....                              [ 35%]
+tests/test_daily_audit_summary.py ....                                   [ 44%]
+tests/test_daily_audit_summary_schema.py ....                            [ 53%]
+tests/test_retrain_notifications.py ....                                 [ 62%]
+tests/test_llm_cache_report_schema.py ..                                 [ 66%]
+tests/test_leverage_stress_report.py ...                                 [ 73%]
+tests/test_guard_impact_report.py ..                                     [ 77%]
+tests/test_check_audit_daily_summary.py ...                              [ 84%]
+tests/test_fold_variance_report.py .                                     [ 86%]
+tests/test_promotion_summary.py ..                                       [ 91%]
+tests/test_benchmark_gap_report.py .                                     [ 93%]
+tests/test_champion_promotion_governance.py ...                          [100%]
+
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6
+  /home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 45 passed, 1 warning in 3.27s =========================
+```
+
+## Git Patch
+```diff
+diff --git a/config/execution_lock.json b/config/execution_lock.json
+index b9286a7..ae36e25 100644
+--- a/config/execution_lock.json
++++ b/config/execution_lock.json
+@@ -1,5 +1,5 @@
+ {
+-  "cms_execution_enabled": true,
++  "cms_execution_enabled": false,
+   "required_phrase": "ENABLE PAPER EXECUTION",
+-  "last_updated": "2026-05-20T17:00:51"
++  "last_updated": "2026-06-01T14:29:59"
+ }
+\ No newline at end of file
+diff --git a/logs/crowding_paper/go_no_go_checklist.json b/logs/crowding_paper/go_no_go_checklist.json
+index 601e55f..f994067 100644
+--- a/logs/crowding_paper/go_no_go_checklist.json
++++ b/logs/crowding_paper/go_no_go_checklist.json
+@@ -22,7 +22,7 @@
+     }
+   ],
+   "decision": "NO_GO",
+-  "generated_at": "2026-06-02T09:06:08Z",
++  "generated_at": "2026-06-06T01:46:05Z",
+   "guard_impact_path": "logs/guard_impact/latest_summary.json",
+   "metrics": {
+     "baseline": {
+diff --git a/logs/crowding_paper/reassessment.json b/logs/crowding_paper/reassessment.json
+index ab48000..30a4c46 100644
+--- a/logs/crowding_paper/reassessment.json
++++ b/logs/crowding_paper/reassessment.json
+@@ -1,5 +1,5 @@
+ {
+-  "generated_at": "2026-06-02T09:29:52Z",
++  "generated_at": "2026-06-06T01:46:05Z",
+   "go_no_go_path": "logs/crowding_paper/go_no_go_checklist.json",
+   "live_impact_path": "logs/crowding_live/latest_summary.json",
+   "decision": "NO_GO",
+@@ -8,8 +8,8 @@
+     "blocked_trades": 0,
+     "sharpe_delta": -0.7253,
+     "total_return_delta_pct": -58.3771,
+-    "live_crowding_skip_count": 287,
+-    "live_crowding_skip_rate_of_skips": 0.071
++    "live_crowding_skip_count": 317,
++    "live_crowding_skip_rate_of_skips": 0.0701
+   },
+   "criteria": {
+     "min_live_skip_rate": 0.01,
+diff --git a/logs/llm_advisory/latest_summary.json b/logs/llm_advisory/latest_summary.json
+index 663eeef..8118a79 100644
+--- a/logs/llm_advisory/latest_summary.json
++++ b/logs/llm_advisory/latest_summary.json
+@@ -1,12 +1,12 @@
+ {
+-  "generated_at": "2026-06-02T09:05:50Z",
++  "generated_at": "2026-06-06T01:45:49Z",
+   "audit_path": "logs/execution_audit.csv",
+   "lookback_days": 90,
+-  "rows": 4486,
++  "rows": 6055,
+   "advisory_would_reject": 53,
+-  "buy_submitted": 44,
++  "buy_submitted": 53,
+   "buy_submitted_despite_llm_reject": 0,
+-  "buy_blocked_by_llm": 14,
++  "buy_blocked_by_llm": 15,
+   "sample_would_reject": [
+     {
+       "timestamp": "2026-06-01T12:32:18",
+@@ -29,6 +29,16 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -52,6 +62,16 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -75,6 +95,16 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -98,6 +128,16 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -121,6 +161,16 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -144,6 +194,16 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -167,6 +227,16 @@
+ config/execution_lock.json                         |   4 +-
+ logs/crowding_paper/go_no_go_checklist.json        |   2 +-
+ logs/crowding_paper/reassessment.json              |   6 +-
+ logs/llm_advisory/latest_summary.json              | 108 ++++++-
+ logs/paper_validation/history.jsonl                |   4 +
+ logs/paper_validation/latest_summary.json          | 339 +++++++++++++--------
+ logs/paper_validation/trend_summary.json           |  56 +++-
+ reports/agent_pipeline/phase30/TASK.md             |   2 +-
+ reports/agent_pipeline/phase30/changed_files.txt   |   6 -
+ reports/agent_pipeline/phase30/git_diff.patch      | 179 -----------
+ reports/agent_pipeline/phase30/git_diff_stat.txt   |   7 -
+ reports/agent_pipeline/phase30/git_status.txt      |  22 +-
+ reports/agent_pipeline/phase30/review_harness.log  |   8 +-
+ reports/agent_pipeline/phase30/review_packet.md    | 201 +-----------
+ reports/agent_pipeline/phase30/runtime_harness.log |   4 +-
+ .../ml_quality/golden_fold_stability_report.json   |   2 +-
+ .../golden_model_calibration_report.json           |   2 +-
+ 17 files changed, 389 insertions(+), 563 deletions(-)
+
+exec
+/bin/bash -lc "git status --short && git diff -- config/execution_lock.json logs/llm_advisory/latest_summary.json logs/paper_validation/latest_summary.json tests/fixtures/ml_quality/golden_fold_stability_report.json tests/fixtures/ml_quality/golden_model_calibration_report.json | sed -n '1,260p'" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+ M config/execution_lock.json
+ M logs/crowding_paper/go_no_go_checklist.json
+ M logs/crowding_paper/reassessment.json
+ M logs/llm_advisory/latest_summary.json
+ M logs/paper_validation/history.jsonl
+ M logs/paper_validation/latest_summary.json
+ M logs/paper_validation/trend_summary.json
+ M reports/agent_pipeline/phase30/TASK.md
+ M reports/agent_pipeline/phase30/changed_files.txt
+ M reports/agent_pipeline/phase30/git_diff.patch
+ M reports/agent_pipeline/phase30/git_diff_stat.txt
+ M reports/agent_pipeline/phase30/git_status.txt
+ M reports/agent_pipeline/phase30/review_harness.log
+ M reports/agent_pipeline/phase30/review_packet.md
+ M reports/agent_pipeline/phase30/runtime_harness.log
+ M tests/fixtures/ml_quality/golden_fold_stability_report.json
+ M tests/fixtures/ml_quality/golden_model_calibration_report.json
+?? logs/ml/calibration_experiment_report.json
+?? logs/ml/feature_drift_report.json
+?? logs/ml/fold_metrics.csv
+?? logs/ml/fold_stability_report.json
+?? logs/ml/label_challenger/
+?? logs/ml/label_challenger_sweep_force_train.log
+?? logs/ml/label_challenger_sweep_report.json
+?? logs/ml/label_horizon_report.json
+?? logs/ml/model_calibration_report.json
+?? logs/ml/model_promotion_report.json
+?? logs/ml/model_rollback_report.json
+?? logs/ml/rank_label_experiment/
+?? logs/ml/rank_label_experiment_h10_top20_q80/
+?? logs/ml/rank_label_experiment_h20_top10_q90/
+?? logs/ml/rank_label_experiment_h20_top15_q85/
+?? logs/ml/rank_label_experiment_h20_top20_q80/
+?? logs/ml/rank_label_experiment_h20_top20_q85/
+?? logs/ml/rank_label_experiment_h40_top20_q80/
+?? logs/ml/rank_label_experiment_top20/
+?? logs/ml/rank_label_experiment_top40/
+?? logs/ml/threshold_retune_report.json
+?? logs/ml/threshold_retune_results.csv
+?? reports/agent_pipeline/20260529T102625/
+?? reports/agent_pipeline/20260529T102643/
+?? reports/agent_pipeline/20260529T104639/
+?? reports/agent_pipeline/20260529T104814/
+?? reports/agent_pipeline/20260529T105445/
+?? reports/agent_pipeline/20260529T105851/
+?? reports/agent_pipeline/20260529T110615/
+?? reports/agent_pipeline/20260529T110917/
+?? reports/agent_pipeline/20260529T111245/
+?? reports/agent_pipeline/20260529T111637/
+?? reports/agent_pipeline/20260529T112026/
+?? reports/agent_pipeline/20260529T115354/
+?? reports/agent_pipeline/20260529T123013/
+?? reports/agent_pipeline/20260529T123312/
+?? reports/agent_pipeline/20260529T123313/
+?? reports/agent_pipeline/20260529T123506/
+?? reports/agent_pipeline/20260529T123507/
+?? reports/agent_pipeline/20260529T123706/
+?? reports/agent_pipeline/20260529T123707/
+?? reports/agent_pipeline/20260529T123857/
+?? reports/agent_pipeline/20260529T123858/
+?? reports/agent_pipeline/20260529T124145/
+?? reports/agent_pipeline/20260529T124146/
+?? reports/agent_pipeline/20260529T124404/
+?? reports/agent_pipeline/20260529T124405/
+?? reports/agent_pipeline/phase30/CODEX_REVIEW_AND_TODO.md
+?? reports/agent_pipeline/phase30/NEXT_TODO.codex.md
+?? reports/agent_pipeline/phase30/codex_review_command.log
+?? reports/agent_pipeline/phase30/orchestrator_summary.json
+?? reports/agent_pipeline/phase30/post_workflow_command.log
+?? reports/agent_pipeline/phase30_complete/
+?? reports/agent_pipeline/phase30_final/
+?? reports/agent_pipeline/phase31/CODEX_REVIEW_AND_TODO.md
+?? reports/agent_pipeline/phase31/NEXT_TODO.codex.md
+?? reports/agent_pipeline/phase31/NEXT_TODO.md
+?? reports/agent_pipeline/phase31/changed_files.txt
+?? reports/agent_pipeline/phase31/codex_review_command.log
+?? reports/agent_pipeline/phase31/gemini_review_harness.log
+?? reports/agent_pipeline/phase31/git_diff.patch
+?? reports/agent_pipeline/phase31/git_diff_stat.txt
+?? reports/agent_pipeline/phase31/git_status.txt
+?? reports/agent_pipeline/phase31/orchestrator_summary.json
+?? reports/agent_pipeline/phase31/post_workflow_command.log
+?? reports/agent_pipeline/phase31/review_harness.log
+?? reports/agent_pipeline/phase31/review_packet.md
+?? reports/agent_pipeline/phase31/runtime_harness.log
+?? reports/agent_pipeline/phase31/summary.json
+?? reports/agent_pipeline/phase32/
+?? reports/agent_pipeline/phase32_rank_ai/
+?? reports/agent_pipeline/phase32_rank_gate_p2/
+?? reports/agent_pipeline/phase32_retry/
+?? reports/agent_pipeline/phase32_threshold_promotion/
+?? reports/agent_pipeline/phase36_sleeves/
+?? reports/agent_pipeline/phase36_sleeves_fix/
+?? reports/agent_pipeline/phase37_main_split/
+?? scripts/exp_alpha_sweep.py
+diff --git a/config/execution_lock.json b/config/execution_lock.json
+index b9286a7..ae36e25 100644
+--- a/config/execution_lock.json
++++ b/config/execution_lock.json
+@@ -1,5 +1,5 @@
+ {
+-  "cms_execution_enabled": true,
++  "cms_execution_enabled": false,
+   "required_phrase": "ENABLE PAPER EXECUTION",
+-  "last_updated": "2026-05-20T17:00:51"
++  "last_updated": "2026-06-01T14:29:59"
+ }
+\ No newline at end of file
+diff --git a/logs/llm_advisory/latest_summary.json b/logs/llm_advisory/latest_summary.json
+index 663eeef..8118a79 100644
+--- a/logs/llm_advisory/latest_summary.json
++++ b/logs/llm_advisory/latest_summary.json
+@@ -1,12 +1,12 @@
+ {
+-  "generated_at": "2026-06-02T09:05:50Z",
++  "generated_at": "2026-06-06T01:45:49Z",
+   "audit_path": "logs/execution_audit.csv",
+   "lookback_days": 90,
+-  "rows": 4486,
++  "rows": 6055,
+   "advisory_would_reject": 53,
+-  "buy_submitted": 44,
++  "buy_submitted": 53,
+   "buy_submitted_despite_llm_reject": 0,
+-  "buy_blocked_by_llm": 14,
++  "buy_blocked_by_llm": 15,
+   "sample_would_reject": [
+     {
+       "timestamp": "2026-06-01T12:32:18",
+@@ -29,6 +29,16 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -52,6 +62,16 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -75,6 +95,16 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -98,6 +128,16 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -121,6 +161,16 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -144,6 +194,16 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -167,6 +227,16 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -190,6 +260,16 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -213,6 +293,16 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
+       "llm_side": "REJECT"
+     },
+     {
+@@ -236,6 +326,16 @@
+       "quantity": NaN,
+       "filled_qty": NaN,
+       "filled_avg_price": NaN,
++      "decision_id": NaN,
++      "run_id": NaN,
++      "broker": NaN,
++      "environment": NaN,
++      "config_hash": NaN,
++      "model_version": NaN,
++      "rank_model_version": NaN,
++      "risk_block_reason": NaN,
++      "order_intent_id": NaN,
++      "broker_order_id": NaN,
+       "llm_side": "REJECT"
+     }
+   ],
+diff --git a/logs/paper_validation/latest_summary.json b/logs/paper_validation/latest_summary.json
+index 4e4306b..d0974d5 100644
+--- a/logs/paper_validation/latest_summary.json
++++ b/logs/paper_validation/latest_summary.json
+@@ -1,21 +1,21 @@
+ {
+-  "generated_at": "2026-06-02T09:05:51Z",
++  "generated_at": "2026-06-06T01:45:48Z",
+   "lookback_days": 90,
+   "llm_advisory_only": false,
+   "rank_ai_buy_gate_enabled": true,
+   "llm_ai_agreement": {
+-    "generated_at": "2026-06-02T09:05:51Z",
++    "generated_at": "2026-06-06T01:45:48Z",
+     "ai_score_buy_threshold": 0.4,
+     "llm_cache_path": "data/llm_cache.json",
+-    "llm_cache_entries": 88,
+-    "comparable_with_ai_score": 87,
+-    "agreement_rate": 0.7471264367816092,
+-    "agreement_pct": 74.7,
+-    "score_llm_corr": 0.04115883088749699,
++    "llm_cache_entries": 108,
++    "comparable_with_ai_score": 107,
++    "agreement_rate": 0.6915887850467289,
++    "agreement_pct": 69.2,
++    "score_llm_corr": 0.10814771782075211,
+     "confusion": {
+-      "both_pass": 65,
++      "both_pass": 74,
+       "both_fail": 0,
+-      "ai_pass_llm_reject": 19,
++      "ai_pass_llm_reject": 30,
+       "ai_fail_llm_pass": 3
+     },
+     "disagreements_sample": [
+@@ -64,6 +64,15 @@
+         "agree": false,
+         "llm_category": "Guidance"
+       },
++      {
++        "ticker": "PLD",
++        "date": "2026-06-03",
++        "ai_score": 0.6634,
++        "ai_ok": true,
++        "llm_ok": false,
++        "agree": false,
++        "llm_category": "Guidance"
++      },
+       {
+         "ticker": "META",
+         "date": "2026-06-02",
+@@ -91,6 +100,15 @@
+         "agree": false,
+         "llm_category": "None, Lawsuit, Fraud, Guidance, Financials, Other"
+       },
++      {
+
+exec
+/bin/bash -lc "git diff -- logs/paper_validation/latest_summary.json logs/paper_validation/trend_summary.json tests/fixtures/ml_quality/golden_fold_stability_report.json tests/fixtures/ml_quality/golden_model_calibration_report.json | sed -n '260,620p'" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+         "filled_qty": NaN,
+         "filled_avg_price": NaN,
++        "decision_id": NaN,
++        "run_id": NaN,
++        "broker": NaN,
++        "environment": NaN,
++        "config_hash": NaN,
++        "model_version": NaN,
++        "rank_model_version": NaN,
++        "risk_block_reason": NaN,
++        "order_intent_id": NaN,
++        "broker_order_id": NaN,
+         "llm_side": "REJECT"
+       },
+       {
+@@ -315,6 +284,16 @@
+         "quantity": NaN,
+         "filled_qty": NaN,
+         "filled_avg_price": NaN,
++        "decision_id": NaN,
++        "run_id": NaN,
++        "broker": NaN,
++        "environment": NaN,
++        "config_hash": NaN,
++        "model_version": NaN,
++        "rank_model_version": NaN,
++        "risk_block_reason": NaN,
++        "order_intent_id": NaN,
++        "broker_order_id": NaN,
+         "llm_side": "REJECT"
+       },
+       {
+@@ -338,6 +317,16 @@
+         "quantity": NaN,
+         "filled_qty": NaN,
+         "filled_avg_price": NaN,
++        "decision_id": NaN,
++        "run_id": NaN,
++        "broker": NaN,
++        "environment": NaN,
++        "config_hash": NaN,
++        "model_version": NaN,
++        "rank_model_version": NaN,
++        "risk_block_reason": NaN,
++        "order_intent_id": NaN,
++        "broker_order_id": NaN,
+         "llm_side": "REJECT"
+       },
+       {
+@@ -361,6 +350,16 @@
+         "quantity": NaN,
+         "filled_qty": NaN,
+         "filled_avg_price": NaN,
++        "decision_id": NaN,
++        "run_id": NaN,
++        "broker": NaN,
++        "environment": NaN,
++        "config_hash": NaN,
++        "model_version": NaN,
++        "rank_model_version": NaN,
++        "risk_block_reason": NaN,
++        "order_intent_id": NaN,
++        "broker_order_id": NaN,
+         "llm_side": "REJECT"
+       },
+       {
+@@ -384,6 +383,16 @@
+         "quantity": NaN,
+         "filled_qty": NaN,
+         "filled_avg_price": NaN,
++        "decision_id": NaN,
++        "run_id": NaN,
++        "broker": NaN,
++        "environment": NaN,
++        "config_hash": NaN,
++        "model_version": NaN,
++        "rank_model_version": NaN,
++        "risk_block_reason": NaN,
++        "order_intent_id": NaN,
++        "broker_order_id": NaN,
+         "llm_side": "REJECT"
+       },
+       {
+@@ -407,6 +416,16 @@
+         "quantity": NaN,
+         "filled_qty": NaN,
+         "filled_avg_price": NaN,
++        "decision_id": NaN,
++        "run_id": NaN,
++        "broker": NaN,
++        "environment": NaN,
++        "config_hash": NaN,
++        "model_version": NaN,
++        "rank_model_version": NaN,
++        "risk_block_reason": NaN,
++        "order_intent_id": NaN,
++        "broker_order_id": NaN,
+         "llm_side": "REJECT"
+       },
+       {
+@@ -430,6 +449,16 @@
+         "quantity": NaN,
+         "filled_qty": NaN,
+         "filled_avg_price": NaN,
++        "decision_id": NaN,
++        "run_id": NaN,
++        "broker": NaN,
++        "environment": NaN,
++        "config_hash": NaN,
++        "model_version": NaN,
++        "rank_model_version": NaN,
++        "risk_block_reason": NaN,
++        "order_intent_id": NaN,
++        "broker_order_id": NaN,
+         "llm_side": "REJECT"
+       },
+       {
+@@ -453,6 +482,16 @@
+         "quantity": NaN,
+         "filled_qty": NaN,
+         "filled_avg_price": NaN,
++        "decision_id": NaN,
++        "run_id": NaN,
++        "broker": NaN,
++        "environment": NaN,
++        "config_hash": NaN,
++        "model_version": NaN,
++        "rank_model_version": NaN,
++        "risk_block_reason": NaN,
++        "order_intent_id": NaN,
++        "broker_order_id": NaN,
+         "llm_side": "REJECT"
+       },
+       {
+@@ -476,6 +515,16 @@
+         "quantity": NaN,
+         "filled_qty": NaN,
+         "filled_avg_price": NaN,
++        "decision_id": NaN,
++        "run_id": NaN,
++        "broker": NaN,
++        "environment": NaN,
++        "config_hash": NaN,
++        "model_version": NaN,
++        "rank_model_version": NaN,
++        "risk_block_reason": NaN,
++        "order_intent_id": NaN,
++        "broker_order_id": NaN,
+         "llm_side": "REJECT"
+       },
+       {
+@@ -499,6 +548,16 @@
+         "quantity": NaN,
+         "filled_qty": NaN,
+         "filled_avg_price": NaN,
++        "decision_id": NaN,
++        "run_id": NaN,
++        "broker": NaN,
++        "environment": NaN,
++        "config_hash": NaN,
++        "model_version": NaN,
++        "rank_model_version": NaN,
++        "risk_block_reason": NaN,
++        "order_intent_id": NaN,
++        "broker_order_id": NaN,
+         "llm_side": "REJECT"
+       }
+     ],
+@@ -509,39 +568,39 @@
+     ]
+   },
+   "audit_buy_paths": {
+-    "rows": 4486,
++    "rows": 6055,
+     "llm_advisory_only": false,
+     "ai_score_buy_threshold": 0.4,
+-    "skip_buy_total": 4043,
++    "skip_buy_total": 5539,
+     "skip_by_layer": {
+-      "other": 3964,
++      "other": 5439,
+       "ai_score": 18,
+-      "llm_block": 14,
+-      "rank_gate": 47
++      "llm_block": 15,
++      "rank_gate": 67
+     },
+     "skip_ai_score_layer": 18,
+-    "skip_llm_block_layer": 14,
+-    "skip_rank_gate_layer": 47,
++    "skip_llm_block_layer": 15,
++    "skip_rank_gate_layer": 67,
+     "skip_rank_missing_layer": 0,
+-    "skip_other_layer": 3964,
+-    "ai_pass_llm_block": 14,
+-    "ai_fail_or_low_score": 387,
+-    "buy_submitted": 44,
+-    "buy_submitted_llm_accept": 36,
++    "skip_other_layer": 5439,
++    "ai_pass_llm_block": 15,
++    "ai_fail_or_low_score": 453,
++    "buy_submitted": 53,
++    "buy_submitted_llm_accept": 40,
+     "buy_submitted_llm_reject_verdict": 0,
+-    "buy_submitted_no_llm_verdict": 8,
++    "buy_submitted_no_llm_verdict": 13,
+     "llm_advisory_would_reject_ai_passed": 53,
+     "interpretation": "Blocking mode (llm_advisory_only=false): ai_pass_llm_block counts SKIP_BUY where AI score passed but LLM blocked. submitted_llm_reject_verdict should be ~0."
+   },
+   "rank_gate_paper_tracker": {
+     "min_calendar_days_required": 14,
+-    "calendar_days_with_rank_events": 4,
+-    "audit_span_calendar_days": 7,
++    "calendar_days_with_rank_events": 6,
++    "audit_span_calendar_days": 11,
+     "first_date": "2026-05-27",
+-    "last_date": "2026-06-02",
+-    "total_skip_buy_rank_blocked": 47,
++    "last_date": "2026-06-06",
++    "total_skip_buy_rank_blocked": 67,
+     "total_skip_buy_rank_missing": 0,
+-    "total_buy_submitted": 44,
++    "total_buy_submitted": 53,
+     "gate_ready": false,
+     "daily_tail": [
+       {
+@@ -586,11 +645,43 @@
+       },
+       {
+         "date": "2026-06-02",
+-        "events": 837,
+-        "skip_buy": 764,
++        "events": 961,
++        "skip_buy": 883,
+         "rank_blocked": 47,
+         "rank_missing": 0,
+         "buy_submitted": 15
++      },
++      {
++        "date": "2026-06-03",
++        "events": 390,
++        "skip_buy": 380,
++        "rank_blocked": 0,
++        "rank_missing": 0,
++        "buy_submitted": 0
++      },
++      {
++        "date": "2026-06-04",
++        "events": 382,
++        "skip_buy": 370,
++        "rank_blocked": 20,
++        "rank_missing": 0,
++        "buy_submitted": 4
++      },
++      {
++        "date": "2026-06-05",
++        "events": 411,
++        "skip_buy": 373,
++        "rank_blocked": 0,
++        "rank_missing": 0,
++        "buy_submitted": 5
++      },
++      {
++        "date": "2026-06-06",
++        "events": 262,
++        "skip_buy": 254,
++        "rank_blocked": 0,
++        "rank_missing": 0,
++        "buy_submitted": 0
+       }
+     ],
+     "notes": [
+diff --git a/logs/paper_validation/trend_summary.json b/logs/paper_validation/trend_summary.json
+index fbcb41f..b945053 100644
+--- a/logs/paper_validation/trend_summary.json
++++ b/logs/paper_validation/trend_summary.json
+@@ -1,24 +1,24 @@
+ {
+-  "generated_at": "2026-06-02T09:16:13Z",
++  "generated_at": "2026-06-06T01:45:47Z",
+   "history_path": "logs/paper_validation/history.jsonl",
+-  "rows": 1,
++  "rows": 5,
+   "rolling_days": 7,
+   "latest": {
+-    "date": "2026-06-02",
+-    "agreement_pct": 74.7,
++    "date": "2026-06-06",
++    "agreement_pct": 69.2,
+     "skip_ai_score": 18,
+-    "skip_llm_block": 14,
+-    "skip_rank_gate": 47,
+-    "buy_submitted": 44,
+-    "rank_calendar_days": 4,
++    "skip_llm_block": 15,
++    "skip_rank_gate": 67,
++    "buy_submitted": 53,
++    "rank_calendar_days": 6,
+     "rank_gate_ready": false
+   },
+   "rolling": {
+-    "agreement_pct_mean": 74.7,
++    "agreement_pct_mean": 71.4,
+     "skip_ai_score_mean": 18.0,
+-    "skip_llm_block_mean": 14.0,
+-    "skip_rank_gate_mean": 47.0,
+-    "buy_submitted_mean": 44.0
++    "skip_llm_block_mean": 14.6,
++    "skip_rank_gate_mean": 59.0,
++    "buy_submitted_mean": 47.4
+   },
+   "alerts": [],
+   "tail": [
+@@ -29,6 +29,38 @@
+       "skip_rank_gate": 47,
+       "buy_submitted": 44,
+       "rank_gate_ready": false
++    },
++    {
++      "date": "2026-06-03",
++      "agreement_pct": 74.7,
++      "skip_llm_block": 14,
++      "skip_rank_gate": 47,
++      "buy_submitted": 44,
++      "rank_gate_ready": false
++    },
++    {
++      "date": "2026-06-04",
++      "agreement_pct": 69.2,
++      "skip_llm_block": 15,
++      "skip_rank_gate": 67,
++      "buy_submitted": 48,
++      "rank_gate_ready": false
++    },
++    {
++      "date": "2026-06-05",
++      "agreement_pct": 69.2,
++      "skip_llm_block": 15,
++      "skip_rank_gate": 67,
++      "buy_submitted": 48,
++      "rank_gate_ready": false
++    },
++    {
++      "date": "2026-06-06",
++      "agreement_pct": 69.2,
++      "skip_llm_block": 15,
++      "skip_rank_gate": 67,
++      "buy_submitted": 53,
++      "rank_gate_ready": false
+     }
+   ]
+ }
+\ No newline at end of file
+diff --git a/tests/fixtures/ml_quality/golden_fold_stability_report.json b/tests/fixtures/ml_quality/golden_fold_stability_report.json
+index 3a47525..be73796 100644
+--- a/tests/fixtures/ml_quality/golden_fold_stability_report.json
++++ b/tests/fixtures/ml_quality/golden_fold_stability_report.json
+@@ -20,7 +20,7 @@
+     }
+   },
+   "fold_count": 4,
+
+exec
+/bin/bash -lc "git diff -- tests/fixtures/ml_quality/golden_fold_stability_report.json tests/fixtures/ml_quality/golden_model_calibration_report.json reports/agent_pipeline/phase30/git_status.txt | sed -n '1,220p'" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+diff --git a/reports/agent_pipeline/phase30/git_status.txt b/reports/agent_pipeline/phase30/git_status.txt
+index 6e78f1c..90d5deb 100644
+--- a/reports/agent_pipeline/phase30/git_status.txt
++++ b/reports/agent_pipeline/phase30/git_status.txt
+@@ -1,24 +1,4 @@
+ On branch main
+ Your branch is up to date with 'origin/main'.
+ 
+-Changes not staged for commit:
+-  (use "git add <file>..." to update what will be committed)
+-  (use "git restore <file>..." to discard changes in working directory)
+-	modified:   .gitignore
+-	modified:   TODO.md
+-	modified:   config/strategy_config.json
+-	modified:   docs/TODO_ARCHIVE.md
+-	modified:   docs/runbook.md
+-	modified:   logs/portfolio_backtest/portfolio_summary.csv
+-
+-Untracked files:
+-  (use "git add <file>..." to include in what will be committed)
+-	logs/benchmark_gap/
+-	logs/crowding_paper/
+-	logs/guard_impact/
+-	logs/llm_advisory/
+-	logs/llm_cache_warmup/
+-	logs/operational_alpha/
+-	scripts/run_paper_ops_bootstrap.sh
+-
+-no changes added to commit (use "git add" and/or "git commit -a")
++nothing to commit, working tree clean
+diff --git a/tests/fixtures/ml_quality/golden_fold_stability_report.json b/tests/fixtures/ml_quality/golden_fold_stability_report.json
+index 3a47525..be73796 100644
+--- a/tests/fixtures/ml_quality/golden_fold_stability_report.json
++++ b/tests/fixtures/ml_quality/golden_fold_stability_report.json
+@@ -20,7 +20,7 @@
+     }
+   },
+   "fold_count": 4,
+-  "generated_at": "2026-06-02T07:21:26Z",
++  "generated_at": "2026-06-08T05:02:00Z",
+   "high_variance_warning": false,
+   "roc_auc": {
+     "coefficient_of_variation": 0.01359820733051054,
+diff --git a/tests/fixtures/ml_quality/golden_model_calibration_report.json b/tests/fixtures/ml_quality/golden_model_calibration_report.json
+index 77681b3..ac10f2a 100644
+--- a/tests/fixtures/ml_quality/golden_model_calibration_report.json
++++ b/tests/fixtures/ml_quality/golden_model_calibration_report.json
+@@ -1,6 +1,6 @@
+ {
+   "bin_count": 20,
+-  "generated_at": "2026-06-02T07:21:26Z",
++  "generated_at": "2026-06-08T05:02:00Z",
+   "overall_avg_brier_score": 0.25,
+   "regimes": {
+     "BEAR": {
+
+exec
+/bin/bash -lc 'rg "cms_execution_enabled|execution_lock" -n . | head -50' in /home/kimyo/trading-bot
+ succeeded in 0ms:
+./config/execution_lock.json:2:  "cms_execution_enabled": false,
+./reports/agent_pipeline/phase34_followup/git_diff_stat.txt:1: config/execution_lock.json                  |   4 +-
+./reports/agent_pipeline/phase34_followup/changed_files.txt:1:config/execution_lock.json
+./reports/agent_pipeline/phase37_main_split/git_diff_stat.txt:1: config/execution_lock.json                         |   4 +-
+./reports/agent_pipeline/phase37_main_split/changed_files.txt:1:config/execution_lock.json
+./reports/agent_pipeline/phase34_followup/review_packet.md:10:- config/execution_lock.json
+./reports/agent_pipeline/phase34_followup/review_packet.md:21: config/execution_lock.json                  |   4 +-
+./reports/agent_pipeline/phase34_followup/review_packet.md:67:diff --git a/config/execution_lock.json b/config/execution_lock.json
+./reports/agent_pipeline/phase34_followup/review_packet.md:69:--- a/config/execution_lock.json
+./reports/agent_pipeline/phase34_followup/review_packet.md:70:+++ b/config/execution_lock.json
+./reports/agent_pipeline/phase34_followup/review_packet.md:73:-  "cms_execution_enabled": true,
+./reports/agent_pipeline/phase34_followup/review_packet.md:74:+  "cms_execution_enabled": false,
+./reports/agent_pipeline/phase37_main_split/review_packet.md:10:- config/execution_lock.json
+./reports/agent_pipeline/phase37_main_split/review_packet.md:22: config/execution_lock.json                         |   4 +-
+./reports/agent_pipeline/phase37_main_split/review_packet.md:69:diff --git a/config/execution_lock.json b/config/execution_lock.json
+./reports/agent_pipeline/phase37_main_split/review_packet.md:71:--- a/config/execution_lock.json
+./reports/agent_pipeline/phase37_main_split/review_packet.md:72:+++ b/config/execution_lock.json
+./reports/agent_pipeline/phase37_main_split/review_packet.md:75:-  "cms_execution_enabled": true,
+./reports/agent_pipeline/phase37_main_split/review_packet.md:76:+  "cms_execution_enabled": false,
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:35:- config/execution_lock.json
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:46: config/execution_lock.json                  |   4 +-
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:92:diff --git a/config/execution_lock.json b/config/execution_lock.json
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:94:--- a/config/execution_lock.json
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:95:+++ b/config/execution_lock.json
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:98:-  "cms_execution_enabled": true,
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:99:+  "cms_execution_enabled": false,
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:1554:/bin/bash -lc "rg \"def main|execution_lock|cms_execution_enabled|load_settings\\(|broker_provider|get_broker_adapter\" -n src/main.py src/*.py | head -100" in /home/kimyo/trading-bot
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:1570:src/execution_lock.py:6:LOCK_PATH = Path("config/execution_lock.json")
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:1571:src/execution_lock.py:10:    "cms_execution_enabled": False,
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:1572:src/execution_lock.py:25:def load_execution_lock() -> dict:
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:1573:src/execution_lock.py:35:def save_execution_lock(enabled: bool) -> dict:
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:1574:src/execution_lock.py:36:    data = load_execution_lock()
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:1575:src/execution_lock.py:37:    data["cms_execution_enabled"] = bool(enabled)
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:1576:src/execution_lock.py:48:def is_cms_execution_enabled() -> bool:
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:1577:src/execution_lock.py:49:    data = load_execution_lock()
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:1578:src/execution_lock.py:50:    return bool(data["cms_execution_enabled"])
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:1579:src/execution_lock.py:54:    data = load_execution_lock()
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:1606:src/check_execution_lock.py:1:from src.execution_lock import load_execution_lock
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:1607:src/check_execution_lock.py:4:def main() -> None:
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:1608:src/check_execution_lock.py:5:    lock = load_execution_lock()
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:1658:/bin/bash -lc "sed -n '339,390p' src/main.py && sed -n '1,90p' src/execution_lock.py" in /home/kimyo/trading-bot
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:1717:LOCK_PATH = Path("config/execution_lock.json")
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:1721:    "cms_execution_enabled": False,
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:1736:def load_execution_lock() -> dict:
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:1746:def save_execution_lock(enabled: bool) -> dict:
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:1747:    data = load_execution_lock()
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:1748:    data["cms_execution_enabled"] = bool(enabled)
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:1759:def is_cms_execution_enabled() -> bool:
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:1760:    data = load_execution_lock()
+./reports/agent_pipeline/phase34_followup/codex_review_command.log:1761:    return bool(data["cms_execution_enabled"])
+
+2026-06-08T05:05:31.598370Z ERROR codex_core::tools::router: error=exec_command failed for `/bin/bash -lc "nl -ba config/execution_lock.json && nl -ba reports/agent_pipeline/phase30/git_status.txt | sed -n '1,20p'"`: CreateProcess { message: "Rejected(\"Failed to create unified exec process: Text file busy (os error 26)\")" }
+2026-06-08T05:05:36.715345Z ERROR codex_core::tools::router: error=exec_command failed for `/bin/bash -lc "python - <<'PY'
+from pathlib import Path
+for p in ['config/execution_lock.json','reports/agent_pipeline/phase30/git_status.txt']:
+ print(p)
+ for i,l in enumerate(Path(p).read_text().splitlines(),1): print(f'{i}: {l}')
+PY"`: CreateProcess { message: "Rejected(\"Failed to create unified exec process: Text file busy (os error 26)\")" }
+codex
+The patch changes an execution gate from enabled to disabled, which materially alters paper execution behavior and appears unrelated to the requested main.py pipeline split.
+
+Review comment:
+
+- [P1] Restore CMS paper execution lock state — /home/kimyo/trading-bot/config/execution_lock.json:2-2
+  With this repository config committed, `is_cms_execution_enabled()` will now return `false` and the CMS paper execution path stays locked even when the previous checked-in state allowed paper execution. This change is unrelated to splitting `main.py` and will block normal paper execution workflows that rely on the committed lock being enabled.

@@ -1,0 +1,11 @@
+=== Balanced pass: phase32 ===
+AGY prompt: prompts/agy/phase32.md
+=== AGY slice: pytest ===
+.....                                                                    [100%]
+5 passed in 0.82s
+AGY slice pytest: OK
+
+--- Iteration 1/1 (Run ID: phase32) ---
+STOP CONDITION: Codex review timeout
+
+Final Orchestrator output: /home/kimyo/trading-bot/reports/agent_pipeline/phase32

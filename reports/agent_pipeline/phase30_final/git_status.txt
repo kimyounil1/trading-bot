@@ -1,0 +1,23 @@
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   TODO.md
+	modified:   docs/TODO_ARCHIVE.md
+	modified:   docs/runbook.md
+	modified:   logs/crowding_paper/go_no_go_checklist.json
+	modified:   logs/llm_advisory/latest_summary.json
+	modified:   scripts/run_paper_ops_bootstrap.sh
+	modified:   scripts/run_pass_complete.sh
+	modified:   src/crowding_paper_gate.py
+	modified:   tests/test_crowding_paper_gate.py
+	modified:   tests/test_portfolio_backtest_gate.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	src/paper_ops_summary.py
+	tests/test_paper_ops_summary.py
+
+no changes added to commit (use "git add" and/or "git commit -a")

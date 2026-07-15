@@ -1,0 +1,10 @@
+ TODO.md                                            |  48 ++-
+ logs/crowding_paper/go_no_go_checklist.json        |   2 +-
+ logs/crowding_paper/reassessment.json              |   6 +-
+ logs/llm_advisory/latest_summary.json              | 168 +++++++-
+ logs/paper_validation/history.jsonl                |   5 +
+ logs/paper_validation/latest_summary.json          | 478 ++++++++++++++-------
+ logs/paper_validation/trend_summary.json           |  72 +++-
+ .../ml_quality/golden_fold_stability_report.json   |   2 +-
+ .../golden_model_calibration_report.json           |   2 +-
+ 9 files changed, 586 insertions(+), 197 deletions(-)

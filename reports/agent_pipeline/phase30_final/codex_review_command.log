@@ -1,0 +1,1270 @@
+$ codex --ask-for-approval never --sandbox read-only review /home/kimyo/trading-bot/reports/agent_pipeline/phase30_final/review_packet.md -c 'model_reasoning_effort="low"'
+exit_code=0
+
+## stdout
+The new config-apply path can persist invalid crowding settings because it uses only the shallow payload validator before writing `strategy_config.json`. That makes the patch unsafe even though the included tests pass.
+
+Review comment:
+
+- [P2] Validate merged crowding settings before writing strategy_config — /home/kimyo/trading-bot/src/crowding_paper_gate.py:177-180
+  If `crowding_paper_proposal.json` contains an out-of-range crowding value (for example `crowding_max_positions: 0` or a negative threshold), this path still writes the merged JSON because `_validate_strategy_settings_payload()` only checks key names and a couple of types. The next `load_settings()` call will then fail on the stricter checks in `validate_settings()`, so a successful `--apply-config` run can leave `config/strategy_config.json` in a state that breaks later bot starts.
+
+
+## stderr
+OpenAI Codex v0.135.0
+--------
+workdir: /home/kimyo/trading-bot
+model: gpt-5.4
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: low
+reasoning summaries: none
+session id: 019e80d7-2fb4-7471-ab89-307ac926c677
+--------
+user
+/home/kimyo/trading-bot/reports/agent_pipeline/phase30_final/review_packet.md
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/kimyo/trading-bot/reports/agent_pipeline/phase30_final/review_packet.md" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+# Agent Review Packet - Run: phase30_final
+
+## Implementation Agent
+cursor
+
+## Task Description
+Phase 30: JSON merge apply preserves tickers
+
+## Changed Files
+- TODO.md
+- docs/TODO_ARCHIVE.md
+- docs/runbook.md
+- logs/crowding_paper/go_no_go_checklist.json
+- logs/llm_advisory/latest_summary.json
+- scripts/run_paper_ops_bootstrap.sh
+- scripts/run_pass_complete.sh
+- src/crowding_paper_gate.py
+- tests/test_crowding_paper_gate.py
+- tests/test_portfolio_backtest_gate.py
+
+## Git Diff Summary
+```
+ TODO.md                                     |  26 +++-----
+ docs/TODO_ARCHIVE.md                        |   4 +-
+ docs/runbook.md                             |   5 +-
+ logs/crowding_paper/go_no_go_checklist.json |   8 ++-
+ logs/llm_advisory/latest_summary.json       |   6 +-
+ scripts/run_paper_ops_bootstrap.sh          |  53 ++++++++++++---
+ scripts/run_pass_complete.sh                |   3 +-
+ src/crowding_paper_gate.py                  | 100 +++++++++++++++++++++++++++-
+ tests/test_crowding_paper_gate.py           |  51 ++++++++++++++
+ tests/test_portfolio_backtest_gate.py       |   2 +-
+ 10 files changed, 224 insertions(+), 34 deletions(-)
+```
+
+## Test Execution Results (runtime_harness.log)
+```
+============================= test session starts ==============================
+platform linux -- Python 3.12.8, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/kimyo/trading-bot
+plugins: anyio-4.13.0
+collected 45 items
+
+tests/test_report_performance.py .....                                   [ 11%]
+tests/test_reappraise_regime.py ...                                      [ 17%]
+tests/test_portfolio_backtest_golden.py ...                              [ 24%]
+tests/test_portfolio_backtest_gate.py .....                              [ 35%]
+tests/test_daily_audit_summary.py ....                                   [ 44%]
+tests/test_daily_audit_summary_schema.py ....                            [ 53%]
+tests/test_retrain_notifications.py ....                                 [ 62%]
+tests/test_llm_cache_report_schema.py ..                                 [ 66%]
+tests/test_leverage_stress_report.py ...                                 [ 73%]
+tests/test_guard_impact_report.py ..                                     [ 77%]
+tests/test_check_audit_daily_summary.py ...                              [ 84%]
+tests/test_fold_variance_report.py .                                     [ 86%]
+tests/test_promotion_summary.py ..                                       [ 91%]
+tests/test_benchmark_gap_report.py .                                     [ 93%]
+tests/test_champion_promotion_governance.py ...                          [100%]
+
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6
+  /home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 45 passed, 1 warning in 3.10s =========================
+```
+
+## Git Patch
+```diff
+diff --git a/TODO.md b/TODO.md
+index 70e5dd2..0d6460e 100644
+--- a/TODO.md
++++ b/TODO.md
+@@ -5,7 +5,7 @@
+ 1. **코드** — 요구사항 반영, 프로젝트 스타일 준수
+ 2. **테스트** — 관련 pytest 추가·통과
+ 3. **운영** — 필요 시 백테스트/리포트·runbook 반영
+-4. **리뷰** — `RUN_ID=<pass> SKIP_CODEX=1 bash scripts/run_pass_complete.sh` ([`docs/codex_review_policy.md`](docs/codex_review_policy.md))
++4. **리뷰** — `RUN_ID=<pass> bash scripts/run_pass_complete.sh` ([`docs/codex_review_policy.md`](docs/codex_review_policy.md))
+ 
+ ---
+ 
+@@ -14,36 +14,28 @@
+ | 문서 | 역할 |
+ |------|------|
+ | **`TODO.md`** | 활성 로드맵 (다음 Phase만) |
+-| **`docs/TODO_ARCHIVE.md`** | Phase 0–29 요약 |
++| **`docs/TODO_ARCHIVE.md`** | Phase 0–30 요약 |
+ 
+ ---
+ 
+-## Current Status (2026-05-31)
++## Current Status (2026-06-01)
+ 
+ | 영역 | 상태 |
+ |------|------|
+ | **ML 백테스트** | **+96.8%** vs B&H **+65.0%** (gap +31.8pp), `beats_benchmark` |
+-| **LLM** | `llm_advisory_only: true` — 주문 차단 없음, audit만 |
+-| **Crowding** | `crowding_guard_enabled: false` — paper gate **NO_GO** (Sharpe Δ) |
+-| **챔피언** | 로컬 `models/`; 승격 시 벤치 이상 필수 |
++| **LLM** | `llm_advisory_only: true` — audit 1667 rows, advisory report 갱신 |
++| **Crowding** | gate **NO_GO** — `crowding_guard_enabled: false` 유지 (proposal 미적용) |
++| **Paper ops** | `logs/paper_ops/latest_summary.json` (bootstrap 2026-06-01) |
+ 
+-**Phase 29 완료** → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
+-
+----
+-
+-## Phase 30 — Paper ops (유지보수)
+-
+-- [ ] 주기: `bash scripts/run_paper_ops_bootstrap.sh` (dry-run + 리포트)
+-- [ ] paper에서 `execution_audit`·`data/llm_cache.json` 누적 후 `run_llm_advisory_report.sh`로 따름/무시 비교
+-- [ ] Crowding: `bash scripts/run_crowding_paper_gate.sh` 재실행 후 **GO**일 때만 `config/crowding_paper_proposal.json` 값을 `strategy_config`에 반영
++**Phase 30 완료** → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
+ 
+ ---
+ 
+ ## Quick commands
+ 
+ ```bash
+-bash scripts/run_paper_ops_bootstrap.sh
++bash scripts/run_paper_ops_bootstrap.sh              # full (model 필요 시 guard refresh)
++SKIP_ALPHA=1 bash scripts/run_paper_ops_bootstrap.sh # paper audit/advisory/crowding only
+ bash scripts/run_alpha_pipeline.sh
+ bash scripts/warm_llm_cache_from_backtest.sh   # 선택: 캐시 재충전
+-RUN_ID=phase30 SKIP_CODEX=1 bash scripts/run_pass_complete.sh
+ ```
+diff --git a/docs/TODO_ARCHIVE.md b/docs/TODO_ARCHIVE.md
+index 63d0699..09a3d1b 100644
+--- a/docs/TODO_ARCHIVE.md
++++ b/docs/TODO_ARCHIVE.md
+@@ -1,4 +1,4 @@
+-# TODO Archive (Phase 0–23)
++# TODO Archive (Phase 0–30)
+ 
+ 완료된 로드맵 요약. 상세 체크리스트는 git history의 `TODO.md` 참고.
+ 
+@@ -28,6 +28,7 @@
+ | 27 | Universe + instrument meta | Master CSV, UNIVERSE_PROFILE, leveraged ETF registry and buy gates |
+ | 28 | Margin leverage paper | Stress go/no-go gate, proposal caps, main buy block |
+ | 29 | Beat benchmark (alpha) | Promotion ≥ bench, EW benchmark fix, alpha/operational pipelines, LLM advisory-only, cache warmup |
++| 30 | Paper ops maintenance | Bootstrap script, LLM advisory report wiring, crowding `--apply-config` (GO only), paper_ops summary |
+ 
+ **Milestones**
+ - **2026-05-27:** Phase 0–19 closed (code + pytest + runbook).
+@@ -38,3 +39,4 @@
+ - **2026-05-30:** Phase 27 closed; universe master/smoke/research profiles, instrument registry, leverage ETF gates.
+ - **2026-05-30:** Phase 28 closed; margin leverage paper gate wired to leverage stress + main.
+ - **2026-05-31:** Phase 29 closed; +96.8% vs B&H +65%, LLM advisory (no block), crowding paper gate NO_GO.
++- **2026-06-01:** Phase 30 closed; paper ops bootstrap, advisory impact report, crowding apply-on-GO guard, `logs/paper_ops/latest_summary.json`.
+diff --git a/docs/runbook.md b/docs/runbook.md
+index 61d7e2e..62795a4 100644
+--- a/docs/runbook.md
++++ b/docs/runbook.md
+@@ -84,7 +84,8 @@ LIVE_LLM=1 bash scripts/run_operational_alpha_validation.sh   # cache miss 시 G
+ 워밍업은 진입일 키(`{티커}_{YYYY-MM-DD}`)로 저장. 당일 yfinance에 기사가 없으면 **현재 헤드라인 fallback**으로 Gemini 호출(완전한 과거 뉴스 아카이브는 아님). paper `main.py` 실행 시 같은 키로 캐시가 계속 쌓임.
+ 
+ ```bash
+-bash scripts/run_paper_ops_bootstrap.sh   # dry-run + advisory + alpha + operational summaries
++bash scripts/run_paper_ops_bootstrap.sh   # dry-run + advisory + alpha + operational + crowding gate
++SKIP_ALPHA=1 bash scripts/run_paper_ops_bootstrap.sh   # model/alpha 없을 때 paper audit·crowding만
+ ```
+ 
+ ### 2.3.2 Crowding guard (paper)
+@@ -94,6 +95,8 @@ bash scripts/run_paper_ops_bootstrap.sh   # dry-run + advisory + alpha + operati
+ ```bash
+ bash scripts/run_guard_impact_report.sh
+ bash scripts/run_crowding_paper_gate.sh   # writes logs/crowding_paper/go_no_go_checklist.json
++# strategy_config 반영은 guard impact **갱신 직후** 또는 APPLY_CROWDING_CONFIG=1 일 때만:
++bash scripts/run_crowding_paper_gate.sh --apply-config
+ ```
+ 
+ 2026-05-31 gate 결과: **NO_GO** (Sharpe delta below floor). **GO** 전까지 prod config에 crowding 켜지 않음.
+diff --git a/logs/crowding_paper/go_no_go_checklist.json b/logs/crowding_paper/go_no_go_checklist.json
+index a15a61d..c9f4550 100644
+--- a/logs/crowding_paper/go_no_go_checklist.json
++++ b/logs/crowding_paper/go_no_go_checklist.json
+@@ -21,8 +21,14 @@
+       "pass": true
+     }
+   ],
++  "config_apply": {
++    "applied": false,
++    "config_path": "config/strategy_config.json",
++    "decision": "NO_GO",
++    "reason": "gate not GO_PAPER \u2014 strategy_config unchanged"
++  },
+   "decision": "NO_GO",
+-  "generated_at": "2026-05-31T14:15:57Z",
++  "generated_at": "2026-06-01T01:32:23Z",
+   "guard_impact_path": "logs/guard_impact/latest_summary.json",
+   "metrics": {
+     "baseline": {
+diff --git a/logs/llm_advisory/latest_summary.json b/logs/llm_advisory/latest_summary.json
+index 8e02d90..8383a25 100644
+--- a/logs/llm_advisory/latest_summary.json
++++ b/logs/llm_advisory/latest_summary.json
+@@ -1,10 +1,10 @@
+ {
+-  "generated_at": "2026-05-31T14:15:36Z",
++  "generated_at": "2026-06-01T01:32:22Z",
+   "audit_path": "logs/execution_audit.csv",
+   "lookback_days": 90,
+-  "rows": 117,
++  "rows": 1667,
+   "advisory_would_reject": 0,
+-  "buy_submitted": 0,
++  "buy_submitted": 9,
+   "buy_submitted_despite_llm_reject": 0,
+   "buy_blocked_by_llm": 0,
+   "sample_would_reject": [],
+diff --git a/scripts/run_paper_ops_bootstrap.sh b/scripts/run_paper_ops_bootstrap.sh
+index c53223c..3d0db79 100755
+--- a/scripts/run_paper_ops_bootstrap.sh
++++ b/scripts/run_paper_ops_bootstrap.sh
+@@ -1,20 +1,57 @@
+ #!/usr/bin/env bash
+-# One-shot paper ops bootstrap: dry-run bot, advisory report, alpha + operational summaries.
++# One-shot paper ops bootstrap: dry-run bot, advisory report, alpha + operational summaries,
+
+exec
+/bin/bash -lc "sed -n '220,520p' /home/kimyo/trading-bot/reports/agent_pipeline/phase30_final/review_packet.md" in /home/kimyo/trading-bot
+ succeeded in 0ms:
++# One-shot paper ops bootstrap: dry-run bot, advisory report, alpha + operational summaries,
++# crowding gate refresh, and optional proposal apply (GO only).
+ set -euo pipefail
+ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ cd "$ROOT"
+ export PYTHONPATH=.
++mkdir -p logs/paper_ops
+ 
+-echo "=== [1/4] Bot dry-run (execution_audit + signals) ==="
++echo "=== [1/6] Bot dry-run (execution_audit + signals) ==="
+ bash scripts/run_bot_once.sh dry-run
+ 
+-echo "=== [2/4] LLM advisory report ==="
++echo "=== [2/6] LLM advisory report ==="
+ bash scripts/run_llm_advisory_report.sh
+ 
+-echo "=== [3/4] Alpha pipeline ==="
+-bash scripts/run_alpha_pipeline.sh
++if [[ "${SKIP_ALPHA:-}" == "1" ]]; then
++  echo "=== [3/6] Alpha pipeline — SKIP_ALPHA=1 ==="
++  echo "=== [4/6] Operational in-loop — SKIP_ALPHA=1 ==="
++else
++  echo "=== [3/6] Alpha pipeline ==="
++  bash scripts/run_alpha_pipeline.sh
+ 
+-echo "=== [4/4] Operational in-loop (cache replay) ==="
+-bash scripts/run_operational_alpha_validation.sh
++  echo "=== [4/6] Operational in-loop (cache replay) ==="
++  bash scripts/run_operational_alpha_validation.sh
++fi
+ 
+-echo "Done. See logs/execution_audit.csv and logs/*/latest_summary.json"
++echo "=== [5/6] Guard impact + crowding gate (apply proposal on GO only) ==="
++GUARD_IMPACT="logs/guard_impact/latest_summary.json"
++SKIP_CROWDING_GATE=0
++GUARD_REFRESHED=0
++
++if [[ -f models/ai_score_model.joblib ]] && [[ "${SKIP_GUARD_REFRESH:-}" != "1" ]]; then
++  bash scripts/run_guard_impact_report.sh
++  GUARD_REFRESHED=1
++elif [[ -f "$GUARD_IMPACT" ]]; then
++  echo "Using existing ${GUARD_IMPACT} (skip guard_impact refresh; gate report only)"
++elif [[ "${SKIP_ALPHA:-}" == "1" ]]; then
++  echo "WARN: ${GUARD_IMPACT} missing and model unavailable — skipping crowding gate."
++  echo "      Restore baseline: git checkout -- ${GUARD_IMPACT}"
++  SKIP_CROWDING_GATE=1
++else
++  echo "ERROR: ${GUARD_IMPACT} missing. Train model or restore baseline." >&2
++  exit 1
++fi
++
++if [[ "$SKIP_CROWDING_GATE" != "1" ]]; then
++  if [[ "$GUARD_REFRESHED" == "1" ]] || [[ "${APPLY_CROWDING_CONFIG:-}" == "1" ]]; then
++    bash scripts/run_crowding_paper_gate.sh --apply-config
++  else
++    bash scripts/run_crowding_paper_gate.sh
++  fi
++fi
++
++echo "=== [6/6] Paper ops summary ==="
++.venv/bin/python -m src.paper_ops_summary
++
++echo "Done. See logs/paper_ops/latest_summary.json, logs/execution_audit.csv, logs/llm_advisory/latest_summary.json"
+diff --git a/scripts/run_pass_complete.sh b/scripts/run_pass_complete.sh
+index cee8120..94bf49b 100755
+--- a/scripts/run_pass_complete.sh
++++ b/scripts/run_pass_complete.sh
+@@ -61,7 +61,8 @@ else
+     tests/test_champion_promotion_governance.py \
+     tests/test_equal_weight_benchmark.py \
+     tests/test_promotion_beat_benchmark.py \
+-    tests/test_llm_backtest_impact.py
++    tests/test_llm_backtest_impact.py \
++    tests/test_paper_ops_summary.py
+ fi
+ 
+ echo "=== [2/3] post-workflow / Codex ==="
+diff --git a/src/crowding_paper_gate.py b/src/crowding_paper_gate.py
+index c66442c..a651763 100644
+--- a/src/crowding_paper_gate.py
++++ b/src/crowding_paper_gate.py
+@@ -9,9 +9,20 @@ from datetime import datetime, timezone
+ from pathlib import Path
+ from typing import Any
+ 
++from src.settings import _validate_strategy_settings_payload
++
+ DEFAULT_GUARD_IMPACT_PATH = Path("logs/guard_impact/latest_summary.json")
+ DEFAULT_OUTPUT_DIR = Path("logs/crowding_paper")
+ PROPOSAL_PATH = Path("config/crowding_paper_proposal.json")
++DEFAULT_STRATEGY_CONFIG_PATH = Path("config/strategy_config.json")
++
++CROWDING_PROPOSAL_KEYS = (
++    "crowding_guard_enabled",
++    "crowding_lookback_days",
++    "crowding_max_positions",
++    "crowding_momentum_threshold",
++    "crowding_trend_gap_threshold",
++)
+ 
+ CROWDING_GATE_REPORT_KEYS = (
+     "generated_at",
+@@ -125,13 +136,78 @@ def write_crowding_gate_artifacts(
+     return path
+ 
+ 
++def load_crowding_paper_proposal(path: Path = PROPOSAL_PATH) -> dict[str, Any]:
++    if not path.is_file():
++        raise FileNotFoundError(f"Crowding paper proposal missing: {path}")
++    payload = json.loads(path.read_text(encoding="utf-8"))
++    if not isinstance(payload, dict):
++        raise ValueError(f"{path} must contain a top-level JSON object")
++    return payload
++
++
++def apply_crowding_paper_proposal_if_go(
++    gate_report: dict[str, Any],
++    *,
++    config_path: Path = DEFAULT_STRATEGY_CONFIG_PATH,
++    proposal_path: Path = PROPOSAL_PATH,
++    dry_run: bool = False,
++) -> dict[str, Any]:
++    """Merge proposal crowding keys into strategy_config only when gate decision is GO_PAPER."""
++    decision = str(gate_report.get("decision", ""))
++    if decision != "GO_PAPER":
++        return {
++            "applied": False,
++            "decision": decision,
++            "config_path": str(config_path),
++            "reason": "gate not GO_PAPER — strategy_config unchanged",
++        }
++
++    proposal = load_crowding_paper_proposal(proposal_path)
++    overrides = {
++        key: proposal[key]
++        for key in CROWDING_PROPOSAL_KEYS
++        if key in proposal
++    }
++    if not overrides:
++        raise ValueError(f"No crowding keys found in proposal: {proposal_path}")
++
++    raw = json.loads(config_path.read_text(encoding="utf-8"))
++    if not isinstance(raw, dict):
++        raise ValueError(f"{config_path} must contain a top-level JSON object")
++    raw.update(overrides)
++    _validate_strategy_settings_payload(raw, config_path)
++    if not dry_run:
++        config_path.write_text(json.dumps(raw, indent=2) + "\n", encoding="utf-8")
++
++    return {
++        "applied": True,
++        "decision": decision,
++        "config_path": str(config_path),
++        "proposal_path": str(proposal_path),
++        "overrides": overrides,
++        "dry_run": dry_run,
++    }
++
++
+ def run_crowding_paper_gate(
+     guard_impact_path: Path = DEFAULT_GUARD_IMPACT_PATH,
+     output_dir: Path = DEFAULT_OUTPUT_DIR,
++    *,
++    apply_config: bool = False,
++    config_path: Path = DEFAULT_STRATEGY_CONFIG_PATH,
++    proposal_path: Path = PROPOSAL_PATH,
++    dry_run: bool = False,
+ ) -> dict[str, Any]:
+     guard_report = load_guard_impact_summary(guard_impact_path)
+     report = validate_crowding_gate_report(evaluate_crowding_paper_gate(guard_report))
+     report["guard_impact_path"] = str(guard_impact_path)
++    if apply_config:
++        report["config_apply"] = apply_crowding_paper_proposal_if_go(
++            report,
++            config_path=config_path,
++            proposal_path=proposal_path,
++            dry_run=dry_run,
++        )
+     write_crowding_gate_artifacts(report, output_dir)
+     return report
+ 
+@@ -140,9 +216,31 @@ def main() -> None:
+     parser = argparse.ArgumentParser(description="Crowding guard paper go/no-go checklist")
+     parser.add_argument("--guard-impact", default=str(DEFAULT_GUARD_IMPACT_PATH))
+     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
++    parser.add_argument(
++        "--apply-config",
++        action="store_true",
++        help="When decision is GO_PAPER, merge config/crowding_paper_proposal.json into strategy_config",
++    )
++    parser.add_argument("--config-path", default=str(DEFAULT_STRATEGY_CONFIG_PATH))
++    parser.add_argument("--proposal-path", default=str(PROPOSAL_PATH))
++    parser.add_argument(
++        "--dry-run",
++        action="store_true",
++        help="With --apply-config, report overrides without writing strategy_config",
++    )
+     args = parser.parse_args()
+-    report = run_crowding_paper_gate(Path(args.guard_impact), Path(args.output_dir))
++    report = run_crowding_paper_gate(
++        Path(args.guard_impact),
++        Path(args.output_dir),
++        apply_config=args.apply_config,
++        config_path=Path(args.config_path),
++        proposal_path=Path(args.proposal_path),
++        dry_run=args.dry_run,
++    )
+     print(format_crowding_gate_report(report))
++    apply_result = report.get("config_apply")
++    if apply_result:
++        print(f"Config apply: applied={apply_result['applied']} ({apply_result.get('reason', apply_result.get('overrides'))})")
+ 
+ 
+ if __name__ == "__main__":
+diff --git a/tests/test_crowding_paper_gate.py b/tests/test_crowding_paper_gate.py
+index 8e6f68e..038ec26 100644
+--- a/tests/test_crowding_paper_gate.py
++++ b/tests/test_crowding_paper_gate.py
+@@ -1,10 +1,14 @@
+ from pathlib import Path
+ 
++import json
++
+ from src.crowding_paper_gate import (
++    apply_crowding_paper_proposal_if_go,
+     evaluate_crowding_paper_gate,
+     load_guard_impact_summary,
+     validate_crowding_gate_report,
+ )
++from src.settings import load_settings
+ 
+ FIXTURE = Path(__file__).resolve().parent / "fixtures" / "guard_impact" / "latest_summary.json"
+ 
+@@ -15,3 +19,50 @@ def test_crowding_paper_gate_go():
+     )
+     assert report["decision"] == "GO_PAPER"
+     assert all(item["pass"] for item in report["checklist"])
++
++
++def test_apply_crowding_proposal_on_go(tmp_path, monkeypatch):
++    config_path = tmp_path / "strategy_config.json"
++    proposal_path = tmp_path / "crowding_paper_proposal.json"
++    config_path.write_text(
++        json.dumps({"tickers": ["AAPL", "MSFT"], "crowding_guard_enabled": False}),
++        encoding="utf-8",
++    )
++    proposal_path.write_text(
++        json.dumps(
++            {
++                "crowding_guard_enabled": True,
++                "crowding_lookback_days": 45,
++                "crowding_max_positions": 3,
++                "crowding_momentum_threshold": 0.12,
++                "crowding_trend_gap_threshold": 0.04,
++            }
++        ),
++        encoding="utf-8",
++    )
++    monkeypatch.setenv("UNIVERSE_PROFILE", "smoke")
++    result = apply_crowding_paper_proposal_if_go(
++        {"decision": "GO_PAPER"},
++        config_path=config_path,
++        proposal_path=proposal_path,
++    )
++    assert result["applied"] is True
++    updated = json.loads(config_path.read_text(encoding="utf-8"))
++    assert updated["tickers"] == ["AAPL", "MSFT"]
++    assert updated["crowding_guard_enabled"] is True
++    assert updated["crowding_lookback_days"] == 45
++
++
++def test_apply_crowding_proposal_skipped_on_no_go(tmp_path):
++    config_path = tmp_path / "strategy_config.json"
++    proposal_path = tmp_path / "crowding_paper_proposal.json"
++    config_path.write_text(json.dumps({"tickers": ["AAPL"], "crowding_guard_enabled": False}), encoding="utf-8")
++    before = config_path.read_text(encoding="utf-8")
++    proposal_path.write_text(json.dumps({"crowding_guard_enabled": True}), encoding="utf-8")
++    result = apply_crowding_paper_proposal_if_go(
++        {"decision": "NO_GO"},
++        config_path=config_path,
++        proposal_path=proposal_path,
++    )
++    assert result["applied"] is False
++    assert config_path.read_text(encoding="utf-8") == before
+diff --git a/tests/test_portfolio_backtest_gate.py b/tests/test_portfolio_backtest_gate.py
+index 3ad0db1..00c89b9 100644
+--- a/tests/test_portfolio_backtest_gate.py
++++ b/tests/test_portfolio_backtest_gate.py
+@@ -132,4 +132,4 @@ def test_cli_exit_codes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+         env=env,
+         check=False,
+     )
+-    assert ok.returncode == 0
++    assert ok.returncode == 0
+\ No newline at end of file
+```
+
+exec
+/bin/bash -lc "rg -n \"def _validate_strategy_settings_payload|def load_settings|tickers\" src/settings.py && sed -n '1,260p' src/settings.py" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+23:    tickers: List[str]
+60:    tickers: List[str] = field(default_factory=lambda: ["NVDA", "MSFT", "GOOGL", "AMZN", "AMD"])
+132:_PROFILE_OVERRIDE_FIELD_NAMES = _STRATEGY_SETTINGS_FIELD_NAMES - {"name", "tickers"}
+151:def _validate_strategy_settings_payload(payload: Dict[str, Any], path: Path) -> Dict[str, Any]:
+156:    tickers = payload.get("tickers")
+157:    if tickers is not None and (
+158:        not isinstance(tickers, list) or any(not isinstance(ticker, str) for ticker in tickers)
+160:        raise ValueError(f"{path}: 'tickers' must be a list of strings")
+214:    settings.tickers = [str(ticker).strip().upper() for ticker in settings.tickers]
+217:    if not settings.tickers or any(not ticker for ticker in settings.tickers):
+218:        raise ValueError("tickers must not be empty")
+292:def load_settings(path: Union[str, Path] = CONFIG_PATH) -> StrategySettings:
+295:    from src.universe_loader import resolve_scan_tickers
+301:        base_tickers = payload.get("tickers", merged.get("tickers"))
+302:        payload["tickers"] = resolve_scan_tickers(list(base_tickers))
+305:        merged["tickers"] = resolve_scan_tickers(list(merged["tickers"]))
+439:        print(f"  - Strategy: {s.name} ({len(s.tickers)} tickers)")
+import json
+from dataclasses import asdict, dataclass, field, fields
+from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+# 경로 설정
+CONFIG_PATH = Path("config/strategy_config.json")
+PROFILES_PATH = Path("config/strategy_profiles.json")
+
+
+class AllocationType(Enum):
+    EQUAL_WEIGHT = "equal_weight"
+    FIXED_WEIGHT = "fixed_weight"
+    RISK_PARITY = "risk_parity"
+
+
+@dataclass
+class StrategyProfile:
+    """개별 전략의 기술적 지표 및 필터 설정"""
+
+    name: str
+    tickers: List[str]
+
+    # 기술적 지표 (MA, RSI 등)
+    ma_fast: int
+    ma_slow: int
+    rsi_buy_limit: float
+
+    # 필터 설정
+    use_ai_score: bool
+    ai_score_buy_threshold: float
+    market_regime_filter_enabled: bool
+    market_regime_ticker: str
+    market_regime_ma_fast: int
+    market_regime_ma_slow: int
+    relative_strength_filter_enabled: bool = False
+    relative_strength_benchmark_ticker: str = "SPY"
+    relative_strength_lookback_days: int = 20
+    relative_strength_min_excess_return: float = 0.0
+    volume_filter_enabled: bool = False
+    volume_lookback_days: int = 20
+    min_volume_ratio: float = 1.0
+    volatility_filter_enabled: bool = False
+    volatility_lookback_days: int = 20
+    max_volatility: float = 0.04
+
+    # 랭킹 가중치
+    rank_trend_weight: float = 1.0
+    rank_ai_weight: float = 0.0
+    rank_momentum_weight: float = 0.0
+    rank_volatility_weight: float = 0.0
+
+
+@dataclass
+class StrategySettings(StrategyProfile):
+    """Legacy single-strategy settings used by backtests and tests."""
+
+    name: str = "default"
+    tickers: List[str] = field(default_factory=lambda: ["NVDA", "MSFT", "GOOGL", "AMZN", "AMD"])
+    ma_fast: int = 10
+    ma_slow: int = 50
+    rsi_buy_limit: float = 65.0
+    use_ai_score: bool = False
+    ai_score_buy_threshold: float = 0.55
+    market_regime_filter_enabled: bool = False
+    market_regime_ticker: str = "SPY"
+    market_regime_ma_fast: int = 50
+    market_regime_ma_slow: int = 200
+
+    max_position_pct: float = 0.4
+    max_total_positions: int = 2
+    max_sector_positions: int = 2
+    stop_loss_pct: float = 0.05
+    take_profit_pct: float = 0.1
+    max_test_order_amount: float = 10.0
+    max_orders_per_run: int = 1
+    max_daily_order_amount: float = 1000.0
+    buy_cooldown_days: int = 1
+    allocation_method: str = "equal_weight"
+    ai_exit_enabled: bool = False
+    ai_exit_threshold: float = 0.30
+    ai_exit_dynamic_enabled: bool = False
+    ai_exit_vix_low: float = 15.0
+    ai_exit_vix_high: float = 25.0
+    ai_exit_threshold_bull: float = 0.22
+    ai_exit_threshold_bear: float = 0.50
+    news_sentiment_enabled: bool = False
+    news_sentiment_threshold: float = -0.30
+    max_portfolio_drawdown_pct: float = 0.15
+    max_holding_days: int = 30
+    correlation_guard_enabled: bool = False
+    max_correlation_threshold: float = 0.85
+    max_portfolio_avg_correlation_threshold: float = 0.70
+    correlation_lookback_days: int = 60
+    earnings_filter_enabled: bool = False
+    earnings_lookback_days: int = 3
+    earnings_lookforward_days: int = 1
+    take_profit_partial_pct: float = 0.0
+    partial_exit_ratio: float = 0.5
+    leverage_factor: float = 1.0
+    max_gross_exposure_pct: float = 1.0
+    min_cash_buffer_pct: float = 0.05
+    max_single_name_loss_pct: float = 0.02
+    crowding_guard_enabled: bool = False
+    crowding_lookback_days: int = 60
+    crowding_max_positions: int = 2
+    crowding_momentum_threshold: float = 0.15
+    crowding_trend_gap_threshold: float = 0.05
+    dynamic_universe_enabled: bool = False
+    dynamic_count: int = 50
+    allow_leveraged_etfs: bool = False
+    max_leveraged_etf_positions: int = 1
+    max_effective_leverage_exposure_pct: float = 1.25
+    block_leveraged_etfs_vix_above: float = 28.0
+    margin_leverage_paper_enabled: bool = False
+    margin_leverage_stress_gate_required: bool = True
+    trailing_stop_pct: float = 0.05
+    adaptive_trailing_stop_enabled: bool = False
+    atr_multiplier: float = 3.0
+    rebalance_threshold_pct: float = 0.20
+    sector_rotation_enabled: bool = False
+    macro_event_risk_enabled: bool = False
+    macro_event_lookahead_days: int = 2
+    macro_event_lookback_days: int = 1
+    llm_degraded_mode: str = "PASS"  # "PASS" or "FAIL"
+    llm_cache_enabled: bool = True
+    llm_advisory_only: bool = True  # True: log LLM verdict, do not block orders
+
+
+_STRATEGY_SETTINGS_FIELD_NAMES = {item.name for item in fields(StrategySettings)}
+_PROFILE_OVERRIDE_FIELD_NAMES = _STRATEGY_SETTINGS_FIELD_NAMES - {"name", "tickers"}
+_PROFILES_CONFIG_FIELD_NAMES = {"profiles", "regime_mapping", "manual_override"}
+
+
+DEFAULT_SETTINGS = StrategySettings()
+
+
+def _read_json_object(path: Path) -> Dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON in {path}: {exc}") from exc
+
+    if not isinstance(payload, dict):
+        raise ValueError(f"{path} must contain a top-level JSON object")
+
+    return payload
+
+
+def _validate_strategy_settings_payload(payload: Dict[str, Any], path: Path) -> Dict[str, Any]:
+    unknown_keys = sorted(set(payload) - _STRATEGY_SETTINGS_FIELD_NAMES)
+    if unknown_keys:
+        raise ValueError(f"Unknown keys in {path}: {unknown_keys}")
+
+    tickers = payload.get("tickers")
+    if tickers is not None and (
+        not isinstance(tickers, list) or any(not isinstance(ticker, str) for ticker in tickers)
+    ):
+        raise ValueError(f"{path}: 'tickers' must be a list of strings")
+
+    market_regime_ticker = payload.get("market_regime_ticker")
+    if market_regime_ticker is not None and not isinstance(market_regime_ticker, str):
+        raise ValueError(f"{path}: 'market_regime_ticker' must be a string")
+
+    return payload
+
+
+def _validate_profiles_payload(payload: Dict[str, Any], path: Path) -> Dict[str, Any]:
+    unknown_keys = sorted(set(payload) - _PROFILES_CONFIG_FIELD_NAMES)
+    if unknown_keys:
+        raise ValueError(f"Unknown keys in {path}: {unknown_keys}")
+
+    profiles = payload.get("profiles")
+    if not isinstance(profiles, dict) or not profiles:
+        raise ValueError(f"{path}: 'profiles' must be a non-empty object")
+
+    for profile_name, overrides in profiles.items():
+        if not isinstance(profile_name, str) or not profile_name.strip():
+            raise ValueError(f"{path}: profile names must be non-empty strings")
+        if not isinstance(overrides, dict):
+            raise ValueError(f"{path}: profile '{profile_name}' must be an object")
+        override_unknown = sorted(set(overrides) - _PROFILE_OVERRIDE_FIELD_NAMES)
+        if override_unknown:
+            raise ValueError(
+                f"{path}: profile '{profile_name}' has unknown keys: {override_unknown}"
+            )
+
+    regime_mapping = payload.get("regime_mapping")
+    if not isinstance(regime_mapping, dict) or not regime_mapping:
+        raise ValueError(f"{path}: 'regime_mapping' must be a non-empty object")
+    for regime, profile_name in regime_mapping.items():
+        if not isinstance(regime, str) or not regime.strip():
+            raise ValueError(f"{path}: regime keys must be non-empty strings")
+        if not isinstance(profile_name, str) or profile_name not in profiles:
+            raise ValueError(
+                f"{path}: regime '{regime}' must map to an existing profile name"
+            )
+
+    manual_override = payload.get("manual_override")
+    if manual_override is not None and (
+        not isinstance(manual_override, str) or manual_override not in profiles
+    ):
+        raise ValueError(
+            f"{path}: 'manual_override' must be null or an existing profile name"
+        )
+
+    return payload
+
+
+def validate_settings(settings: StrategySettings) -> StrategySettings:
+    """Normalize and validate legacy single-strategy settings."""
+
+    settings.tickers = [str(ticker).strip().upper() for ticker in settings.tickers]
+    settings.market_regime_ticker = str(settings.market_regime_ticker).strip().upper()
+    settings.relative_strength_benchmark_ticker = str(settings.relative_strength_benchmark_ticker).strip().upper()
+    if not settings.tickers or any(not ticker for ticker in settings.tickers):
+        raise ValueError("tickers must not be empty")
+    if settings.ma_fast <= 0 or settings.ma_slow <= 0:
+        raise ValueError("ma_fast and ma_slow must be positive")
+    if settings.ma_fast >= settings.ma_slow:
+        raise ValueError("ma_fast must be smaller than ma_slow")
+    if not 0 < settings.rsi_buy_limit <= 101:
+        raise ValueError("rsi_buy_limit must be between 0 and 101")
+    if not 0 < settings.max_position_pct <= 1:
+        raise ValueError("max_position_pct must be between 0 and 1")
+    if settings.max_total_positions <= 0:
+        raise ValueError("max_total_positions must be positive")
+    if settings.max_sector_positions <= 0:
+        raise ValueError("max_sector_positions must be positive")
+    if not 0 <= settings.stop_loss_pct < 1:
+        raise ValueError("stop_loss_pct must be between 0 and 1")
+    if settings.take_profit_pct < 0:
+        raise ValueError("take_profit_pct must be non-negative")
+    if not 0 <= settings.trailing_stop_pct < 1:
+        raise ValueError("trailing_stop_pct must be between 0 and 1")
+    if settings.atr_multiplier <= 0:
+        raise ValueError("atr_multiplier must be positive")
+    if settings.max_orders_per_run <= 0:
+        raise ValueError("max_orders_per_run must be positive")
+    if settings.max_daily_order_amount <= 0:
+        raise ValueError("max_daily_order_amount must be positive")
+    if settings.max_test_order_amount <= 0:
+        raise ValueError("max_test_order_amount must be positive")
+    if settings.buy_cooldown_days < 0:
+        raise ValueError("buy_cooldown_days must be non-negative")
+    if settings.max_holding_days <= 0:
+        raise ValueError("max_holding_days must be positive")
+    if not 0 <= settings.max_portfolio_drawdown_pct < 1:
+        raise ValueError("max_portfolio_drawdown_pct must be between 0 and 1")
+    if not 0 < settings.max_correlation_threshold <= 1:
+        raise ValueError("max_correlation_threshold must be between 0 and 1")
+    if not 0 < settings.max_portfolio_avg_correlation_threshold <= 1:
+        raise ValueError("max_portfolio_avg_correlation_threshold must be between 0 and 1")
+    if settings.correlation_lookback_days <= 0:
+        raise ValueError("correlation_lookback_days must be positive")
+    if settings.earnings_lookback_days < 0 or settings.earnings_lookforward_days < 0:
+        raise ValueError("earnings window days must be non-negative")
+    if settings.take_profit_partial_pct < 0:
+        raise ValueError("take_profit_partial_pct must be non-negative")
+
+exec
+/bin/bash -lc "sed -n '1,220p' src/paper_ops_summary.py" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+"""Aggregate paper ops bootstrap artifacts into one summary JSON."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+DEFAULT_OUTPUT_DIR = Path("logs/paper_ops")
+DEFAULT_AUDIT_PATH = Path("logs/execution_audit.csv")
+DEFAULT_LLM_CACHE_PATH = Path("data/llm_cache.json")
+DEFAULT_LLM_ADVISORY_PATH = Path("logs/llm_advisory/latest_summary.json")
+DEFAULT_CROWDING_GATE_PATH = Path("logs/crowding_paper/go_no_go_checklist.json")
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _load_json_if_exists(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return payload if isinstance(payload, dict) else None
+
+
+def build_paper_ops_summary(
+    *,
+    audit_path: Path = DEFAULT_AUDIT_PATH,
+    llm_cache_path: Path = DEFAULT_LLM_CACHE_PATH,
+    llm_advisory_path: Path = DEFAULT_LLM_ADVISORY_PATH,
+    crowding_gate_path: Path = DEFAULT_CROWDING_GATE_PATH,
+) -> dict[str, Any]:
+    llm_advisory = _load_json_if_exists(llm_advisory_path) or {}
+    crowding_gate = _load_json_if_exists(crowding_gate_path) or {}
+
+    llm_cache_keys = 0
+    if llm_cache_path.is_file():
+        cache_payload = json.loads(llm_cache_path.read_text(encoding="utf-8"))
+        if isinstance(cache_payload, dict):
+            llm_cache_keys = len(cache_payload)
+
+    audit_rows = 0
+    if audit_path.is_file():
+        audit_rows = max(0, sum(1 for _ in audit_path.open(encoding="utf-8")) - 1)
+
+    config_apply = crowding_gate.get("config_apply") or {}
+    return {
+        "generated_at": _utc_now_iso(),
+        "execution_audit_path": str(audit_path),
+        "execution_audit_rows": audit_rows,
+        "llm_cache_path": str(llm_cache_path),
+        "llm_cache_keys": llm_cache_keys,
+        "llm_advisory_path": str(llm_advisory_path),
+        "llm_advisory": {
+            "rows": llm_advisory.get("rows", 0),
+            "advisory_would_reject": llm_advisory.get("advisory_would_reject", 0),
+            "buy_submitted": llm_advisory.get("buy_submitted", 0),
+            "buy_submitted_despite_llm_reject": llm_advisory.get(
+                "buy_submitted_despite_llm_reject", 0
+            ),
+        },
+        "crowding_gate_path": str(crowding_gate_path),
+        "crowding_decision": crowding_gate.get("decision"),
+        "crowding_config_applied": bool(config_apply.get("applied", False)),
+        "notes": [
+            "Run via: bash scripts/run_paper_ops_bootstrap.sh",
+            "Crowding proposal applies to strategy_config only when gate decision is GO_PAPER.",
+        ],
+    }
+
+
+def write_paper_ops_summary(
+    output_dir: Path = DEFAULT_OUTPUT_DIR,
+    **kwargs: Any,
+) -> Path:
+    report = build_paper_ops_summary(**kwargs)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / "latest_summary.json"
+    path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+    return path
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Write paper ops bootstrap summary JSON")
+    parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
+    args = parser.parse_args()
+    path = write_paper_ops_summary(Path(args.output_dir))
+    print(f"Wrote {path}")
+
+
+if __name__ == "__main__":
+    main()
+
+exec
+/bin/bash -lc "sed -n '1,260p' src/crowding_paper_gate.py" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+"""Go/no-go checklist for enabling crowding_guard on paper (uses guard_impact report)."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from src.settings import _validate_strategy_settings_payload
+
+DEFAULT_GUARD_IMPACT_PATH = Path("logs/guard_impact/latest_summary.json")
+DEFAULT_OUTPUT_DIR = Path("logs/crowding_paper")
+PROPOSAL_PATH = Path("config/crowding_paper_proposal.json")
+DEFAULT_STRATEGY_CONFIG_PATH = Path("config/strategy_config.json")
+
+CROWDING_PROPOSAL_KEYS = (
+    "crowding_guard_enabled",
+    "crowding_lookback_days",
+    "crowding_max_positions",
+    "crowding_momentum_threshold",
+    "crowding_trend_gap_threshold",
+)
+
+CROWDING_GATE_REPORT_KEYS = (
+    "generated_at",
+    "guard_impact_path",
+    "decision",
+    "checklist",
+    "paper_proposal_path",
+    "metrics",
+)
+
+
+@dataclass
+class CrowdingPaperGateCriteria:
+    max_sharpe_delta_loss: float = 0.15
+    min_drawdown_delta_pp: float = -1.0
+    max_trade_count_loss: int = 20
+    min_blocked_trades: int = 1
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def load_guard_impact_summary(path: Path = DEFAULT_GUARD_IMPACT_PATH) -> dict[str, Any]:
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"Guard impact summary missing: {path}. Run: bash scripts/run_guard_impact_report.sh"
+        )
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def evaluate_crowding_paper_gate(
+    guard_report: dict[str, Any],
+    criteria: CrowdingPaperGateCriteria | None = None,
+) -> dict[str, Any]:
+    criteria = criteria or CrowdingPaperGateCriteria()
+    baseline = guard_report.get("baseline") or {}
+    guarded = guard_report.get("with_crowding_guard") or {}
+    delta = guard_report.get("delta") or {}
+
+    blocked = int(guarded.get("estimated_crowding_blocked_trades", 0))
+    sharpe_delta = float(delta.get("sharpe_ratio", 0.0))
+    dd_delta = float(delta.get("max_drawdown_pct", 0.0))
+    trade_delta = int(delta.get("trade_count", 0))
+
+    checks: list[dict[str, Any]] = [
+        {
+            "id": "guard_active",
+            "pass": blocked >= criteria.min_blocked_trades,
+            "detail": f"blocked_trades={blocked} (min {criteria.min_blocked_trades})",
+        },
+        {
+            "id": "sharpe_not_too_worse",
+            "pass": sharpe_delta >= -criteria.max_sharpe_delta_loss,
+            "detail": f"sharpe_delta={sharpe_delta:.4f} (floor -{criteria.max_sharpe_delta_loss})",
+        },
+        {
+            "id": "drawdown_acceptable",
+            "pass": dd_delta >= criteria.min_drawdown_delta_pp,
+            "detail": f"max_dd_delta_pp={dd_delta:.4f} (floor {criteria.min_drawdown_delta_pp})",
+        },
+        {
+            "id": "trade_count_acceptable",
+            "pass": trade_delta >= -criteria.max_trade_count_loss,
+            "detail": f"trade_count_delta={trade_delta} (floor -{criteria.max_trade_count_loss})",
+        },
+    ]
+    all_pass = all(item["pass"] for item in checks)
+    decision = "GO_PAPER" if all_pass else "NO_GO"
+
+    return {
+        "generated_at": _utc_now_iso(),
+        "guard_impact_path": str(DEFAULT_GUARD_IMPACT_PATH),
+        "decision": decision,
+        "checklist": checks,
+        "paper_proposal_path": str(PROPOSAL_PATH),
+        "metrics": {
+            "baseline": baseline,
+            "guarded": guarded,
+            "delta": delta,
+            "blocked_trades": blocked,
+        },
+    }
+
+
+def validate_crowding_gate_report(report: dict[str, Any]) -> dict[str, Any]:
+    for key in CROWDING_GATE_REPORT_KEYS:
+        if key not in report:
+            raise ValueError(f"Missing crowding gate report key: {key}")
+    return report
+
+
+def format_crowding_gate_report(report: dict[str, Any]) -> str:
+    lines = [
+        f"=== Crowding paper gate: {report['decision']} ===",
+        f"Proposal file: {report['paper_proposal_path']}",
+    ]
+    for item in report["checklist"]:
+        mark = "PASS" if item["pass"] else "FAIL"
+        lines.append(f"  [{mark}] {item['id']}: {item['detail']}")
+    return "\n".join(lines)
+
+
+def write_crowding_gate_artifacts(
+    report: dict[str, Any],
+    output_dir: Path = DEFAULT_OUTPUT_DIR,
+) -> Path:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / "go_no_go_checklist.json"
+    path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+    return path
+
+
+def load_crowding_paper_proposal(path: Path = PROPOSAL_PATH) -> dict[str, Any]:
+    if not path.is_file():
+        raise FileNotFoundError(f"Crowding paper proposal missing: {path}")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"{path} must contain a top-level JSON object")
+    return payload
+
+
+def apply_crowding_paper_proposal_if_go(
+    gate_report: dict[str, Any],
+    *,
+    config_path: Path = DEFAULT_STRATEGY_CONFIG_PATH,
+    proposal_path: Path = PROPOSAL_PATH,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Merge proposal crowding keys into strategy_config only when gate decision is GO_PAPER."""
+    decision = str(gate_report.get("decision", ""))
+    if decision != "GO_PAPER":
+        return {
+            "applied": False,
+            "decision": decision,
+            "config_path": str(config_path),
+            "reason": "gate not GO_PAPER — strategy_config unchanged",
+        }
+
+    proposal = load_crowding_paper_proposal(proposal_path)
+    overrides = {
+        key: proposal[key]
+        for key in CROWDING_PROPOSAL_KEYS
+        if key in proposal
+    }
+    if not overrides:
+        raise ValueError(f"No crowding keys found in proposal: {proposal_path}")
+
+    raw = json.loads(config_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError(f"{config_path} must contain a top-level JSON object")
+    raw.update(overrides)
+    _validate_strategy_settings_payload(raw, config_path)
+    if not dry_run:
+        config_path.write_text(json.dumps(raw, indent=2) + "\n", encoding="utf-8")
+
+    return {
+        "applied": True,
+        "decision": decision,
+        "config_path": str(config_path),
+        "proposal_path": str(proposal_path),
+        "overrides": overrides,
+        "dry_run": dry_run,
+    }
+
+
+def run_crowding_paper_gate(
+    guard_impact_path: Path = DEFAULT_GUARD_IMPACT_PATH,
+    output_dir: Path = DEFAULT_OUTPUT_DIR,
+    *,
+    apply_config: bool = False,
+    config_path: Path = DEFAULT_STRATEGY_CONFIG_PATH,
+    proposal_path: Path = PROPOSAL_PATH,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    guard_report = load_guard_impact_summary(guard_impact_path)
+    report = validate_crowding_gate_report(evaluate_crowding_paper_gate(guard_report))
+    report["guard_impact_path"] = str(guard_impact_path)
+    if apply_config:
+        report["config_apply"] = apply_crowding_paper_proposal_if_go(
+            report,
+            config_path=config_path,
+            proposal_path=proposal_path,
+            dry_run=dry_run,
+        )
+    write_crowding_gate_artifacts(report, output_dir)
+    return report
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Crowding guard paper go/no-go checklist")
+    parser.add_argument("--guard-impact", default=str(DEFAULT_GUARD_IMPACT_PATH))
+    parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
+    parser.add_argument(
+        "--apply-config",
+        action="store_true",
+        help="When decision is GO_PAPER, merge config/crowding_paper_proposal.json into strategy_config",
+    )
+    parser.add_argument("--config-path", default=str(DEFAULT_STRATEGY_CONFIG_PATH))
+    parser.add_argument("--proposal-path", default=str(PROPOSAL_PATH))
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="With --apply-config, report overrides without writing strategy_config",
+    )
+    args = parser.parse_args()
+    report = run_crowding_paper_gate(
+        Path(args.guard_impact),
+        Path(args.output_dir),
+        apply_config=args.apply_config,
+        config_path=Path(args.config_path),
+        proposal_path=Path(args.proposal_path),
+        dry_run=args.dry_run,
+    )
+    print(format_crowding_gate_report(report))
+    apply_result = report.get("config_apply")
+    if apply_result:
+        print(f"Config apply: applied={apply_result['applied']} ({apply_result.get('reason', apply_result.get('overrides'))})")
+
+
+if __name__ == "__main__":
+    main()
+
+exec
+/bin/bash -lc 'rg -n "crowding_lookback_days|crowding_max_positions|crowding_momentum_threshold|crowding_trend_gap_threshold" -n src/settings.py' in /home/kimyo/trading-bot
+ succeeded in 0ms:
+106:    crowding_lookback_days: int = 60
+107:    crowding_max_positions: int = 2
+108:    crowding_momentum_threshold: float = 0.15
+109:    crowding_trend_gap_threshold: float = 0.05
+271:    if settings.crowding_lookback_days <= 0:
+272:        raise ValueError("crowding_lookback_days must be positive")
+273:    if settings.crowding_max_positions <= 0:
+274:        raise ValueError("crowding_max_positions must be positive")
+275:    if settings.crowding_momentum_threshold < 0:
+276:        raise ValueError("crowding_momentum_threshold must be non-negative")
+277:    if settings.crowding_trend_gap_threshold < 0:
+278:        raise ValueError("crowding_trend_gap_threshold must be non-negative")
+
+exec
+/bin/bash -lc "nl -ba src/crowding_paper_gate.py | sed -n '145,175p'
+nl -ba src/settings.py | sed -n '267,278p'" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+   145	    return payload
+   146	
+   147	
+   148	def apply_crowding_paper_proposal_if_go(
+   149	    gate_report: dict[str, Any],
+   150	    *,
+   151	    config_path: Path = DEFAULT_STRATEGY_CONFIG_PATH,
+   152	    proposal_path: Path = PROPOSAL_PATH,
+   153	    dry_run: bool = False,
+   154	) -> dict[str, Any]:
+   155	    """Merge proposal crowding keys into strategy_config only when gate decision is GO_PAPER."""
+   156	    decision = str(gate_report.get("decision", ""))
+   157	    if decision != "GO_PAPER":
+   158	        return {
+   159	            "applied": False,
+   160	            "decision": decision,
+   161	            "config_path": str(config_path),
+   162	            "reason": "gate not GO_PAPER — strategy_config unchanged",
+   163	        }
+   164	
+   165	    proposal = load_crowding_paper_proposal(proposal_path)
+   166	    overrides = {
+   167	        key: proposal[key]
+   168	        for key in CROWDING_PROPOSAL_KEYS
+   169	        if key in proposal
+   170	    }
+   171	    if not overrides:
+   172	        raise ValueError(f"No crowding keys found in proposal: {proposal_path}")
+   173	
+   174	    raw = json.loads(config_path.read_text(encoding="utf-8"))
+   175	    if not isinstance(raw, dict):
+   267	    if not 0 <= settings.min_cash_buffer_pct < 1:
+   268	        raise ValueError("min_cash_buffer_pct must be between 0 and 1")
+   269	    if not 0 < settings.max_single_name_loss_pct < 1:
+   270	        raise ValueError("max_single_name_loss_pct must be between 0 and 1")
+   271	    if settings.crowding_lookback_days <= 0:
+   272	        raise ValueError("crowding_lookback_days must be positive")
+   273	    if settings.crowding_max_positions <= 0:
+   274	        raise ValueError("crowding_max_positions must be positive")
+   275	    if settings.crowding_momentum_threshold < 0:
+   276	        raise ValueError("crowding_momentum_threshold must be non-negative")
+   277	    if settings.crowding_trend_gap_threshold < 0:
+   278	        raise ValueError("crowding_trend_gap_threshold must be non-negative")
+
+exec
+/bin/bash -lc "nl -ba src/crowding_paper_gate.py | sed -n '174,186p'" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+   174	    raw = json.loads(config_path.read_text(encoding="utf-8"))
+   175	    if not isinstance(raw, dict):
+   176	        raise ValueError(f"{config_path} must contain a top-level JSON object")
+   177	    raw.update(overrides)
+   178	    _validate_strategy_settings_payload(raw, config_path)
+   179	    if not dry_run:
+   180	        config_path.write_text(json.dumps(raw, indent=2) + "\n", encoding="utf-8")
+   181	
+   182	    return {
+   183	        "applied": True,
+   184	        "decision": decision,
+   185	        "config_path": str(config_path),
+   186	        "proposal_path": str(proposal_path),
+
+codex
+The new config-apply path can persist invalid crowding settings because it uses only the shallow payload validator before writing `strategy_config.json`. That makes the patch unsafe even though the included tests pass.
+
+Review comment:
+
+- [P2] Validate merged crowding settings before writing strategy_config — /home/kimyo/trading-bot/src/crowding_paper_gate.py:177-180
+  If `crowding_paper_proposal.json` contains an out-of-range crowding value (for example `crowding_max_positions: 0` or a negative threshold), this path still writes the merged JSON because `_validate_strategy_settings_payload()` only checks key names and a couple of types. The next `load_settings()` call will then fail on the stricter checks in `validate_settings()`, so a successful `--apply-config` run can leave `config/strategy_config.json` in a state that breaks later bot starts.

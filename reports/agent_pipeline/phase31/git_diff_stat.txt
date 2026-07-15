@@ -1,0 +1,13 @@
+ config/execution_lock.json                         |   4 +-
+ config/strategy_profiles.json                      |  12 +-
+ logs/ai_threshold/threshold_results.csv            |  16 +-
+ logs/crowding_paper/go_no_go_checklist.json        |  62 +++---
+ logs/guard_impact/latest_summary.json              |  34 ++--
+ logs/llm_advisory/latest_summary.json              | 221 ++++++++++++++++++++-
+ logs/ml/ai_model_metrics.csv                       |  16 +-
+ logs/retrain_history.csv                           |   3 +
+ scripts/run_paper_ops_bootstrap.sh                 |   2 +-
+ scripts/run_pass_complete.sh                       |   9 +-
+ .../ml_quality/golden_fold_stability_report.json   |   2 +-
+ .../golden_model_calibration_report.json           |   2 +-
+ 12 files changed, 313 insertions(+), 70 deletions(-)

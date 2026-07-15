@@ -1,0 +1,111 @@
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .env.example
+	modified:   .github/workflows/ci.yml
+	modified:   TODO.md
+	modified:   app/streamlit_app.py
+	modified:   config/execution_lock.json
+	modified:   config/strategy_config.json
+	modified:   config/strategy_profiles.json
+	modified:   docs/promotion_gates.md
+	modified:   docs/runbook.md
+	modified:   logs/ai_threshold/threshold_results.csv
+	modified:   logs/benchmark_gap/latest_summary.json
+	modified:   logs/crowding_paper/go_no_go_checklist.json
+	modified:   logs/guard_impact/latest_summary.json
+	modified:   logs/llm_advisory/latest_summary.json
+	modified:   logs/ml/ai_model_metrics.csv
+	modified:   logs/operational_alpha/baseline/portfolio_summary.csv
+	modified:   logs/operational_alpha/latest_summary.json
+	modified:   logs/operational_alpha/with_operational_filters/portfolio_summary.csv
+	modified:   logs/portfolio_backtest/portfolio_summary.csv
+	modified:   logs/retrain_history.csv
+	modified:   scripts/run_model_quality_report.sh
+	modified:   scripts/run_paper_ops_bootstrap.sh
+	modified:   src/benchmark_gap_report.py
+	modified:   src/buy_guards.py
+	modified:   src/candidate_cache.py
+	modified:   src/cms_helpers.py
+	modified:   src/crowding_live_impact_report.py
+	modified:   src/crowding_live_metrics.py
+	modified:   src/daily_audit_summary.py
+	modified:   src/llm_analyst.py
+	modified:   src/llm_vllm.py
+	modified:   src/logger.py
+	modified:   src/main.py
+	modified:   src/ml_quality_report.py
+	modified:   src/paper_ops_summary.py
+	modified:   src/risk_manager.py
+	modified:   src/settings.py
+	modified:   tests/fixtures/ml_quality/golden_fold_stability_report.json
+	modified:   tests/fixtures/ml_quality/golden_model_calibration_report.json
+	modified:   tests/test_buy_guards.py
+	modified:   tests/test_candidate_cache_and_risk.py
+	modified:   tests/test_cms_reconcile.py
+	modified:   tests/test_crowding_live_impact_report.py
+	modified:   tests/test_llm_analyst_genai.py
+	modified:   tests/test_llm_vllm_fallback.py
+	modified:   tests/test_ml_quality_report.py
+	modified:   tests/test_paper_ops_summary.py
+	modified:   tests/test_settings.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	docs/ai_authority_gates.md
+	logs/crowding_paper/decision_record.json
+	logs/ml/calibration_experiment_report.json
+	logs/ml/feature_drift_report.json
+	logs/ml/fold_metrics.csv
+	logs/ml/fold_stability_report.json
+	logs/ml/label_challenger/
+	logs/ml/label_horizon_report.json
+	logs/ml/model_calibration_report.json
+	logs/ml/model_promotion_report.json
+	logs/ml/model_rollback_report.json
+	logs/ml/rank_label_experiment/
+	logs/ml/rank_label_experiment_h10_top20_q80/
+	logs/ml/rank_label_experiment_h20_top10_q90/
+	logs/ml/rank_label_experiment_h20_top15_q85/
+	logs/ml/rank_label_experiment_h20_top20_q80/
+	logs/ml/rank_label_experiment_h20_top20_q85/
+	logs/ml/rank_label_experiment_h40_top20_q80/
+	logs/ml/rank_label_experiment_top20/
+	logs/ml/rank_label_experiment_top40/
+	logs/ml/threshold_retune_report.json
+	logs/ml/threshold_retune_results.csv
+	prompts/agy/phase32_rank_ai_paper.md
+	scripts/exp_alpha_sweep.py
+	scripts/run_rank_ai_gate_report.sh
+	src/calibration_experiment.py
+	src/cms_reconcile.py
+	src/execution_audit_io.py
+	src/label_challenger_experiment.py
+	src/label_horizon_report.py
+	src/llm_ai_agreement_report.py
+	src/model_quality_summary.py
+	src/ops_report_presenter.py
+	src/position_dust.py
+	src/position_sizing.py
+	src/rank_ai_gate.py
+	src/rank_ai_gate_impact_report.py
+	src/rank_label_experiment.py
+	tests/conftest.py
+	tests/harness/test_rank_gate_report_smoke.py
+	tests/test_calibration_experiment.py
+	tests/test_execution_audit_io.py
+	tests/test_label_challenger_experiment.py
+	tests/test_label_horizon_report.py
+	tests/test_model_quality_summary.py
+	tests/test_ops_report_presenter.py
+	tests/test_paper_ops_summary_rank_gate.py
+	tests/test_position_dust.py
+	tests/test_position_sizing.py
+	tests/test_rank_ai_gate.py
+	tests/test_rank_ai_gate_impact_report.py
+	tests/test_rank_label_experiment.py
+
+no changes added to commit (use "git add" and/or "git commit -a")

@@ -1,0 +1,3264 @@
+$ codex --ask-for-approval never --sandbox read-only review /home/kimyo/trading-bot/reports/agent_pipeline/phase32_rank_gate_p2/review_packet.md -c 'model_reasoning_effort="low"'
+exit_code=0
+
+## stdout
+The patch introduces dust-position handling, but the live and cached buy flows still treat those symbols/counts as active in some guards. That can incorrectly suppress buys even after the code decides dust should be ignored or closed.
+
+Full review comments:
+
+- [P2] Remove dust symbols from the active-position sets before buy guards — /home/kimyo/trading-bot/src/main.py:682-685
+  When a position is classified as dust, this branch removes it from `positions_by_symbol` and decrements `meaningful_positions_count`, but it leaves the symbol in `open_symbols`. The later buy pass still feeds `open_symbols` into sector/correlation/crowding/instrument guards, so a negligible position that is being closed in the same run can still block a replacement buy until the next run. This shows up whenever an account holds a <$5 stub in a constrained sector or leveraged ETF slot.
+
+- [P2] Exclude dust positions from candidate-cache position counts — /home/kimyo/trading-bot/src/candidate_cache.py:501-506
+  `effective_position()` correctly treats dust holdings as flat for the current ticker, but the new-position branch still passes the raw `positions_count` from Alpaca into `check_buy_allowed()`. If the account is only “full” because of one or more dust leftovers, the cache will mark otherwise valid buys as blocked by `max_total_positions`, which makes the cache disagree with the live path that now uses `meaningful_positions_count` for the same check.
+
+
+## stderr
+OpenAI Codex v0.135.0
+--------
+workdir: /home/kimyo/trading-bot
+model: gpt-5.4
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: low
+reasoning summaries: none
+session id: 019e8719-9abc-7753-9eda-d6810b3d3cf0
+--------
+user
+/home/kimyo/trading-bot/reports/agent_pipeline/phase32_rank_gate_p2/review_packet.md
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+exec
+/bin/bash -lc "sed -n '1,220p' reports/agent_pipeline/phase32_rank_gate_p2/review_packet.md" in /home/kimyo/trading-bot
+ succeeded in 170ms:
+# Agent Review Packet - Run: phase32_rank_gate_p2
+
+## Implementation Agent
+cursor
+
+## Task Description
+# [AGY] Phase 32 — Threshold retune + label sweep tests
+
+## Context (Cursor `[cursor]`)
+
+- `src/threshold_retune_cli.py` — refresh threshold grid without full retrain
+- `src/label_challenger_sweep.py` — portfolio-first label candidate comparison
+- `src/threshold_promotion_summary.py` — operator summary JSON
+- `scripts/run_threshold_promotion_pipeline.sh`
+
+## Your scope (tests only)
+
+1. `tests/test_threshold_retune_cli.py` — mock `_run_threshold_retune`, assert report keys written
+2. Extend `tests/test_label_challenger_sweep.py` — legacy path `logs/ml/label_challenger/latest_summary.json` for h20/t0.02
+3. `tests/test_threshold_promotion_summary.py` — builds actions from fixture JSON files
+
+Do not edit `src/main.py`, training paths, or `.env`.
+
+## Verify
+
+```bash
+PYTHONPATH=. .venv/bin/python -m pytest \
+  tests/test_threshold_retune_cli.py \
+  tests/test_label_challenger_sweep.py \
+  tests/test_threshold_promotion_summary.py \
+  -q
+```
+
+## Close pass
+
+```bash
+RUN_ID=phase32_threshold_promotion AGY_PROMPT=prompts/agy/phase32_threshold_promotion.md \
+  bash scripts/run_balanced_pass.sh
+```
+
+Commit: `[agy] phase32 threshold promotion tests`
+
+## Changed Files
+- .env.example
+- .github/workflows/ci.yml
+- TODO.md
+- app/streamlit_app.py
+- config/execution_lock.json
+- config/strategy_config.json
+- config/strategy_profiles.json
+- docs/promotion_gates.md
+- docs/runbook.md
+- logs/ai_threshold/threshold_results.csv
+- logs/benchmark_gap/latest_summary.json
+- logs/crowding_paper/go_no_go_checklist.json
+- logs/guard_impact/latest_summary.json
+- logs/llm_advisory/latest_summary.json
+- logs/ml/ai_model_metrics.csv
+- logs/operational_alpha/baseline/portfolio_summary.csv
+- logs/operational_alpha/latest_summary.json
+- logs/operational_alpha/with_operational_filters/portfolio_summary.csv
+- logs/portfolio_backtest/portfolio_summary.csv
+- logs/retrain_history.csv
+- scripts/run_model_quality_report.sh
+- scripts/run_paper_ops_bootstrap.sh
+- src/benchmark_gap_report.py
+- src/buy_guards.py
+- src/candidate_cache.py
+- src/cms_helpers.py
+- src/crowding_live_impact_report.py
+- src/crowding_live_metrics.py
+- src/daily_audit_summary.py
+- src/llm_analyst.py
+- src/llm_vllm.py
+- src/logger.py
+- src/main.py
+- src/ml_quality_report.py
+- src/paper_ops_summary.py
+- src/risk_manager.py
+- src/settings.py
+- tests/fixtures/ml_quality/golden_fold_stability_report.json
+- tests/fixtures/ml_quality/golden_model_calibration_report.json
+- tests/test_buy_guards.py
+- tests/test_candidate_cache_and_risk.py
+- tests/test_cms_reconcile.py
+- tests/test_crowding_live_impact_report.py
+- tests/test_llm_analyst_genai.py
+- tests/test_llm_vllm_fallback.py
+- tests/test_ml_quality_report.py
+- tests/test_paper_ops_summary.py
+- tests/test_settings.py
+
+## Git Diff Summary
+```
+ .env.example                                       |   8 +-
+ .github/workflows/ci.yml                           |   1 +
+ TODO.md                                            | 102 +++++--
+ app/streamlit_app.py                               | 337 ++++++++++++++++-----
+ config/execution_lock.json                         |   4 +-
+ config/strategy_config.json                        |  20 +-
+ config/strategy_profiles.json                      |  12 +-
+ docs/promotion_gates.md                            |   2 +
+ docs/runbook.md                                    |  50 ++-
+ logs/ai_threshold/threshold_results.csv            |  16 +-
+ logs/benchmark_gap/latest_summary.json             | 155 ++++++----
+ logs/crowding_paper/go_no_go_checklist.json        |   2 +-
+ logs/guard_impact/latest_summary.json              |  36 +--
+ logs/llm_advisory/latest_summary.json              | 223 +++++++++++++-
+ logs/ml/ai_model_metrics.csv                       |  16 +-
+ .../baseline/portfolio_summary.csv                 |   2 +-
+ logs/operational_alpha/latest_summary.json         |  36 +--
+ .../with_operational_filters/portfolio_summary.csv |   2 +-
+ logs/portfolio_backtest/portfolio_summary.csv      |   2 +-
+ logs/retrain_history.csv                           |   3 +
+ scripts/run_model_quality_report.sh                |  15 +-
+ scripts/run_paper_ops_bootstrap.sh                 |  26 +-
+ src/benchmark_gap_report.py                        |  50 +++
+ src/buy_guards.py                                  |   5 +-
+ src/candidate_cache.py                             |  56 +++-
+ src/cms_helpers.py                                 |  80 ++---
+ src/crowding_live_impact_report.py                 |  34 ++-
+ src/crowding_live_metrics.py                       |  68 +++++
+ src/daily_audit_summary.py                         |   6 +-
+ src/llm_analyst.py                                 |  25 +-
+ src/llm_vllm.py                                    |   7 +-
+ src/logger.py                                      |  65 ++--
+ src/main.py                                        | 151 ++++++++-
+ src/ml_quality_report.py                           |   9 +
+ src/paper_ops_summary.py                           |  39 +++
+ src/risk_manager.py                                |  73 ++++-
+ src/settings.py                                    |  37 ++-
+ .../ml_quality/golden_fold_stability_report.json   |   2 +-
+ .../golden_model_calibration_report.json           |   2 +-
+ tests/test_buy_guards.py                           |  49 +++
+ tests/test_candidate_cache_and_risk.py             |  10 +-
+ tests/test_cms_reconcile.py                        |   2 +-
+ tests/test_crowding_live_impact_report.py          |  14 +
+ tests/test_llm_analyst_genai.py                    |  13 +-
+ tests/test_llm_vllm_fallback.py                    |  23 +-
+ tests/test_ml_quality_report.py                    |   2 +
+ tests/test_paper_ops_summary.py                    |   4 +-
+ tests/test_settings.py                             |  13 +
+ 48 files changed, 1497 insertions(+), 412 deletions(-)
+```
+
+## Test Execution Results (runtime_harness.log)
+```
+============================= test session starts ==============================
+platform linux -- Python 3.12.8, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/kimyo/trading-bot
+plugins: anyio-4.13.0
+collected 45 items
+
+tests/test_report_performance.py .....                                   [ 11%]
+tests/test_reappraise_regime.py ...                                      [ 17%]
+tests/test_portfolio_backtest_golden.py ...                              [ 24%]
+tests/test_portfolio_backtest_gate.py .....                              [ 35%]
+tests/test_daily_audit_summary.py ....                                   [ 44%]
+tests/test_daily_audit_summary_schema.py ....                            [ 53%]
+tests/test_retrain_notifications.py ....                                 [ 62%]
+tests/test_llm_cache_report_schema.py ..                                 [ 66%]
+tests/test_leverage_stress_report.py ...                                 [ 73%]
+tests/test_guard_impact_report.py ..                                     [ 77%]
+tests/test_check_audit_daily_summary.py ...                              [ 84%]
+tests/test_fold_variance_report.py .                                     [ 86%]
+tests/test_promotion_summary.py ..                                       [ 91%]
+tests/test_benchmark_gap_report.py .                                     [ 93%]
+tests/test_champion_promotion_governance.py ...                          [100%]
+
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6
+  /home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 45 passed, 1 warning in 5.70s =========================
+```
+
+## Git Patch
+```diff
+diff --git a/.env.example b/.env.example
+index 79ddcf2..94cc6bd 100644
+--- a/.env.example
++++ b/.env.example
+@@ -10,10 +10,12 @@ TELEGRAM_ENABLED=True
+ GEMINI_API_KEY=
+ # Optional override (default: gemini-2.5-flash)
+ # LLM_MODEL=gemini-2.5-flash
+-# Dry-run: live Gemini on cache miss when 1 (paper --execute always live)
+-# LLM_LIVE_IN_DRY_RUN=0
++# Dry-run: live LLM on cache miss by default (paper --execute always live)
++# LLM_CACHE_ONLY_DRY_RUN=1   # dry-run uses cache only, no API
++# LLM_LIVE_IN_DRY_RUN=0      # legacy alias for cache-only dry-run
++# TRADING_BOT_SKIP_LLM=1     # pytest/CI — set automatically in tests/conftest.py
+ 
+-# Local vLLM fallback (OpenAI-compatible) when Gemini quota/errors
++# Local vLLM fallback (OpenAI-compatible) when Gemini quota/errors — default OFF
+ # LLM_VLLM_ENABLED=1
+ # LLM_VLLM_BASE_URL=http://192.168.219.116:11434/v1
+ # LLM_VLLM_MODEL=gemma4-26B
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index c337a1e..683c94f 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -22,6 +22,7 @@ jobs:
+       ALPACA_PAPER: "true"
+       TELEGRAM_ENABLED: "false"
+       GEMINI_API_KEY: ""
++      TRADING_BOT_SKIP_LLM: "1"
+ 
+     steps:
+       - name: Checkout
+diff --git a/TODO.md b/TODO.md
+index 35492f0..e16a7b6 100644
+--- a/TODO.md
++++ b/TODO.md
+@@ -13,38 +13,100 @@
+ 
+ | 문서 | 역할 |
+ |------|------|
+
+exec
+/bin/bash -lc 'git diff -- src/settings.py src/llm_analyst.py src/llm_vllm.py src/logger.py src/main.py src/risk_manager.py src/candidate_cache.py src/buy_guards.py' in /home/kimyo/trading-bot
+ succeeded in 0ms:
+diff --git a/src/buy_guards.py b/src/buy_guards.py
+index a5447d4..cf3040f 100644
+--- a/src/buy_guards.py
++++ b/src/buy_guards.py
+@@ -10,7 +10,7 @@ import pandas as pd
+ from src.correlation_guard import is_correlation_allowed
+ from src.earnings import is_earnings_window
+ from src.instrument_meta import check_instrument_buy_allowed
+-from src.llm_analyst import evaluate_ticker_consensus
++from src.llm_analyst import evaluate_ticker_consensus, llm_skipped_for_run
+ from src.news_sentiment import get_ticker_sentiment
+ from src.risk_manager import apply_factor_crowding_limits
+ from src.sector import is_sector_allowed
+@@ -157,6 +157,9 @@ def apply_shared_buy_guards(
+             llm_reason,
+         )
+ 
++    if llm_skipped_for_run():
++        return BuyGuardResult(risk_allowed, risk_reason, target_amount, None, "")
++
+     llm_is_ok, llm_reason = evaluate_ticker_consensus(
+         ticker,
+         settings=settings,
+diff --git a/src/candidate_cache.py b/src/candidate_cache.py
+index d6b0878..19bc493 100644
+--- a/src/candidate_cache.py
++++ b/src/candidate_cache.py
+@@ -37,6 +37,9 @@ from src.risk_manager import (
+     get_recent_buy_symbols,
+     get_today_buy_notional,
+ )
++from src.position_dust import dust_position_min_usd, effective_position
++from src.position_sizing import cap_single_order_amount, conviction_adjustments
++from src.rank_ai_gate import apply_rank_ai_buy_gate, build_rank_ai_gate_scores
+ from src.sector_rotation import get_sector_leadership
+ from src.settings import load_settings
+ from src.strategy import add_indicators, generate_signal
+@@ -354,6 +357,19 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
+         if getattr(settings, "use_ai_score", False)
+         else None
+     )
++    try:
++        rank_ai_gate_scores = build_rank_ai_gate_scores(
++            ticker_data,
++            settings,
++            vix_df=vix_df,
++            spy_df=spy_df,
++            macro_df=macro_df,
++        )
++    except Exception as exc:
++        if bool(getattr(settings, "rank_ai_buy_gate_fail_closed", True)):
++            raise
++        print(f"Warning: rank AI buy/add gate disabled for candidate cache: {exc}")
++        rank_ai_gate_scores = {}
+ 
+     ai_model_bundle = None
+     if getattr(settings, "use_ai_score", False):
+@@ -443,6 +459,7 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
+             getattr(settings, "margin_leverage_stress_gate_required", True)
+         ),
+     )
++    dust_min_usd = dust_position_min_usd(settings)
+ 
+     for ticker in watchlist:
+         frame = ticker_data.get(ticker)
+@@ -462,13 +479,21 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
+                 market_clock=clock,
+             )
+ 
+-            position = positions_by_symbol.get(ticker)
++            ai_score = apply_sector_score_bonus(ticker, ai_score, top_sectors)
++            conviction = conviction_adjustments(settings, ai_score)
++
++            position = effective_position(
++                positions_by_symbol.get(ticker),
++                min_usd=dust_min_usd,
++            )
+             if position is not None:
+                 risk = check_additional_buy_allowed(
+                     signal=signal,
+                     cash=cash,
+                     portfolio_value=float(account["portfolio_value"]),
+                     current_position_value=float(position["market_value"]),
++                    position_mult=conviction.position_mult,
++                    cash_buffer_mult=conviction.cash_buffer_mult,
+                 )
+                 risk_allowed = risk.allowed
+                 reason = risk.reason
+@@ -478,13 +503,15 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
+                     signal=signal,
+                     cash=cash,
+                     current_positions_count=positions_count,
++                    portfolio_value=float(account["portfolio_value"]),
++                    ticker=ticker,
++                    position_mult=conviction.position_mult,
++                    cash_buffer_mult=conviction.cash_buffer_mult,
+                 )
+                 risk_allowed = risk.allowed
+                 reason = risk.reason
+                 target_amount = risk.target_amount
+ 
+-            ai_score = apply_sector_score_bonus(ticker, ai_score, top_sectors)
+-
+             if (
+                 risk_allowed
+                 and getattr(settings, "use_ai_score", False)
+@@ -521,7 +548,23 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
+             reason = guard.risk_reason
+             target_amount = guard.target_amount
+ 
+-            order_amount = min(target_amount, settings.max_test_order_amount)
++            rank_gate = apply_rank_ai_buy_gate(
++                ticker=ticker,
++                settings=settings,
++                risk_allowed=risk_allowed,
++                risk_reason=reason,
++                target_amount=target_amount,
++                scores=rank_ai_gate_scores,
++            )
++            risk_allowed = rank_gate.risk_allowed
++            reason = rank_gate.risk_reason
++            target_amount = rank_gate.target_amount
++
++            order_amount = cap_single_order_amount(
++                target_amount,
++                float(account["portfolio_value"]),
++                settings,
++            )
+ 
+             if risk_allowed:
+                 safety = apply_buy_safety_limits(
+@@ -529,6 +572,7 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
+                     order_amount=order_amount,
+                     submitted_notional_today=simulated_daily_notional,
+                     recent_buy_symbols=recent_buy_symbols,
++                    portfolio_value=float(account["portfolio_value"]),
+                 )
+                 risk_allowed = safety.allowed
+                 reason = safety.reason if not safety.allowed else reason
+@@ -546,6 +590,7 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
+                     current_position_value=(
+                         float(position["market_value"]) if position is not None else 0.0
+                     ),
++                    cash_buffer_mult=conviction.cash_buffer_mult,
+                 )
+                 risk_allowed = exposure.allowed
+                 reason = exposure.reason if not exposure.allowed else reason
+@@ -573,6 +618,9 @@ def build_candidate_cache() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFr
+                     "use_ai_score": getattr(settings, "use_ai_score", False),
+                     "risk_allowed": risk_allowed,
+                     "reason": reason,
++                    "rank_ai_score": rank_gate.score,
++                    "rank_ai_percentile": rank_gate.percentile,
++                    "rank_ai_gate_enabled": getattr(settings, "rank_ai_buy_gate_enabled", False),
+                     "target_amount": target_amount,
+                     "order_amount": order_amount,
+                     "daily_order_used": simulated_daily_notional,
+diff --git a/src/llm_analyst.py b/src/llm_analyst.py
+index a3620a3..8222bff 100644
+--- a/src/llm_analyst.py
++++ b/src/llm_analyst.py
+@@ -37,12 +37,31 @@ def llm_backend_available() -> bool:
+     return bool(_resolve_api_key()) or vllm_fallback_enabled()
+ 
+ 
++def _env_truthy(name: str) -> bool:
++    return os.getenv(name, "").strip().lower() in {"1", "true", "yes"}
++
++
++def llm_skipped_for_run() -> bool:
++    """Skip LLM buy guard during pytest/CI (TRADING_BOT_SKIP_LLM=1 or PYTEST_CURRENT_TEST)."""
++    if _env_truthy("TRADING_BOT_SKIP_LLM"):
++        return True
++    return "PYTEST_CURRENT_TEST" in os.environ
++
++
+ def llm_cache_only_for_run(*, execute_orders: bool) -> bool:
+-    """Paper execute uses live LLM on cache miss; dry-run uses cache unless LLM_LIVE_IN_DRY_RUN=1."""
++    """Dry-run/paper: live LLM on cache miss by default; tests skip API calls."""
++    if llm_skipped_for_run():
++        return True
+     if execute_orders:
+         return False
+-    live = os.getenv("LLM_LIVE_IN_DRY_RUN", "").strip().lower() in {"1", "true", "yes"}
+-    return not live
++    if _env_truthy("LLM_CACHE_ONLY_DRY_RUN"):
++        return True
++    live_env = os.getenv("LLM_LIVE_IN_DRY_RUN", "").strip().lower()
++    if live_env in {"0", "false", "no"}:
++        return True
++    if live_env in {"1", "true", "yes"}:
++        return False
++    return False
+ 
+ 
+ def _get_genai_client() -> GenaiClient:
+diff --git a/src/llm_vllm.py b/src/llm_vllm.py
+index a0966d8..1d0ca2a 100644
+--- a/src/llm_vllm.py
++++ b/src/llm_vllm.py
+@@ -7,17 +7,18 @@ from typing import Any
+ 
+ import requests
+ 
+-DEFAULT_VLLM_BASE_URL = "http://192.168.219.116:11434/v1"
++# Opt-in only (LLM_VLLM_ENABLED=1). Default off so a dead local host does not amplify Gemini outages.
++DEFAULT_VLLM_BASE_URL = ""
+ DEFAULT_VLLM_MODEL = "gemma4-26B"
+ DEFAULT_VLLM_TIMEOUT_SEC = 120.0
+ 
+ 
+-def _env_flag(name: str, *, default: str = "1") -> bool:
++def _env_flag(name: str, *, default: str = "0") -> bool:
+     return os.getenv(name, default).strip().lower() in {"1", "true", "yes"}
+ 
+ 
+ def vllm_fallback_enabled() -> bool:
+-    if not _env_flag("LLM_VLLM_ENABLED", default="1"):
++    if not _env_flag("LLM_VLLM_ENABLED", default="0"):
+         return False
+     return bool(vllm_base_url())
+ 
+diff --git a/src/logger.py b/src/logger.py
+index 71c12fc..f7a318b 100644
+--- a/src/logger.py
++++ b/src/logger.py
+@@ -4,6 +4,10 @@ from datetime import datetime
+ import pandas as pd
+ 
+ from src.config import SIGNAL_LOG_PATH, ORDER_LOG_PATH, EXECUTION_AUDIT_LOG_PATH
++from src.execution_audit_io import (
++    EXECUTION_AUDIT_COLUMNS,
++    normalize_execution_audit_file,
++)
+ 
+ 
+ def log_signal(
+@@ -108,6 +112,8 @@ def log_execution_audit(
+     regime: str = "",
+     signal: str = "",
+     ai_score: float = None,
++    rank_ai_score: float = None,
++    rank_ai_percentile: float = None,
+     llm_verdict: str = "",
+     order_id: str = "",
+     order_type: str = "",
+@@ -125,27 +131,40 @@ def log_execution_audit(
+             return None
+         return round(float(value), digits)
+ 
+-    row = {
+-        "timestamp": datetime.now().isoformat(timespec="seconds"),
+-        "event_type": event_type,
+-        "ticker": ticker,
+-        "action": action,
+-        "status": status,
+-        "reason": reason,
+-        "profile_name": profile_name,
+-        "regime": regime,
+-        "signal": signal,
+-        "ai_score": _round_or_none(ai_score, 4),
+-        "llm_verdict": llm_verdict,
+-        "order_id": order_id,
+-        "order_type": order_type,
+-        "side": side,
+-        "notional": _round_or_none(notional, 2),
+-        "quantity": _round_or_none(quantity, 4),
+-        "filled_qty": _round_or_none(filled_qty, 4),
+-        "filled_avg_price": _round_or_none(filled_avg_price, 4),
+-    }
+-
+-    df = pd.DataFrame([row])
+-    write_header = not log_file.exists()
++    row = {column: None for column in EXECUTION_AUDIT_COLUMNS}
++    row.update(
++        {
++            "timestamp": datetime.now().isoformat(timespec="seconds"),
++            "event_type": event_type,
++            "ticker": ticker,
++            "action": action,
++            "status": status,
++            "reason": reason,
++            "profile_name": profile_name,
++            "regime": regime,
++            "signal": signal,
++            "ai_score": _round_or_none(ai_score, 4),
++            "rank_ai_score": _round_or_none(rank_ai_score, 4),
++            "rank_ai_percentile": _round_or_none(rank_ai_percentile, 4),
++            "llm_verdict": llm_verdict,
++            "order_id": order_id,
++            "order_type": order_type,
++            "side": side,
++            "notional": _round_or_none(notional, 2),
++            "quantity": _round_or_none(quantity, 4),
++            "filled_qty": _round_or_none(filled_qty, 4),
++            "filled_avg_price": _round_or_none(filled_avg_price, 4),
++        }
++    )
++
++    if log_file.exists() and log_file.stat().st_size > 0:
++        lines = log_file.read_text(encoding="utf-8").splitlines()
++        if lines:
++            first_line = lines[0]
++            expected = ",".join(EXECUTION_AUDIT_COLUMNS)
++            if first_line.strip() != expected:
++                normalize_execution_audit_file(log_file)
++
++    df = pd.DataFrame([row], columns=list(EXECUTION_AUDIT_COLUMNS))
++    write_header = not log_file.exists() or log_file.stat().st_size == 0
+     df.to_csv(log_file, mode="a", header=write_header, index=False)
+diff --git a/src/main.py b/src/main.py
+index 2937da6..1faefd0 100644
+--- a/src/main.py
++++ b/src/main.py
+@@ -26,6 +26,7 @@ from src.risk_manager import (
+     get_today_buy_notional,
+ )
+ from src.alpaca_client import (
++    close_position_by_symbol,
+     get_account_summary,
+     get_open_symbols,
+     get_positions_summary,
+@@ -47,7 +48,17 @@ from src.llm_analyst import llm_cache_only_for_run
+ from src.macro_events import get_macro_event_risk
+ from src.candidate_cache import get_dynamic_universe
+ from src.sector_rotation import get_sector_leadership
+-from src.portfolio_optimizer import compute_weights_from_ticker_data
++from src.position_dust import (
++    count_meaningful_positions,
++    dust_position_min_usd,
++    effective_position,
++    is_dust_position,
++)
++from src.position_sizing import (
++    cap_single_order_amount,
++    conviction_adjustments,
++)
++from src.rank_ai_gate import apply_rank_ai_buy_gate, build_rank_ai_gate_scores
+ 
+ # 트레일링 스탑용 최고점 기록 경로
+ PEAKS_PATH = Path("data/trailing_peaks.json")
+@@ -490,6 +501,24 @@ def main() -> None:
+             )
+ 
+     macro_df = load_macro_data(period="2y") if getattr(settings, "use_ai_score", False) else None
++    try:
++        rank_ai_gate_scores = build_rank_ai_gate_scores(
++            ticker_data,
++            settings,
++            vix_df=vix_df,
++            spy_df=spy_df,
++            macro_df=macro_df,
++        )
++        if rank_ai_gate_scores:
++            print(
++                "Rank AI buy/add gate enabled: "
++                f"scored {len(rank_ai_gate_scores)} symbols"
++            )
++    except Exception as exc:
++        if bool(getattr(settings, "rank_ai_buy_gate_fail_closed", True)):
++            raise
++        print(f"Warning: rank AI buy/add gate disabled for this run: {exc}")
++        rank_ai_gate_scores = {}
+     market_regime_bullish = True
+     if getattr(settings, "market_regime_filter_enabled", False):
+         regime_df = ticker_data.get(settings.market_regime_ticker)
+@@ -526,6 +555,10 @@ def main() -> None:
+               f"New buys will be blocked.")
+ 
+     positions_count = account["positions_count"]
++    dust_min_usd = dust_position_min_usd(settings)
++    meaningful_positions_count = count_meaningful_positions(
++        positions, min_usd=dust_min_usd
++    )
+     current_gross_exposure = sum(float(position["market_value"]) for position in positions)
+     orders_submitted = 0
+     submitted_notional_today = get_today_buy_notional()
+@@ -590,6 +623,68 @@ def main() -> None:
+         for position in positions:
+             ticker = str(position["symbol"]).upper()
+             try:
++                if is_dust_position(position, min_usd=dust_min_usd):
++                    dust_reason = (
++                        f"dust position cleanup (<${dust_min_usd:g} market value)"
++                    )
++                    dust_mv = float(position["market_value"])
++                    print(
++                        f"{ticker}: DUST position qty={position['qty']}, "
++                        f"market_value={dust_mv:.6f} — scheduling close"
++                    )
++                    exit_summary_rows.append(
++                        f"{ticker}: DUST exit, market_value=${dust_mv:.6f}"
++                    )
++                    log_execution_audit(
++                        event_type="DUST_EXIT",
++                        ticker=ticker,
++                        action="CLOSE",
++                        status="SUBMITTED" if can_submit_orders else "DRY_RUN",
++                        reason=dust_reason,
++                        profile_name=profile_name,
++                        regime=current_regime,
++                    )
++                    if can_submit_orders:
++                        try:
++                            raw_order = close_position_by_symbol(ticker)
++                            if raw_order is None:
++                                raise ValueError(
++                                    f"dust close returned no order for {ticker}"
++                                )
++                            live_order_count += 1
++                            log_order(
++                                ticker=ticker,
++                                notional=0.0,
++                                order_id=str(raw_order.id),
++                                status=str(raw_order.status),
++                                side=str(raw_order.side),
++                                order_type=str(raw_order.type),
++                                reason=dust_reason,
++                            )
++                            print(
++                                f"  PAPER_DUST_CLOSE: {ticker}, "
++                                f"order_id={raw_order.id}, status={raw_order.status}"
++                            )
++                            notify_info(
++                                "🧹 Dust position closed",
++                                f"{ticker}: closed negligible position (${dust_mv:.4f})",
++                            )
++                        except Exception as e:
++                            print(f"  Dust close error for {ticker}: {e}")
++                            api_error_count += 1
++                            if isinstance(e, ConnectionError) and execute_orders:
++                                notify_error(
++                                    f"CRITICAL: Network error during dust close for {ticker}",
++                                    e,
++                                )
++                    else:
++                        print(f"  DRY_RUN: would close dust position {ticker}")
++                    positions_by_symbol.pop(ticker, None)
++                    meaningful_positions_count = max(
++                        0, meaningful_positions_count - 1
++                    )
++                    continue
++
+                 data_fresh, data_reason = price_data_freshness.get(
+                     ticker,
+                     (False, "price data not loaded"),
+@@ -1013,18 +1108,25 @@ def main() -> None:
+             )
+ 
+             ai_score = apply_sector_score_bonus(ticker, ai_score, top_sectors)
++            conviction = conviction_adjustments(settings, ai_score)
++            if conviction.label != "neutral":
++                print(f"{ticker}: sizing {conviction.label}")
+ 
+             llm_is_ok = None
+             llm_reason = ""
+ 
+-            position = positions_by_symbol.get(ticker)
+-            if position is not None:
++            held_position = effective_position(
++                positions_by_symbol.get(ticker), min_usd=dust_min_usd
++            )
++            if held_position is not None:
+                 # 13-A: 이미 보유 중인 종목이라도 목표 비중에 미달하면 추가 매수 (Averaging up/down)
+                 risk = check_additional_buy_allowed(
+                     signal=signal,
+                     cash=cash,
+                     portfolio_value=float(account["portfolio_value"]),
+-                    current_position_value=float(position["market_value"]),
++                    current_position_value=float(held_position["market_value"]),
++                    position_mult=conviction.position_mult,
++                    cash_buffer_mult=conviction.cash_buffer_mult,
+                 )
+                 risk_allowed = risk.allowed
+                 risk_reason = risk.reason
+@@ -1039,8 +1141,11 @@ def main() -> None:
+                 risk = check_buy_allowed(
+                     signal=signal,
+                     cash=cash,
+-                    current_positions_count=positions_count,
++                    current_positions_count=meaningful_positions_count,
++                    portfolio_value=float(account["portfolio_value"]),
+                     ticker=ticker,
++                    position_mult=conviction.position_mult,
++                    cash_buffer_mult=conviction.cash_buffer_mult,
+                 )
+                 risk_allowed = risk.allowed
+                 risk_reason = risk.reason
+@@ -1063,7 +1168,7 @@ def main() -> None:
+ 
+             guard = apply_shared_buy_guards(
+                 ticker=ticker,
+-                position=position,
++                position=held_position,
+                 settings=settings,
+                 risk_allowed=risk_allowed,
+                 risk_reason=risk_reason,
+@@ -1084,7 +1189,19 @@ def main() -> None:
+             llm_is_ok = guard.llm_is_ok
+             llm_reason = guard.llm_reason
+ 
+-            if risk_allowed and position is None and llm_is_ok is False:
++            rank_gate = apply_rank_ai_buy_gate(
++                ticker=ticker,
++                settings=settings,
++                risk_allowed=risk_allowed,
++                risk_reason=risk_reason,
++                target_amount=target_amount,
++                scores=rank_ai_gate_scores,
++            )
++            risk_allowed = rank_gate.risk_allowed
++            risk_reason = rank_gate.risk_reason
++            target_amount = rank_gate.target_amount
++
++            if risk_allowed and held_position is None and llm_is_ok is False:
+                 llm_advisory_only = bool(getattr(settings, "llm_advisory_only", True))
+                 if llm_advisory_only:
+                     log_execution_audit(
+@@ -1101,7 +1218,11 @@ def main() -> None:
+                         notional=target_amount,
+                     )
+ 
+-            order_amount = min(target_amount, settings.max_test_order_amount)
++            order_amount = cap_single_order_amount(
++                target_amount,
++                float(account["portfolio_value"]),
++                settings,
++            )
+ 
+             if risk_allowed:
+                 safety = apply_buy_safety_limits(
+@@ -1109,6 +1230,7 @@ def main() -> None:
+                     order_amount=order_amount,
+                     submitted_notional_today=submitted_notional_today,
+                     recent_buy_symbols=recent_buy_symbols,
++                    portfolio_value=float(account["portfolio_value"]),
+                 )
+                 risk_allowed = safety.allowed
+                 risk_reason = safety.reason if not safety.allowed else risk_reason
+@@ -1122,7 +1244,8 @@ def main() -> None:
+                     portfolio_value=float(account["portfolio_value"]) * float(getattr(settings, "leverage_factor", 1.0)),
+                     buying_power=float(account.get("buying_power", 0.0)),
+                     current_gross_exposure=current_gross_exposure,
+-                    current_position_value=float(position["market_value"]) if position is not None else 0.0,
++                    current_position_value=float(held_position["market_value"]) if held_position is not None else 0.0,
++                    cash_buffer_mult=conviction.cash_buffer_mult,
+                 )
+                 risk_allowed = exposure.allowed
+                 risk_reason = exposure.reason if not exposure.allowed else risk_reason
+@@ -1177,6 +1300,8 @@ def main() -> None:
+                     regime=current_regime,
+                     signal=signal,
+                     ai_score=ai_score,
++                    rank_ai_score=rank_gate.score,
++                    rank_ai_percentile=rank_gate.percentile,
+                     llm_verdict=_format_llm_verdict(llm_is_ok, llm_reason),
+                     notional=order_amount,
+                 )
+@@ -1186,6 +1311,8 @@ def main() -> None:
+                     "ticker": ticker,
+                     "order_amount": order_amount,
+                     "ai_score": ai_score,
++                    "rank_ai_score": rank_gate.score,
++                    "rank_ai_percentile": rank_gate.percentile,
+                     "risk_reason": risk_reason,
+                     "signal": signal,
+                     "llm_verdict": _format_llm_verdict(llm_is_ok, llm_reason),
+@@ -1226,7 +1353,9 @@ def main() -> None:
+             t = candidate["ticker"]
+             mvo_amount = portfolio_value * mvo_weights.get(t, 1.0 / len(approved_buys))
+             # Respect individual order cap
+-            candidate["order_amount"] = min(mvo_amount, settings.max_test_order_amount)
++            candidate["order_amount"] = cap_single_order_amount(
++                mvo_amount, portfolio_value, settings
++            )
+         print(
+             f"MVO weights: "
+             + ", ".join(
+@@ -1333,6 +1462,8 @@ def main() -> None:
+                 regime=current_regime,
+                 signal=signal,
+                 ai_score=ai_score,
++                rank_ai_score=candidate.get("rank_ai_score"),
++                rank_ai_percentile=candidate.get("rank_ai_percentile"),
+                 llm_verdict=llm_verdict,
+                 order_id=buy_submission.order_id,
+                 order_type=buy_submission.order_type,
+diff --git a/src/risk_manager.py b/src/risk_manager.py
+index 9b5a985..4a4d73f 100644
+--- a/src/risk_manager.py
++++ b/src/risk_manager.py
+@@ -28,7 +28,10 @@ def check_buy_allowed(
+     cash: float,
+     current_positions_count: int,
+     *,
++    portfolio_value: float | None = None,
+     ticker: str | None = None,
++    position_mult: float = 1.0,
++    cash_buffer_mult: float = 1.0,
+ ) -> RiskDecision:
+     settings = load_settings()
+ 
+@@ -41,13 +44,26 @@ def check_buy_allowed(
+     if cash <= 0:
+         return RiskDecision(False, "cash is zero or negative")
+ 
+-    position_pct = float(settings.max_position_pct)
++    equity_base = portfolio_value if portfolio_value is not None and portfolio_value > 0 else cash
++    if equity_base <= 0:
++        return RiskDecision(False, "portfolio value is zero or negative")
++
++    position_pct = float(settings.max_position_pct) * max(1.0, float(position_mult))
+     if ticker:
+         from src.instrument_meta import adjust_position_cap_for_instrument
+ 
+         position_pct = adjust_position_cap_for_instrument(position_pct, ticker)
+ 
+-    target_amount = cash * position_pct
++    from src.position_sizing import max_deployable_cash
++
++    target_amount = equity_base * position_pct
++    deployable = max_deployable_cash(
++        cash,
++        equity_base,
++        settings,
++        cash_buffer_mult=cash_buffer_mult,
++    )
++    target_amount = min(target_amount, deployable)
+ 
+     if target_amount <= 0:
+         return RiskDecision(False, "target amount is zero or negative")
+@@ -60,6 +76,9 @@ def check_additional_buy_allowed(
+     cash: float,
+     portfolio_value: float,
+     current_position_value: float,
++    *,
++    position_mult: float = 1.0,
++    cash_buffer_mult: float = 1.0,
+ ) -> RiskDecision:
+     settings = load_settings()
+ 
+@@ -72,13 +91,23 @@ def check_additional_buy_allowed(
+     if portfolio_value <= 0:
+         return RiskDecision(False, "portfolio value is zero or negative")
+ 
+-    target_position_value = portfolio_value * settings.max_position_pct
++    target_position_value = portfolio_value * settings.max_position_pct * max(
++        1.0, float(position_mult)
++    )
+     remaining_to_target = target_position_value - max(current_position_value, 0.0)
+ 
+     if remaining_to_target <= 0:
+         return RiskDecision(False, "position target allocation reached")
+ 
+-    target_amount = min(cash, remaining_to_target)
++    from src.position_sizing import max_deployable_cash
++
++    deployable = max_deployable_cash(
++        cash,
++        portfolio_value,
++        settings,
++        cash_buffer_mult=cash_buffer_mult,
++    )
++    target_amount = min(deployable, remaining_to_target)
+     if target_amount <= 0:
+         return RiskDecision(False, "target amount is zero or negative")
+ 
+@@ -153,6 +182,8 @@ def apply_buy_safety_limits(
+     order_amount: float,
+     submitted_notional_today: float,
+     recent_buy_symbols: set[str],
++    *,
++    portfolio_value: float | None = None,
+ ) -> RiskDecision:
+     settings = load_settings()
+ 
+@@ -164,7 +195,12 @@ def apply_buy_safety_limits(
+             0.0,
+         )
+ 
+-    daily_limit = float(getattr(settings, "max_daily_order_amount", 0.0))
++    from src.position_sizing import daily_order_budget
++
++    daily_limit = daily_order_budget(
++        float(portfolio_value or 0.0),
++        settings,
++    )
+     if daily_limit > 0:
+         remaining = daily_limit - submitted_notional_today
+         if remaining <= 0:
+@@ -172,9 +208,9 @@ def apply_buy_safety_limits(
+ 
+         if order_amount > remaining:
+             return RiskDecision(
+-                False,
+-                f"daily order amount limit would be exceeded (remaining=${remaining:.2f})",
+-                0.0,
++                True,
++                f"daily order amount capped (remaining=${remaining:.2f})",
++                remaining,
+             )
+ 
+     return RiskDecision(True, "buy safety limits passed", order_amount)
+@@ -188,6 +224,8 @@ def apply_portfolio_exposure_limits(
+     buying_power: float,
+     current_gross_exposure: float,
+     current_position_value: float = 0.0,
++    *,
++    cash_buffer_mult: float = 1.0,
+ ) -> RiskDecision:
+     settings = load_settings()
+ 
+@@ -213,13 +251,24 @@ def apply_portfolio_exposure_limits(
+             0.0,
+         )
+ 
+-    min_cash_buffer = portfolio_value * float(getattr(settings, "min_cash_buffer_pct", 0.05))
++    from src.position_sizing import effective_min_cash_buffer_pct
++
++    min_cash_buffer = portfolio_value * effective_min_cash_buffer_pct(
++        settings, cash_buffer_mult
++    )
+     projected_cash = cash - order_amount
+     if projected_cash < min_cash_buffer:
++        allowed_amount = max(0.0, cash - min_cash_buffer)
++        if allowed_amount <= 0:
++            return RiskDecision(
++                False,
++                f"cash buffer breached (projected=${projected_cash:.2f}, min=${min_cash_buffer:.2f})",
++                0.0,
++            )
+         return RiskDecision(
+-            False,
+-            f"cash buffer breached (projected=${projected_cash:.2f}, min=${min_cash_buffer:.2f})",
+-            0.0,
++            True,
++            f"cash buffer capped order (min=${min_cash_buffer:.2f})",
++            allowed_amount,
+         )
+ 
+     max_single_name_loss = portfolio_value * float(getattr(settings, "max_single_name_loss_pct", 0.02))
+diff --git a/src/settings.py b/src/settings.py
+index c0c64bd..13b35c9 100644
+--- a/src/settings.py
++++ b/src/settings.py
+@@ -73,7 +73,13 @@ class StrategySettings(StrategyProfile):
+     max_sector_positions: int = 2
+     stop_loss_pct: float = 0.05
+     take_profit_pct: float = 0.1
+-    max_test_order_amount: float = 10.0
++    max_test_order_amount: float = 10.0  # legacy $ cap; 0 = disabled (use max_single_order_pct)
++    max_single_order_pct: float = 1.0  # max one order as fraction of portfolio (1.0 = no pct cap)
++    max_daily_order_pct: float = 0.0  # >0: daily buy budget as portfolio fraction; else max_daily_order_amount
++    conviction_sizing_enabled: bool = False
++    conviction_ai_score_strong: float = 0.65  # AI score at/above → max conviction boost
++    conviction_position_mult_max: float = 1.25  # scale target position size up to this multiplier
++    conviction_cash_buffer_mult_min: float = 0.4  # at max conviction, min_cash_buffer_pct *= this
+     max_orders_per_run: int = 1
+     max_daily_order_amount: float = 1000.0
+     buy_cooldown_days: int = 1
+@@ -125,7 +131,14 @@ class StrategySettings(StrategyProfile):
+     macro_event_lookback_days: int = 1
+     llm_degraded_mode: str = "PASS"  # "PASS" or "FAIL"
+     llm_cache_enabled: bool = True
+-    llm_advisory_only: bool = True  # True: log LLM verdict, do not block orders
++    llm_advisory_only: bool = False  # False: block on LLM REJECT; True: advisory-only log
++    dust_position_min_usd: float = 5.0  # below this market value: dust cleanup / ignore for adds
++    rank_ai_buy_gate_enabled: bool = False
++    rank_ai_buy_gate_model_path: str = "logs/ml/rank_label_experiment_h20_top15_q85/rank_models.joblib"
++    rank_ai_buy_gate_prediction_horizon: int = 20
++    rank_ai_buy_gate_top_bucket_pct: float = 0.15
++    rank_ai_buy_gate_min_score_quantile: float = 0.85
++    rank_ai_buy_gate_fail_closed: bool = True
+     broker_provider: str = "alpaca"  # alpaca | toss (future)
+     extended_hours_enabled: bool = True
+     enabled_trading_sessions: List[str] = field(
+@@ -253,10 +266,26 @@ def validate_settings(settings: StrategySettings) -> StrategySettings:
+         raise ValueError("max_orders_per_run must be positive")
+     if settings.max_daily_order_amount <= 0:
+         raise ValueError("max_daily_order_amount must be positive")
+-    if settings.max_test_order_amount <= 0:
+-        raise ValueError("max_test_order_amount must be positive")
++    if settings.max_test_order_amount < 0:
++        raise ValueError("max_test_order_amount must be non-negative")
++    if not 0 < settings.max_single_order_pct <= 1:
++        raise ValueError("max_single_order_pct must be between 0 and 1")
++    if not 0 <= settings.max_daily_order_pct <= 1:
++        raise ValueError("max_daily_order_pct must be between 0 and 1")
++    if settings.conviction_ai_score_strong <= 0 or settings.conviction_ai_score_strong > 1:
++        raise ValueError("conviction_ai_score_strong must be between 0 and 1")
++    if settings.conviction_position_mult_max < 1:
++        raise ValueError("conviction_position_mult_max must be >= 1")
++    if not 0 < settings.conviction_cash_buffer_mult_min <= 1:
++        raise ValueError("conviction_cash_buffer_mult_min must be between 0 and 1")
+     if settings.buy_cooldown_days < 0:
+         raise ValueError("buy_cooldown_days must be non-negative")
++    if settings.rank_ai_buy_gate_prediction_horizon <= 0:
++        raise ValueError("rank_ai_buy_gate_prediction_horizon must be positive")
++    if not 0 < settings.rank_ai_buy_gate_top_bucket_pct < 1:
++        raise ValueError("rank_ai_buy_gate_top_bucket_pct must be between 0 and 1")
++    if not 0 < settings.rank_ai_buy_gate_min_score_quantile <= 1:
++        raise ValueError("rank_ai_buy_gate_min_score_quantile must be between 0 and 1")
+     if settings.max_holding_days <= 0:
+         raise ValueError("max_holding_days must be positive")
+     if not 0 <= settings.max_portfolio_drawdown_pct < 1:
+
+exec
+/bin/bash -lc 'git status --short' in /home/kimyo/trading-bot
+ succeeded in 292ms:
+ M .env.example
+ M .github/workflows/ci.yml
+ M TODO.md
+ M app/streamlit_app.py
+ M config/execution_lock.json
+ M config/strategy_config.json
+ M config/strategy_profiles.json
+ M docs/promotion_gates.md
+ M docs/runbook.md
+ M logs/ai_threshold/threshold_results.csv
+ M logs/benchmark_gap/latest_summary.json
+ M logs/crowding_paper/go_no_go_checklist.json
+ M logs/guard_impact/latest_summary.json
+ M logs/llm_advisory/latest_summary.json
+ M logs/ml/ai_model_metrics.csv
+ M logs/operational_alpha/baseline/portfolio_summary.csv
+ M logs/operational_alpha/latest_summary.json
+ M logs/operational_alpha/with_operational_filters/portfolio_summary.csv
+ M logs/portfolio_backtest/portfolio_summary.csv
+ M logs/retrain_history.csv
+ M reports/agent_pipeline/phase30/TASK.md
+ M reports/agent_pipeline/phase30/changed_files.txt
+ M reports/agent_pipeline/phase30/git_diff.patch
+ M reports/agent_pipeline/phase30/git_diff_stat.txt
+ M reports/agent_pipeline/phase30/git_status.txt
+ M reports/agent_pipeline/phase30/review_harness.log
+ M reports/agent_pipeline/phase30/review_packet.md
+ M reports/agent_pipeline/phase30/runtime_harness.log
+ M scripts/run_model_quality_report.sh
+ M scripts/run_paper_ops_bootstrap.sh
+ M src/benchmark_gap_report.py
+ M src/buy_guards.py
+ M src/candidate_cache.py
+ M src/cms_helpers.py
+ M src/crowding_live_impact_report.py
+ M src/crowding_live_metrics.py
+ M src/daily_audit_summary.py
+ M src/llm_analyst.py
+ M src/llm_vllm.py
+ M src/logger.py
+ M src/main.py
+ M src/ml_quality_report.py
+ M src/paper_ops_summary.py
+ M src/risk_manager.py
+ M src/settings.py
+ M tests/fixtures/ml_quality/golden_fold_stability_report.json
+ M tests/fixtures/ml_quality/golden_model_calibration_report.json
+ M tests/test_buy_guards.py
+ M tests/test_candidate_cache_and_risk.py
+ M tests/test_cms_reconcile.py
+ M tests/test_crowding_live_impact_report.py
+ M tests/test_llm_analyst_genai.py
+ M tests/test_llm_vllm_fallback.py
+ M tests/test_ml_quality_report.py
+ M tests/test_paper_ops_summary.py
+ M tests/test_settings.py
+?? docs/ai_authority_gates.md
+?? logs/crowding_paper/decision_record.json
+?? logs/ml/calibration_experiment_report.json
+?? logs/ml/feature_drift_report.json
+?? logs/ml/fold_metrics.csv
+?? logs/ml/fold_stability_report.json
+?? logs/ml/label_challenger/
+?? logs/ml/label_challenger_sweep_force_train.log
+?? logs/ml/label_challenger_sweep_report.json
+?? logs/ml/label_horizon_report.json
+?? logs/ml/model_calibration_report.json
+?? logs/ml/model_promotion_report.json
+?? logs/ml/model_rollback_report.json
+?? logs/ml/rank_label_experiment/
+?? logs/ml/rank_label_experiment_h10_top20_q80/
+?? logs/ml/rank_label_experiment_h20_top10_q90/
+?? logs/ml/rank_label_experiment_h20_top15_q85/
+?? logs/ml/rank_label_experiment_h20_top20_q80/
+?? logs/ml/rank_label_experiment_h20_top20_q85/
+?? logs/ml/rank_label_experiment_h40_top20_q80/
+?? logs/ml/rank_label_experiment_top20/
+?? logs/ml/rank_label_experiment_top40/
+?? logs/ml/threshold_retune_report.json
+?? logs/ml/threshold_retune_results.csv
+?? prompts/agy/phase32_rank_ai_paper.md
+?? prompts/agy/phase32_threshold_promotion.md
+?? reports/agent_pipeline/20260529T102625/
+?? reports/agent_pipeline/20260529T102643/
+?? reports/agent_pipeline/20260529T104639/
+?? reports/agent_pipeline/20260529T104814/
+?? reports/agent_pipeline/20260529T105445/
+?? reports/agent_pipeline/20260529T105851/
+?? reports/agent_pipeline/20260529T110615/
+?? reports/agent_pipeline/20260529T110917/
+?? reports/agent_pipeline/20260529T111245/
+?? reports/agent_pipeline/20260529T111637/
+?? reports/agent_pipeline/20260529T112026/
+?? reports/agent_pipeline/20260529T115354/
+?? reports/agent_pipeline/20260529T123013/
+?? reports/agent_pipeline/20260529T123312/
+?? reports/agent_pipeline/20260529T123313/
+?? reports/agent_pipeline/20260529T123506/
+?? reports/agent_pipeline/20260529T123507/
+?? reports/agent_pipeline/20260529T123706/
+?? reports/agent_pipeline/20260529T123707/
+?? reports/agent_pipeline/20260529T123857/
+?? reports/agent_pipeline/20260529T123858/
+?? reports/agent_pipeline/20260529T124145/
+?? reports/agent_pipeline/20260529T124146/
+?? reports/agent_pipeline/20260529T124404/
+?? reports/agent_pipeline/20260529T124405/
+?? reports/agent_pipeline/phase30/CODEX_REVIEW_AND_TODO.md
+?? reports/agent_pipeline/phase30/NEXT_TODO.codex.md
+?? reports/agent_pipeline/phase30/codex_review_command.log
+?? reports/agent_pipeline/phase30/orchestrator_summary.json
+?? reports/agent_pipeline/phase30/post_workflow_command.log
+?? reports/agent_pipeline/phase30_complete/
+?? reports/agent_pipeline/phase30_final/
+?? reports/agent_pipeline/phase31/CODEX_REVIEW_AND_TODO.md
+?? reports/agent_pipeline/phase31/NEXT_TODO.codex.md
+?? reports/agent_pipeline/phase31/NEXT_TODO.md
+?? reports/agent_pipeline/phase31/changed_files.txt
+?? reports/agent_pipeline/phase31/codex_review_command.log
+?? reports/agent_pipeline/phase31/gemini_review_harness.log
+?? reports/agent_pipeline/phase31/git_diff.patch
+?? reports/agent_pipeline/phase31/git_diff_stat.txt
+?? reports/agent_pipeline/phase31/git_status.txt
+?? reports/agent_pipeline/phase31/orchestrator_summary.json
+?? reports/agent_pipeline/phase31/post_workflow_command.log
+?? reports/agent_pipeline/phase31/review_harness.log
+?? reports/agent_pipeline/phase31/review_packet.md
+?? reports/agent_pipeline/phase31/runtime_harness.log
+?? reports/agent_pipeline/phase31/summary.json
+?? reports/agent_pipeline/phase32_rank_ai/
+?? reports/agent_pipeline/phase32_rank_gate_p2/
+?? reports/agent_pipeline/phase32_threshold_promotion/
+?? scripts/exp_alpha_sweep.py
+?? scripts/run_rank_ai_gate_report.sh
+?? scripts/run_threshold_promotion_pipeline.sh
+?? src/calibration_experiment.py
+?? src/cms_reconcile.py
+?? src/execution_audit_io.py
+?? src/label_challenger_experiment.py
+?? src/label_challenger_sweep.py
+?? src/label_horizon_report.py
+?? src/llm_ai_agreement_report.py
+?? src/model_quality_summary.py
+?? src/ops_report_presenter.py
+?? src/position_dust.py
+?? src/position_sizing.py
+?? src/rank_ai_gate.py
+?? src/rank_ai_gate_impact_report.py
+?? src/rank_label_experiment.py
+?? src/threshold_promotion_summary.py
+?? src/threshold_retune_cli.py
+?? tests/conftest.py
+?? tests/harness/test_rank_gate_report_smoke.py
+?? tests/test_calibration_experiment.py
+?? tests/test_execution_audit_io.py
+?? tests/test_label_challenger_experiment.py
+?? tests/test_label_challenger_sweep.py
+?? tests/test_label_horizon_report.py
+?? tests/test_model_quality_summary.py
+?? tests/test_ops_report_presenter.py
+?? tests/test_paper_ops_summary_rank_gate.py
+?? tests/test_position_dust.py
+?? tests/test_position_sizing.py
+?? tests/test_rank_ai_gate.py
+?? tests/test_rank_ai_gate_impact_report.py
+?? tests/test_rank_label_experiment.py
+?? tests/test_threshold_promotion_summary.py
+?? tests/test_threshold_retune_cli.py
+
+exec
+/bin/bash -lc "sed -n '1,280p' src/rank_ai_gate.py" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+"""Paper-only cross-sectional rank AI buy/add gate."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import joblib
+import pandas as pd
+
+from src.features import FEATURE_COLUMNS, build_features
+
+
+@dataclass(frozen=True)
+class RankAIGateScore:
+    ticker: str
+    score: float
+    percentile: float
+    allowed: bool
+    reason: str
+
+
+@dataclass(frozen=True)
+class RankAIGateDecision:
+    risk_allowed: bool
+    risk_reason: str
+    target_amount: float
+    score: float | None = None
+    percentile: float | None = None
+
+
+def _rank_gate_enabled(settings: Any) -> bool:
+    return bool(getattr(settings, "rank_ai_buy_gate_enabled", False))
+
+
+def rank_ai_gate_effective_cutoff(settings: Any, config: dict | None = None) -> float:
+    """Match rank-label experiment: top bucket (1 - top_bucket_pct) and min score quantile."""
+    cfg = config or {}
+    score_cutoff = float(
+        getattr(
+            settings,
+            "rank_ai_buy_gate_min_score_quantile",
+            cfg.get("min_score_quantile", 0.85),
+        )
+    )
+    top_bucket_pct = float(
+        getattr(
+            settings,
+            "rank_ai_buy_gate_top_bucket_pct",
+            cfg.get("top_bucket_pct", 0.15),
+        )
+    )
+    bucket_cutoff = 1.0 - top_bucket_pct
+    return max(score_cutoff, bucket_cutoff)
+
+
+def _model_path(settings: Any) -> Path:
+    return Path(
+        str(
+            getattr(
+                settings,
+                "rank_ai_buy_gate_model_path",
+                "logs/ml/rank_label_experiment_h20_top15_q85/rank_models.joblib",
+            )
+        )
+    )
+
+
+def _build_latest_inference_features(
+    df: pd.DataFrame,
+    *,
+    prediction_horizon: int,
+    vix_df: pd.DataFrame | None,
+    spy_df: pd.DataFrame | None,
+    macro_df: pd.DataFrame | None,
+) -> pd.DataFrame:
+    """Build latest feature row without needing real future returns.
+
+    ``build_features`` is training-oriented and drops the last horizon rows
+    because labels are unknown. For inference, append synthetic future rows with
+    unchanged prices so latest historical rows survive the label drop. The target
+    is ignored; only FEATURE_COLUMNS are used for prediction.
+    """
+
+    if df.empty:
+        raise ValueError("empty price frame")
+    working = df.copy().sort_values("date").reset_index(drop=True)
+    last = working.iloc[-1].copy()
+    last_date = pd.to_datetime(last["date"])
+    synthetic_rows = []
+    for offset in range(1, prediction_horizon + 1):
+        row = last.copy()
+        row["date"] = last_date + pd.Timedelta(days=offset)
+        synthetic_rows.append(row)
+    if synthetic_rows:
+        working = pd.concat([working, pd.DataFrame(synthetic_rows)], ignore_index=True)
+
+    features = build_features(
+        working,
+        prediction_horizon=prediction_horizon,
+        target_return_threshold=0.0,
+        vix_df=vix_df,
+        spy_df=spy_df,
+        macro_df=macro_df,
+    )
+    original_last_date = pd.to_datetime(df["date"]).max()
+    latest_features = features[pd.to_datetime(features["date"]) <= original_last_date]
+    if latest_features.empty:
+        raise ValueError("no current inference feature row")
+    return latest_features.tail(1)
+
+
+def build_rank_ai_gate_scores(
+    ticker_data: dict[str, pd.DataFrame],
+    settings: Any,
+    *,
+    vix_df: pd.DataFrame | None = None,
+    spy_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
+) -> dict[str, RankAIGateScore]:
+    if not _rank_gate_enabled(settings):
+        return {}
+
+    path = _model_path(settings)
+    if not path.is_file():
+        if bool(getattr(settings, "rank_ai_buy_gate_fail_closed", True)):
+            raise FileNotFoundError(f"rank AI gate model not found: {path}")
+        return {}
+
+    bundle = joblib.load(path)
+    classifier = bundle["classifier"]
+    regressor = bundle["regressor"]
+    config = bundle.get("config") or {}
+    horizon = int(
+        getattr(
+            settings,
+            "rank_ai_buy_gate_prediction_horizon",
+            config.get("prediction_horizon", 20),
+        )
+    )
+    raw_scores: list[tuple[str, float]] = []
+    for ticker, frame in ticker_data.items():
+        symbol = str(ticker).upper()
+        if symbol.startswith("^") or symbol == "SPY":
+            continue
+        try:
+            feature_row = _build_latest_inference_features(
+                frame,
+                prediction_horizon=horizon,
+                vix_df=vix_df,
+                spy_df=spy_df,
+                macro_df=macro_df,
+            )
+            x_latest = feature_row[FEATURE_COLUMNS]
+            clf_score = float(classifier.predict_proba(x_latest)[:, 1][0])
+            reg_score = float(regressor.predict(x_latest)[0])
+            score = (clf_score + min(max(reg_score, 0.0), 1.0)) / 2.0
+        except Exception:
+            continue
+        raw_scores.append((symbol, score))
+
+    if not raw_scores:
+        if bool(getattr(settings, "rank_ai_buy_gate_fail_closed", True)):
+            raise ValueError("rank AI gate produced no scores")
+        return {}
+
+    score_df = pd.DataFrame(raw_scores, columns=["ticker", "score"])
+    score_df["percentile"] = score_df["score"].rank(pct=True, method="average")
+    cutoff = rank_ai_gate_effective_cutoff(settings, config)
+
+    scores: dict[str, RankAIGateScore] = {}
+    for _, row in score_df.iterrows():
+        ticker = str(row["ticker"])
+        percentile = float(row["percentile"])
+        score = float(row["score"])
+        allowed = percentile >= cutoff
+        if allowed:
+            reason = f"rank ai gate passed (pct={percentile:.3f}, cutoff={cutoff:.3f})"
+        else:
+            reason = f"rank ai gate blocked (pct={percentile:.3f}, cutoff={cutoff:.3f})"
+        scores[ticker] = RankAIGateScore(
+            ticker=ticker,
+            score=score,
+            percentile=percentile,
+            allowed=allowed,
+            reason=reason,
+        )
+    return scores
+
+
+def apply_rank_ai_buy_gate(
+    *,
+    ticker: str,
+    settings: Any,
+    risk_allowed: bool,
+    risk_reason: str,
+    target_amount: float,
+    scores: dict[str, RankAIGateScore],
+) -> RankAIGateDecision:
+    if not _rank_gate_enabled(settings) or not risk_allowed:
+        return RankAIGateDecision(risk_allowed, risk_reason, target_amount)
+
+    symbol = str(ticker).upper()
+    score = scores.get(symbol)
+    if score is None:
+        if bool(getattr(settings, "rank_ai_buy_gate_fail_closed", True)):
+            return RankAIGateDecision(
+                False,
+                f"rank ai gate missing score for {symbol}",
+                0.0,
+            )
+        return RankAIGateDecision(risk_allowed, risk_reason, target_amount)
+
+    if not score.allowed:
+        return RankAIGateDecision(
+            False,
+            score.reason,
+            0.0,
+            score=score.score,
+            percentile=score.percentile,
+        )
+
+    pass_reason = score.reason
+    if risk_reason and risk_reason != pass_reason:
+        pass_reason = f"{risk_reason} | {score.reason}"
+    return RankAIGateDecision(
+        True,
+        pass_reason,
+        target_amount,
+        score=score.score,
+        percentile=score.percentile,
+    )
+
+exec
+/bin/bash -lc "sed -n '1,260p' src/position_sizing.py" in /home/kimyo/trading-bot
+exec
+/bin/bash -lc "sed -n '1,220p' src/position_dust.py" in /home/kimyo/trading-bot
+ succeeded in 165ms:
+"""Detect and handle negligible (dust) open positions."""
+
+from __future__ import annotations
+
+import os
+from typing import Any
+
+
+def dust_position_min_usd(settings: Any | None = None) -> float:
+    if settings is not None:
+        configured = getattr(settings, "dust_position_min_usd", None)
+        if configured is not None:
+            return max(0.0, float(configured))
+    env = os.getenv("DUST_POSITION_MIN_USD", "5.0").strip()
+    try:
+        return max(0.0, float(env))
+    except ValueError:
+        return 5.0
+
+
+def is_dust_position(position: dict[str, Any] | None, *, min_usd: float = 5.0) -> bool:
+    if not position:
+        return False
+    try:
+        market_value = abs(float(position.get("market_value", 0.0)))
+    except (TypeError, ValueError):
+        return False
+    return market_value < min_usd
+
+
+def effective_position(
+    position: dict[str, Any] | None,
+    *,
+    min_usd: float = 5.0,
+) -> dict[str, Any] | None:
+    """None when position is dust — treat as flat for buys and guards."""
+    if position is None or is_dust_position(position, min_usd=min_usd):
+        return None
+    return position
+
+
+def count_meaningful_positions(
+    positions: list[dict[str, Any]],
+    *,
+    min_usd: float = 5.0,
+) -> int:
+    return sum(1 for position in positions if not is_dust_position(position, min_usd=min_usd))
+
+ succeeded in 206ms:
+"""Portfolio-percent order sizing with optional conviction scaling."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass(frozen=True)
+class ConvictionAdjustments:
+    position_mult: float = 1.0
+    cash_buffer_mult: float = 1.0
+    label: str = "neutral"
+
+
+def conviction_adjustments(
+    settings: Any,
+    ai_score: float | None,
+) -> ConvictionAdjustments:
+    if not getattr(settings, "conviction_sizing_enabled", False):
+        return ConvictionAdjustments()
+
+    if ai_score is None or not getattr(settings, "use_ai_score", False):
+        return ConvictionAdjustments()
+
+    threshold = float(getattr(settings, "ai_score_buy_threshold", 0.55))
+    if ai_score < threshold:
+        return ConvictionAdjustments()
+
+    strong = float(getattr(settings, "conviction_ai_score_strong", 0.65))
+    span = max(strong - threshold, 1e-6)
+    strength = min(1.0, max(0.0, (float(ai_score) - threshold) / span))
+
+    pos_max = float(getattr(settings, "conviction_position_mult_max", 1.25))
+    buffer_min = float(getattr(settings, "conviction_cash_buffer_mult_min", 0.4))
+
+    position_mult = 1.0 + strength * (pos_max - 1.0)
+    cash_buffer_mult = 1.0 - strength * (1.0 - buffer_min)
+    return ConvictionAdjustments(
+        position_mult=position_mult,
+        cash_buffer_mult=cash_buffer_mult,
+        label=f"conviction x{position_mult:.2f}, cash_buffer x{cash_buffer_mult:.2f}",
+    )
+
+
+def effective_min_cash_buffer_pct(settings: Any, cash_buffer_mult: float = 1.0) -> float:
+    base = float(getattr(settings, "min_cash_buffer_pct", 0.05))
+    mult = max(0.0, min(1.0, float(cash_buffer_mult)))
+    return max(0.0, min(0.99, base * mult))
+
+
+def max_deployable_cash(
+    cash: float,
+    portfolio_value: float,
+    settings: Any,
+    *,
+    cash_buffer_mult: float = 1.0,
+) -> float:
+    if cash <= 0 or portfolio_value <= 0:
+        return 0.0
+    buffer = portfolio_value * effective_min_cash_buffer_pct(settings, cash_buffer_mult)
+    return max(0.0, cash - buffer)
+
+
+def daily_order_budget(portfolio_value: float, settings: Any) -> float:
+    daily_pct = float(getattr(settings, "max_daily_order_pct", 0.0))
+    if daily_pct > 0 and portfolio_value > 0:
+        return portfolio_value * daily_pct
+    return float(getattr(settings, "max_daily_order_amount", 0.0))
+
+
+def cap_single_order_amount(
+    order_amount: float,
+    portfolio_value: float,
+    settings: Any,
+) -> float:
+    if order_amount <= 0 or portfolio_value <= 0:
+        return 0.0
+
+    capped = order_amount
+    single_pct = float(getattr(settings, "max_single_order_pct", 1.0))
+    if 0 < single_pct < 1.0:
+        capped = min(capped, portfolio_value * single_pct)
+
+    legacy_cap = float(getattr(settings, "max_test_order_amount", 0.0))
+    if legacy_cap > 0:
+        capped = min(capped, legacy_cap)
+
+    return max(0.0, capped)
+
+
+def finalize_order_amount(
+    target_amount: float,
+    *,
+    cash: float,
+    portfolio_value: float,
+    settings: Any,
+    cash_buffer_mult: float = 1.0,
+) -> float:
+    deployable = max_deployable_cash(
+        cash,
+        portfolio_value,
+        settings,
+        cash_buffer_mult=cash_buffer_mult,
+    )
+    amount = min(max(0.0, target_amount), deployable)
+    return cap_single_order_amount(amount, portfolio_value, settings)
+
+exec
+/bin/bash -lc "rg -n \"def close_position_by_symbol|def close_position\" -n src/alpaca_client.py && sed -n '1,260p' src/alpaca_client.py" in /home/kimyo/trading-bot
+ succeeded in 124ms:
+349:def close_position_by_symbol(
+from __future__ import annotations
+
+import math
+import time
+from typing import Optional
+from requests.exceptions import RequestException
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
+from alpaca.trading.client import TradingClient
+from alpaca.trading.requests import LimitOrderRequest, MarketOrderRequest, ClosePositionRequest, GetOrdersRequest
+from alpaca.trading.enums import OrderSide, TimeInForce, QueryOrderStatus
+
+from src.config import ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_PAPER
+
+
+def _safe_order_qty(qty: float) -> float:
+    """Truncate qty down to 6 decimals so sell orders never exceed holdings."""
+    scaled = math.floor(float(qty) * 1_000_000)
+    if scaled <= 0:
+        raise ValueError("qty must be positive after truncation")
+    return scaled / 1_000_000
+
+
+def get_trading_client() -> TradingClient:
+    if not ALPACA_API_KEY or not ALPACA_SECRET_KEY:
+        raise ValueError(
+            "Missing Alpaca API keys. Please set ALPACA_API_KEY and "
+            "ALPACA_SECRET_KEY in your .env file."
+        )
+
+    if not ALPACA_PAPER:
+        raise ValueError("ALPACA_PAPER must be True for this project stage.")
+
+    return TradingClient(
+        api_key=ALPACA_API_KEY,
+        secret_key=ALPACA_SECRET_KEY,
+        paper=True,
+    )
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RequestException, ConnectionError)),
+    reraise=True
+)
+def get_account_summary() -> dict:
+    client = get_trading_client()
+    try:
+        account = client.get_account()
+        positions = client.get_all_positions()
+    except RequestException as exc:
+        raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
+
+    return {
+        "account_number": account.account_number,
+        "status": str(account.status),
+        "currency": account.currency,
+        "cash": float(account.cash),
+        "portfolio_value": float(account.portfolio_value),
+        "last_equity": float(account.last_equity),
+        "buying_power": float(account.buying_power),
+        "positions_count": len(positions),
+    }
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RequestException, ConnectionError)),
+    reraise=True
+)
+def get_open_symbols() -> set[str]:
+    client = get_trading_client()
+    try:
+        positions = client.get_all_positions()
+    except RequestException as exc:
+        raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
+    return {position.symbol for position in positions}
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RequestException, ConnectionError)),
+    reraise=True
+)
+def get_positions_summary() -> list[dict]:
+    client = get_trading_client()
+    try:
+        positions = client.get_all_positions()
+    except RequestException as exc:
+        raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
+
+    return [
+        {
+            "symbol": position.symbol,
+            "qty": float(position.qty),
+            "current_price": float(position.current_price),
+            "market_value": float(position.market_value),
+            "cost_basis": float(position.cost_basis),
+            "unrealized_pl": float(position.unrealized_pl),
+            "unrealized_plpc": float(position.unrealized_plpc),
+        }
+        for position in positions
+    ]
+
+
+def _optional_str(value) -> str:
+    if value is None:
+        return ""
+    return str(value)
+
+
+def _normalize_order_status(status: str) -> str:
+    return str(status).replace("OrderStatus.", "").upper()
+
+
+def order_is_open(status: str) -> bool:
+    return _normalize_order_status(status) in {
+        "NEW",
+        "ACCEPTED",
+        "PENDING_NEW",
+        "PARTIALLY_FILLED",
+        "PENDING_CANCEL",
+        "PENDING_REPLACE",
+        "SUSPENDED",
+    }
+
+
+def order_is_filled(status: str) -> bool:
+    return _normalize_order_status(status) == "FILLED"
+
+
+def serialize_alpaca_order(order) -> dict:
+    limit_price = getattr(order, "limit_price", None)
+    qty = getattr(order, "qty", None)
+    filled_qty = getattr(order, "filled_qty", None)
+    filled_avg_price = getattr(order, "filled_avg_price", None)
+
+    qty_num = float(qty) if qty not in (None, "") else 0.0
+    filled_qty_num = float(filled_qty) if filled_qty not in (None, "") else 0.0
+    fill_pct = (filled_qty_num / qty_num * 100.0) if qty_num > 0 else 0.0
+
+    return {
+        "id": str(order.id),
+        "client_order_id": _optional_str(getattr(order, "client_order_id", None)),
+        "symbol": str(order.symbol),
+        "status": str(order.status),
+        "status_simple": _normalize_order_status(order.status),
+        "side": str(order.side).replace("OrderSide.", ""),
+        "type": str(order.type).replace("OrderType.", ""),
+        "qty": _optional_str(qty),
+        "filled_qty": _optional_str(filled_qty),
+        "filled_avg_price": _optional_str(filled_avg_price),
+        "limit_price": _optional_str(limit_price),
+        "notional": _optional_str(getattr(order, "notional", None)),
+        "extended_hours": bool(getattr(order, "extended_hours", False)),
+        "submitted_at": _optional_str(order.submitted_at),
+        "filled_at": _optional_str(order.filled_at),
+        "updated_at": _optional_str(getattr(order, "updated_at", None)),
+        "fill_pct": round(fill_pct, 2),
+    }
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RequestException, ConnectionError)),
+    reraise=True,
+)
+def get_open_orders(limit: int = 100) -> list[dict]:
+    client = get_trading_client()
+    try:
+        request_params = GetOrdersRequest(status=QueryOrderStatus.OPEN, limit=limit)
+        orders = client.get_orders(request_params)
+    except RequestException as exc:
+        raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
+    return [serialize_alpaca_order(order) for order in orders]
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RequestException, ConnectionError)),
+    reraise=True,
+)
+def get_recent_closed_orders(limit: int = 50) -> list[dict]:
+    client = get_trading_client()
+    try:
+        request_params = GetOrdersRequest(status=QueryOrderStatus.CLOSED, limit=limit)
+        orders = client.get_orders(request_params)
+    except RequestException as exc:
+        raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
+    return [serialize_alpaca_order(order) for order in orders]
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RequestException, ConnectionError)),
+    reraise=True,
+)
+def get_order_summary(order_id: str) -> dict:
+    client = get_trading_client()
+    try:
+        order = client.get_order_by_id(order_id)
+    except RequestException as exc:
+        raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
+
+    summary = serialize_alpaca_order(order)
+    return {
+        "id": summary["id"],
+        "symbol": summary["symbol"],
+        "status": summary["status"],
+        "side": summary["side"],
+        "type": summary["type"],
+        "notional": summary["notional"],
+        "qty": summary["qty"],
+        "filled_qty": summary["filled_qty"],
+        "filled_avg_price": summary["filled_avg_price"],
+        "limit_price": summary["limit_price"],
+        "extended_hours": summary["extended_hours"],
+        "submitted_at": summary["submitted_at"],
+        "filled_at": summary["filled_at"],
+    }
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RequestException, ConnectionError)),
+    reraise=True
+)
+def submit_market_buy_notional_order(
+    ticker: str, 
+    notional: float, 
+    client_order_id: Optional[str] = None
+):
+    if notional <= 0:
+        raise ValueError("notional must be positive")
+
+    client = get_trading_client()
+
+    order_request = MarketOrderRequest(
+        symbol=ticker,
+        notional=round(float(notional), 2),
+        side=OrderSide.BUY,
+        time_in_force=TimeInForce.DAY,
+        client_order_id=client_order_id,
+    )
+
+    try:
+        return client.submit_order(order_data=order_request)
+    except RequestException as exc:
+        raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
+
+
+@retry(
+    stop=stop_after_attempt(3),
+
+exec
+/bin/bash -lc "sed -n '340,430p' src/alpaca_client.py" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+        raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RequestException, ConnectionError)),
+    reraise=True
+)
+def close_position_by_symbol(
+    ticker: str, 
+    qty: Optional[float] = None, 
+    client_order_id: Optional[str] = None
+):
+    client = get_trading_client()
+    try:
+        # If client_order_id is provided, we use submit_order for idempotency.
+        # Note: close_position API (DELETE /positions) does not support client_order_id.
+        if client_order_id:
+            from alpaca.trading.requests import MarketOrderRequest
+            from alpaca.trading.enums import OrderSide, TimeInForce
+            
+            # If qty is None, we are closing the entire position.
+            if qty is None:
+                position = client.get_open_position(ticker)
+                qty = float(position.qty)
+            
+            if qty <= 0:
+                return None
+
+            order_request = MarketOrderRequest(
+                symbol=ticker,
+                qty=_safe_order_qty(qty),
+                side=OrderSide.SELL,
+                time_in_force=TimeInForce.DAY,
+                client_order_id=client_order_id,
+            )
+            return client.submit_order(order_data=order_request)
+
+        if qty is not None:
+            return client.close_position(ticker, close_options=ClosePositionRequest(qty=str(qty)))
+        return client.close_position(ticker)
+    except RequestException as exc:
+        raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RequestException, ConnectionError)),
+    reraise=True
+)
+def wait_for_order_status(
+    order_id: str,
+    max_attempts: int = 5,
+    sleep_seconds: float = 1.0,
+) -> dict:
+    client = get_trading_client()
+
+    terminal_statuses = {
+        "OrderStatus.FILLED",
+        "OrderStatus.CANCELED",
+        "OrderStatus.REJECTED",
+        "OrderStatus.EXPIRED",
+        "OrderStatus.DONE_FOR_DAY",
+    }
+
+    last_order = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            order = client.get_order_by_id(order_id)
+        except RequestException as exc:
+            raise ConnectionError(f"Unable to reach Alpaca paper API: {exc}") from exc
+        last_order = order
+
+        status = str(order.status)
+
+        if status in terminal_statuses:
+            break
+
+        time.sleep(sleep_seconds)
+
+    return {
+        "id": str(last_order.id),
+        "symbol": last_order.symbol,
+        "status": str(last_order.status),
+        "side": str(last_order.side),
+        "type": str(last_order.type),
+        "notional": str(last_order.notional),
+        "qty": str(last_order.qty),
+
+exec
+/bin/bash -lc "rg -n \"llm_cache_only_for_run|llm_skipped_for_run|evaluate_ticker_consensus\\(\" src tests" in /home/kimyo/trading-bot
+ succeeded in 138ms:
+tests/test_llm_analyst_genai.py:12:    llm_cache_only_for_run,
+tests/test_llm_analyst_genai.py:13:    llm_skipped_for_run,
+tests/test_llm_analyst_genai.py:22:    def test_llm_cache_only_for_run(self) -> None:
+tests/test_llm_analyst_genai.py:23:        with patch("src.llm_analyst.llm_skipped_for_run", return_value=False):
+tests/test_llm_analyst_genai.py:24:            self.assertFalse(llm_cache_only_for_run(execute_orders=False))
+tests/test_llm_analyst_genai.py:25:            self.assertFalse(llm_cache_only_for_run(execute_orders=True))
+tests/test_llm_analyst_genai.py:26:        with patch("src.llm_analyst.llm_skipped_for_run", return_value=False), patch.dict(
+tests/test_llm_analyst_genai.py:29:            self.assertTrue(llm_cache_only_for_run(execute_orders=False))
+tests/test_llm_analyst_genai.py:30:        with patch("src.llm_analyst.llm_skipped_for_run", return_value=True):
+tests/test_llm_analyst_genai.py:31:            self.assertTrue(llm_cache_only_for_run(execute_orders=False))
+tests/test_llm_analyst_genai.py:32:            self.assertTrue(llm_skipped_for_run())
+tests/test_llm_analyst_genai.py:64:            ok, reason = evaluate_ticker_consensus(
+tests/test_llm_vllm_fallback.py:52:            ok, reason = evaluate_ticker_consensus(
+tests/test_buy_guards.py:11:from src.llm_analyst import llm_skipped_for_run
+tests/test_buy_guards.py:61:    @patch("src.buy_guards.llm_skipped_for_run", return_value=False)
+tests/test_buy_guards.py:87:        self.assertTrue(llm_skipped_for_run())
+tests/test_execution_resilience.py:61:        ok1, reason1 = evaluate_ticker_consensus(ticker, as_of_date=as_of)
+tests/test_execution_resilience.py:69:        ok2, reason2 = evaluate_ticker_consensus(ticker, as_of_date=as_of)
+tests/test_execution_resilience.py:83:        ok, reason = evaluate_ticker_consensus("AAPL", settings=settings)
+tests/test_execution_resilience.py:96:        ok, reason = evaluate_ticker_consensus("AAPL", settings=settings)
+src/warm_llm_cache.py:85:            ok, reason = evaluate_ticker_consensus(
+src/llm_backtest_impact_report.py:55:    llm_ok, llm_reason = evaluate_ticker_consensus(
+src/portfolio_backtester.py:609:                    llm_ok, _ = evaluate_ticker_consensus(
+src/buy_guards.py:13:from src.llm_analyst import evaluate_ticker_consensus, llm_skipped_for_run
+src/buy_guards.py:160:    if llm_skipped_for_run():
+src/buy_guards.py:163:    llm_is_ok, llm_reason = evaluate_ticker_consensus(
+src/candidate_cache.py:28:from src.llm_analyst import llm_cache_only_for_run
+src/candidate_cache.py:545:                llm_cache_only=llm_cache_only_for_run(execute_orders=False),
+src/main.py:47:from src.llm_analyst import llm_cache_only_for_run
+src/main.py:578:    print(f"llm_cache_only={llm_cache_only_for_run(execute_orders=execute_orders)}")
+src/main.py:1184:                llm_cache_only=llm_cache_only_for_run(execute_orders=execute_orders),
+src/llm_analyst.py:44:def llm_skipped_for_run() -> bool:
+src/llm_analyst.py:51:def llm_cache_only_for_run(*, execute_orders: bool) -> bool:
+src/llm_analyst.py:53:    if llm_skipped_for_run():
+src/llm_analyst.py:155:def evaluate_ticker_consensus(
+
+exec
+/bin/bash -lc "sed -n '1130,1420p' src/main.py" in /home/kimyo/trading-bot
+ succeeded in 295ms:
+                )
+                risk_allowed = risk.allowed
+                risk_reason = risk.reason
+                target_amount = risk.target_amount
+                
+                # 추가 매수 시에도 최소 금액(예: 10달러) 이상일 때만 진행
+                if risk_allowed and target_amount < 10.0:
+                    risk_allowed = False
+                    risk_reason = f"additional buy amount too small (${target_amount:.2f})"
+                    target_amount = 0.0
+            else:
+                risk = check_buy_allowed(
+                    signal=signal,
+                    cash=cash,
+                    current_positions_count=meaningful_positions_count,
+                    portfolio_value=float(account["portfolio_value"]),
+                    ticker=ticker,
+                    position_mult=conviction.position_mult,
+                    cash_buffer_mult=conviction.cash_buffer_mult,
+                )
+                risk_allowed = risk.allowed
+                risk_reason = risk.reason
+                target_amount = risk.target_amount
+
+            if (
+                risk_allowed
+                and getattr(settings, "use_ai_score", False)
+                and (
+                    ai_score is None
+                    or ai_score < float(settings.ai_score_buy_threshold)
+                )
+            ):
+                risk_allowed = False
+                risk_reason = (
+                    f"ai score filter blocked "
+                    f"(score={ai_score}, threshold={settings.ai_score_buy_threshold})"
+                )
+                target_amount = 0.0
+
+            guard = apply_shared_buy_guards(
+                ticker=ticker,
+                position=held_position,
+                settings=settings,
+                risk_allowed=risk_allowed,
+                risk_reason=risk_reason,
+                target_amount=target_amount,
+                ai_score=ai_score,
+                open_symbols=open_symbols,
+                ticker_data=ticker_data,
+                vix_df=vix_df,
+                macro_risk_active=macro_risk_active,
+                macro_risk_reason=macro_risk_reason,
+                margin_leverage_block_active=margin_leverage_block_active,
+                margin_leverage_block_reason=margin_leverage_block_reason,
+                llm_cache_only=llm_cache_only_for_run(execute_orders=execute_orders),
+            )
+            risk_allowed = guard.risk_allowed
+            risk_reason = guard.risk_reason
+            target_amount = guard.target_amount
+            llm_is_ok = guard.llm_is_ok
+            llm_reason = guard.llm_reason
+
+            rank_gate = apply_rank_ai_buy_gate(
+                ticker=ticker,
+                settings=settings,
+                risk_allowed=risk_allowed,
+                risk_reason=risk_reason,
+                target_amount=target_amount,
+                scores=rank_ai_gate_scores,
+            )
+            risk_allowed = rank_gate.risk_allowed
+            risk_reason = rank_gate.risk_reason
+            target_amount = rank_gate.target_amount
+
+            if risk_allowed and held_position is None and llm_is_ok is False:
+                llm_advisory_only = bool(getattr(settings, "llm_advisory_only", True))
+                if llm_advisory_only:
+                    log_execution_audit(
+                        event_type="LLM_ADVISORY",
+                        ticker=ticker,
+                        action="BUY",
+                        status="WOULD_REJECT",
+                        reason=format_audit_reason(llm_reason, ticker),
+                        profile_name=profile_name,
+                        regime=current_regime,
+                        signal=signal,
+                        ai_score=ai_score,
+                        llm_verdict=_format_llm_verdict(llm_is_ok, llm_reason),
+                        notional=target_amount,
+                    )
+
+            order_amount = cap_single_order_amount(
+                target_amount,
+                float(account["portfolio_value"]),
+                settings,
+            )
+
+            if risk_allowed:
+                safety = apply_buy_safety_limits(
+                    ticker=ticker,
+                    order_amount=order_amount,
+                    submitted_notional_today=submitted_notional_today,
+                    recent_buy_symbols=recent_buy_symbols,
+                    portfolio_value=float(account["portfolio_value"]),
+                )
+                risk_allowed = safety.allowed
+                risk_reason = safety.reason if not safety.allowed else risk_reason
+                order_amount = safety.target_amount
+
+            if risk_allowed:
+                exposure = apply_portfolio_exposure_limits(
+                    ticker=ticker,
+                    order_amount=order_amount,
+                    cash=float(cash),
+                    portfolio_value=float(account["portfolio_value"]) * float(getattr(settings, "leverage_factor", 1.0)),
+                    buying_power=float(account.get("buying_power", 0.0)),
+                    current_gross_exposure=current_gross_exposure,
+                    current_position_value=float(held_position["market_value"]) if held_position is not None else 0.0,
+                    cash_buffer_mult=conviction.cash_buffer_mult,
+                )
+                risk_allowed = exposure.allowed
+                risk_reason = exposure.reason if not exposure.allowed else risk_reason
+                order_amount = exposure.target_amount
+
+            if risk_allowed:
+                leverage_cap = apply_effective_leverage_exposure_limits(
+                    ticker=ticker,
+                    order_amount=order_amount,
+                    portfolio_value=float(account["portfolio_value"]),
+                    positions_by_symbol=positions_by_symbol,
+                )
+                risk_allowed = leverage_cap.allowed
+                risk_reason = leverage_cap.reason if not leverage_cap.allowed else risk_reason
+                order_amount = leverage_cap.target_amount
+
+            log_signal(
+                ticker=ticker,
+                signal=signal,
+                close=latest["close"],
+                ma20=latest["ma20"],
+                ma50=latest["ma50"],
+                rsi=latest["rsi"],
+                ai_score=ai_score,
+            )
+
+            print(
+                f"{ticker}: signal={signal}, "
+                f"risk_allowed={risk_allowed}, "
+                f"reason='{risk_reason}', "
+                f"target_amount={target_amount:.2f}, "
+                f"order_amount={order_amount:.2f}, "
+                f"ai_score={ai_score}, "
+                f"close={latest['close']:.2f}, "
+                f"rsi={latest['rsi']:.2f}"
+            )
+
+            buy_summary_rows.append(
+                f"{ticker}: signal={signal}, allowed={risk_allowed}, "
+                f"reason={risk_reason}, order=${order_amount:.2f}, "
+                f"ai_score={ai_score}"
+            )
+            if not risk_allowed:
+                skipped_reasons[f"buy:{risk_reason}"] += 1
+                log_execution_audit(
+                    event_type="SKIP_BUY",
+                    ticker=ticker,
+                    action="BUY",
+                    status="SKIPPED",
+                    reason=format_audit_reason(risk_reason, ticker),
+                    profile_name=profile_name,
+                    regime=current_regime,
+                    signal=signal,
+                    ai_score=ai_score,
+                    rank_ai_score=rank_gate.score,
+                    rank_ai_percentile=rank_gate.percentile,
+                    llm_verdict=_format_llm_verdict(llm_is_ok, llm_reason),
+                    notional=order_amount,
+                )
+
+            if risk_allowed:
+                approved_buys.append({
+                    "ticker": ticker,
+                    "order_amount": order_amount,
+                    "ai_score": ai_score,
+                    "rank_ai_score": rank_gate.score,
+                    "rank_ai_percentile": rank_gate.percentile,
+                    "risk_reason": risk_reason,
+                    "signal": signal,
+                    "llm_verdict": _format_llm_verdict(llm_is_ok, llm_reason),
+                    "limit_price": float(latest["close"]),
+                })
+
+        except Exception as exc:
+            print(f"{ticker}: ERROR - {exc}")
+            buy_summary_rows.append(f"{ticker}: ERROR - {exc}")
+            api_error_count += 1
+            log_execution_audit(
+                event_type="BUY_ERROR",
+                ticker=ticker,
+                action="BUY",
+                status="ERROR",
+                reason=str(exc),
+                profile_name=profile_name,
+                regime=current_regime,
+            )
+            notify_error(f"{ticker} bot error", exc)
+
+    # 3) MVO 가중치 적용 (Pass 2: allocation_method에 따라 주문 금액 조정)
+    allocation_method = getattr(settings, "allocation_method", "equal_weight")
+    if allocation_method != "equal_weight" and len(approved_buys) > 1:
+        candidate_tickers = [c["ticker"] for c in approved_buys]
+        candidate_ai_scores = {
+            c["ticker"]: float(c["ai_score"]) if c["ai_score"] is not None else 0.5
+            for c in approved_buys
+        }
+        mvo_weights = compute_weights_from_ticker_data(
+            candidate_tickers=candidate_tickers,
+            ticker_data=ticker_data,
+            ai_scores=candidate_ai_scores,
+            allocation_method=allocation_method,
+        )
+        portfolio_value = float(account["portfolio_value"])
+        for candidate in approved_buys:
+            t = candidate["ticker"]
+            mvo_amount = portfolio_value * mvo_weights.get(t, 1.0 / len(approved_buys))
+            # Respect individual order cap
+            candidate["order_amount"] = cap_single_order_amount(
+                mvo_amount, portfolio_value, settings
+            )
+        print(
+            f"MVO weights: "
+            + ", ".join(
+                f"{c['ticker']}={mvo_weights.get(c['ticker'], 0):.3f}"
+                for c in approved_buys
+            )
+        )
+
+    # 4) 주문 제출 (Pass 3)
+    for candidate in approved_buys:
+        ticker = candidate["ticker"]
+        order_amount = candidate["order_amount"]
+        risk_reason = candidate["risk_reason"]
+        ai_score = candidate["ai_score"]
+        signal = candidate["signal"]
+        llm_verdict = candidate["llm_verdict"]
+
+        if orders_submitted >= settings.max_orders_per_run:
+            print("  SKIP_ORDER: max orders per run reached")
+            buy_summary_rows.append(
+                f"{ticker}: SKIP_ORDER max orders per run reached, "
+                f"ai_score={ai_score}"
+            )
+            skipped_reasons["buy:max orders per run reached"] += 1
+            log_execution_audit(
+                event_type="SKIP_BUY",
+                ticker=ticker,
+                action="BUY",
+                status="SKIPPED",
+                reason="max orders per run reached",
+                profile_name=profile_name,
+                regime=current_regime,
+                signal=signal,
+                ai_score=ai_score,
+                llm_verdict=llm_verdict,
+                notional=order_amount,
+            )
+            continue
+
+        if not can_submit_orders:
+            label = _execution_block_label(execute_orders, market_clock)
+            print(
+                f"  {label}: would BUY {ticker} "
+                f"notional=${order_amount:.2f}"
+            )
+            buy_summary_rows.append(
+                f"{ticker}: {label} would BUY ${order_amount:.2f}, "
+                f"ai_score={ai_score}"
+            )
+            skipped_reasons[f"buy:{label.lower()}"] += 1
+            log_execution_audit(
+                event_type="SKIP_BUY",
+                ticker=ticker,
+                action="BUY",
+                status="SKIPPED",
+                reason=label,
+                profile_name=profile_name,
+                regime=current_regime,
+                signal=signal,
+                ai_score=ai_score,
+                llm_verdict=llm_verdict,
+                notional=order_amount,
+
+exec
+/bin/bash -lc "sed -n '120,220p' src/buy_guards.py" in /home/kimyo/trading-bot
+ succeeded in 171ms:
+            open_symbols=open_symbols,
+            ticker_data=ticker_data,
+        )
+        if not crowding.allowed:
+            return BuyGuardResult(False, crowding.reason, 0.0, llm_is_ok, llm_reason)
+
+    if getattr(settings, "earnings_filter_enabled", False):
+        in_window, earnings_reason = is_earnings_window(
+            ticker,
+            pd.Timestamp.now(),
+            lookback_days=int(getattr(settings, "earnings_lookback_days", 3)),
+            lookforward_days=int(getattr(settings, "earnings_lookforward_days", 1)),
+        )
+        if in_window:
+            return BuyGuardResult(
+                False,
+                f"earnings filter: {earnings_reason}",
+                0.0,
+                llm_is_ok,
+                llm_reason,
+            )
+
+    if macro_risk_active:
+        return BuyGuardResult(
+            False,
+            f"macro event risk: {macro_risk_reason}",
+            0.0,
+            llm_is_ok,
+            llm_reason,
+        )
+
+    if margin_leverage_block_active:
+        return BuyGuardResult(
+            False,
+            margin_leverage_block_reason,
+            0.0,
+            llm_is_ok,
+            llm_reason,
+        )
+
+    if llm_skipped_for_run():
+        return BuyGuardResult(risk_allowed, risk_reason, target_amount, None, "")
+
+    llm_is_ok, llm_reason = evaluate_ticker_consensus(
+        ticker,
+        settings=settings,
+        cache_only=llm_cache_only,
+    )
+    llm_advisory_only = bool(getattr(settings, "llm_advisory_only", True))
+    if not llm_is_ok and not llm_advisory_only:
+        return BuyGuardResult(
+            False,
+            f"LLM Reject: {llm_reason}",
+            0.0,
+            llm_is_ok,
+            llm_reason,
+        )
+
+    return BuyGuardResult(risk_allowed, risk_reason, target_amount, llm_is_ok, llm_reason)
+
+
+def execution_label_for_cache(
+    *,
+    risk_allowed: bool,
+    reason: str,
+    dry_run_orders_count: int,
+    max_orders_per_run: int,
+    orders_allowed: bool,
+) -> tuple[str, bool]:
+    """Return (execution_label, would_submit)."""
+    if risk_allowed:
+        if dry_run_orders_count >= max_orders_per_run:
+            return "SKIP_MAX_ORDERS", False
+        if not orders_allowed:
+            return "SESSION_CLOSED", False
+        return "WOULD_SUBMIT_IF_EXECUTED", True
+
+    lowered = str(reason).lower()
+    if "daily order amount limit" in lowered:
+        return "SKIP_DAILY_LIMIT", False
+    if "buy cooldown" in lowered:
+        return "SKIP_COOLDOWN", False
+    return "NOT_ALLOWED", False
+
+exec
+/bin/bash -lc "sed -n '140,260p' src/llm_analyst.py" in /home/kimyo/trading-bot
+ succeeded in 112ms:
+
+def _load_cache() -> Dict[str, dict]:
+    if not CACHE_PATH.exists():
+        return {}
+    try:
+        return json.loads(CACHE_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_cache(cache: Dict[str, dict]) -> None:
+    CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    CACHE_PATH.write_text(json.dumps(cache, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def evaluate_ticker_consensus(
+    ticker: str,
+    settings: Optional[Any] = None,
+    as_of_date: Optional[str] = None,
+    *,
+    cache_only: bool = False,
+    fallback_current_headlines: bool = False,
+) -> Tuple[bool, str]:
+    """LLM을 사용하여 해당 종목의 최신 뉴스를 분석하고 매수 승인 여부를 결정한다.
+
+    as_of_date: cache key date (YYYY-MM-DD). Backtest replay should pass entry_date.
+    cache_only: if True, never call the API on cache miss (use llm_degraded_mode).
+
+    Returns:
+        (is_approved, reason)
+    """
+    cache_enabled = getattr(settings, "llm_cache_enabled", True)
+    degraded_mode = getattr(settings, "llm_degraded_mode", "PASS").upper()
+    date_key = as_of_date or datetime.now().strftime("%Y-%m-%d")
+    cache = _load_cache()
+    cache_key = f"{ticker}_{date_key}"
+
+    if cache_enabled and cache_key in cache:
+        cached = cache[cache_key]
+        return cached["is_approved"], cached.get("category_reason") or cached["reason"]
+
+    if cache_only:
+        is_ok = degraded_mode == "PASS"
+        status = "Auto-Approved" if is_ok else "Auto-Rejected"
+        return is_ok, f"LLM cache miss ({status} per policy)"
+
+    if not llm_backend_available():
+        return True, "GEMINI_API_KEY not found, skipping qualitative analysis (Auto-Approved)"
+
+    try:
+        headlines = _headlines_before_date(ticker, date_key, max_articles=5)
+        if not headlines and fallback_current_headlines:
+            headlines = _headlines_current(ticker, max_articles=5)
+        if not headlines:
+            return True, "No recent news found for qualitative analysis"
+
+        news_context = "\n".join([f"- {h}" for h in headlines])
+        prompt = f"""
+Analyze the following recent news headlines for the stock ticker '{ticker}'.
+Your goal is to identify critical fundamental risks that a purely quantitative model might miss (e.g., fraud, major lawsuits, catastrophic product failure, or terrible forward guidance).
+
+News Headlines:
+{news_context}
+
+Based on these headlines, should we proceed with buying this stock?
+Provide your decision in the following structured format only (no extra commentary):
+DECISION: [APPROVE or REJECT]
+CATEGORY: [None, Lawsuit, Fraud, Guidance, Financials, Other]
+REASON: [One sentence explanation in Korean]
+"""
+        text, provider = _generate_llm_text_with_provider(prompt)
+        upper_text = text.upper()
+
+        is_approved = "DECISION: APPROVE" in upper_text or "DECISION: [APPROVE]" in upper_text
+
+        category = "None"
+        if "CATEGORY:" in upper_text:
+            idx = upper_text.find("CATEGORY:")
+            line = text[idx + 9 :].split("\n")[0].strip()
+            category = line.strip("[]")
+
+        reason = "LLM Approved"
+        if "REASON:" in upper_text:
+            idx = upper_text.find("REASON:")
+            reason = text[idx + 7 :].strip()
+        elif not is_approved:
+            reason = "정성적 리스크 감지됨"
+
+        category_reason = f"[{category}] {reason}" if category != "None" else reason
+        if provider == "vllm":
+            category_reason = f"[local-vLLM] {category_reason}"
+
+        if cache_enabled:
+            cache[cache_key] = {
+                "is_approved": is_approved,
+                "category": category,
+                "reason": reason,
+                "category_reason": category_reason,
+                "llm_provider": provider,
+                "timestamp": datetime.now().isoformat(),
+            }
+            _save_cache(cache)
+
+        return is_approved, category_reason
+
+    except Exception as e:
+        print(f"Error in LLM analysis for {ticker}: {e}")
+        is_ok = degraded_mode == "PASS"
+        status = "Auto-Approved" if is_ok else "Auto-Rejected"
+        return is_ok, f"LLM Analysis failed: {e} ({status} per policy)"
+
+exec
+/bin/bash -lc "sed -n '1,240p' src/execution_audit_io.py" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+"""Read/write execution_audit.csv with a stable column schema."""
+
+from __future__ import annotations
+
+import csv
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+
+from src.config import EXECUTION_AUDIT_LOG_PATH
+
+EXECUTION_AUDIT_COLUMNS: tuple[str, ...] = (
+    "timestamp",
+    "event_type",
+    "ticker",
+    "action",
+    "status",
+    "reason",
+    "profile_name",
+    "regime",
+    "signal",
+    "ai_score",
+    "rank_ai_score",
+    "rank_ai_percentile",
+    "llm_verdict",
+    "order_id",
+    "order_type",
+    "side",
+    "notional",
+    "quantity",
+    "filled_qty",
+    "filled_avg_price",
+)
+
+_LEGACY_EXTRA_COLUMNS: tuple[str, ...] = ("rank_ai_score", "rank_ai_percentile")
+
+
+def read_execution_audit_csv(path: str | Path) -> pd.DataFrame:
+    """Parse audit rows by header name; append trailing rank columns when present."""
+    path = Path(path)
+    if not path.is_file():
+        return pd.DataFrame(columns=list(EXECUTION_AUDIT_COLUMNS))
+
+    with path.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.reader(handle))
+    if len(rows) <= 1:
+        return pd.DataFrame(columns=list(EXECUTION_AUDIT_COLUMNS))
+
+    header = [cell.strip() for cell in rows[0]]
+    records: list[dict[str, Any]] = []
+    for fields in rows[1:]:
+        if not fields:
+            continue
+        record = {column: None for column in EXECUTION_AUDIT_COLUMNS}
+        for index, column in enumerate(header):
+            if index < len(fields) and column in record:
+                record[column] = fields[index]
+        extra = fields[len(header) :]
+        extra_index = 0
+        for column in _LEGACY_EXTRA_COLUMNS:
+            if column in header:
+                continue
+            if extra_index < len(extra):
+                record[column] = extra[extra_index]
+                extra_index += 1
+        records.append(record)
+    return pd.DataFrame.from_records(records)
+
+
+def normalize_execution_audit_file(path: str | Path = EXECUTION_AUDIT_LOG_PATH) -> Path:
+    """Rewrite audit log with the canonical header and column order."""
+    path = Path(path)
+    if not path.is_file():
+        return path
+    df = read_execution_audit_csv(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    df = df.reindex(columns=list(EXECUTION_AUDIT_COLUMNS))
+    df.to_csv(path, index=False)
+    return path
+
+exec
+/bin/bash -lc "rg -n \"check_buy_allowed\\(|check_additional_buy_allowed\\(|apply_buy_safety_limits\\(|apply_portfolio_exposure_limits\\(\" src tests | sed -n '1,220p'" in /home/kimyo/trading-bot
+ succeeded in 193ms:
+src/risk_manager.py:26:def check_buy_allowed(
+src/risk_manager.py:74:def check_additional_buy_allowed(
+src/risk_manager.py:180:def apply_buy_safety_limits(
+src/risk_manager.py:219:def apply_portfolio_exposure_limits(
+src/candidate_cache.py:490:                risk = check_additional_buy_allowed(
+src/candidate_cache.py:502:                risk = check_buy_allowed(
+src/candidate_cache.py:570:                safety = apply_buy_safety_limits(
+src/candidate_cache.py:582:                exposure = apply_portfolio_exposure_limits(
+src/main.py:1123:                risk = check_additional_buy_allowed(
+src/main.py:1141:                risk = check_buy_allowed(
+src/main.py:1228:                safety = apply_buy_safety_limits(
+src/main.py:1240:                exposure = apply_portfolio_exposure_limits(
+tests/test_candidate_cache_and_risk.py:89:            cooldown = apply_buy_safety_limits(
+tests/test_candidate_cache_and_risk.py:95:            daily_limit = apply_buy_safety_limits(
+tests/test_candidate_cache_and_risk.py:131:            under_target = check_additional_buy_allowed(
+tests/test_candidate_cache_and_risk.py:137:            at_target = check_additional_buy_allowed(
+tests/test_candidate_cache_and_risk.py:230:            gross = apply_portfolio_exposure_limits(
+tests/test_candidate_cache_and_risk.py:238:            cash_buffer = apply_portfolio_exposure_limits(
+tests/test_candidate_cache_and_risk.py:246:            single_name = apply_portfolio_exposure_limits(
+
+exec
+/bin/bash -lc "sed -n '1,320p' tests/test_candidate_cache_and_risk.py" in /home/kimyo/trading-bot
+ succeeded in 211ms:
+import json
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+import pandas as pd
+
+from src.candidate_cache import (
+    build_data_quality_rows,
+    get_dynamic_universe,
+    load_latest_candidate_cache_full,
+)
+from src.risk_manager import (
+    apply_buy_safety_limits,
+    apply_factor_crowding_limits,
+    apply_portfolio_exposure_limits,
+    check_additional_buy_allowed,
+)
+from src.settings import StrategySettings
+
+
+class CandidateCacheAndRiskTest(unittest.TestCase):
+    @staticmethod
+    def _price_frame(close_values: list[float]) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "date": pd.date_range("2026-01-01", periods=len(close_values)),
+                "open": close_values,
+                "high": [value + 1.0 for value in close_values],
+                "low": [value - 1.0 for value in close_values],
+                "close": close_values,
+                "adj_close": close_values,
+                "volume": [1000.0] * len(close_values),
+            }
+        )
+
+    def test_build_data_quality_rows_flags_short_history_and_errors(self) -> None:
+        short_df = pd.DataFrame(
+            {
+                "date": pd.date_range("2026-01-01", periods=10),
+                "open": range(10),
+                "high": range(10),
+                "low": range(10),
+                "close": range(10),
+                "volume": range(10),
+            }
+        )
+
+        quality_df, errors_df = build_data_quality_rows(
+            ["AAPL", "MSFT"],
+            {"AAPL": short_df},
+        )
+
+        self.assertEqual(len(quality_df), 2)
+        self.assertEqual(
+            quality_df.loc[quality_df["ticker"] == "AAPL", "data_status"].iloc[0],
+            "WARN",
+        )
+        self.assertEqual(
+            quality_df.loc[quality_df["ticker"] == "MSFT", "data_status"].iloc[0],
+            "ERROR",
+        )
+        self.assertEqual(set(errors_df["ticker"]), {"AAPL", "MSFT"})
+
+    def test_apply_buy_safety_limits_blocks_cooldown_and_daily_limit(self) -> None:
+        settings = StrategySettings(
+            tickers=["AAPL"],
+            ma_fast=10,
+            ma_slow=50,
+            rsi_buy_limit=65,
+            max_position_pct=0.4,
+            max_total_positions=2,
+            stop_loss_pct=0.05,
+            take_profit_pct=0.1,
+            max_test_order_amount=10.0,
+            max_orders_per_run=1,
+            max_daily_order_amount=100.0,
+            buy_cooldown_days=2,
+            use_ai_score=False,
+            ai_score_buy_threshold=0.55,
+            market_regime_filter_enabled=False,
+            market_regime_ticker="SPY",
+            market_regime_ma_fast=50,
+            market_regime_ma_slow=200,
+        )
+
+        with patch("src.risk_manager.load_settings", return_value=settings):
+            cooldown = apply_buy_safety_limits(
+                ticker="AAPL",
+                order_amount=10.0,
+                submitted_notional_today=0.0,
+                recent_buy_symbols={"AAPL"},
+            )
+            daily_limit = apply_buy_safety_limits(
+                ticker="MSFT",
+                order_amount=20.0,
+                submitted_notional_today=90.0,
+                recent_buy_symbols=set(),
+            )
+
+        self.assertFalse(cooldown.allowed)
+        self.assertIn("cooldown", cooldown.reason)
+        self.assertTrue(daily_limit.allowed)
+        self.assertIn("daily order amount capped", daily_limit.reason)
+        self.assertEqual(daily_limit.target_amount, 10.0)
+
+    def test_check_additional_buy_allowed_targets_position_allocation(self) -> None:
+        settings = StrategySettings(
+            tickers=["NVDA"],
+            ma_fast=10,
+            ma_slow=50,
+            rsi_buy_limit=65,
+            max_position_pct=0.1,
+            max_total_positions=2,
+            stop_loss_pct=0.05,
+            take_profit_pct=0.1,
+            max_test_order_amount=1000.0,
+            max_orders_per_run=1,
+            max_daily_order_amount=1000.0,
+            buy_cooldown_days=1,
+            use_ai_score=False,
+            ai_score_buy_threshold=0.55,
+            market_regime_filter_enabled=False,
+            market_regime_ticker="SPY",
+            market_regime_ma_fast=50,
+            market_regime_ma_slow=200,
+        )
+
+        with patch("src.risk_manager.load_settings", return_value=settings):
+            under_target = check_additional_buy_allowed(
+                signal="BUY",
+                cash=1000.0,
+                portfolio_value=10000.0,
+                current_position_value=250.0,
+            )
+            at_target = check_additional_buy_allowed(
+                signal="BUY",
+                cash=1000.0,
+                portfolio_value=10000.0,
+                current_position_value=1000.0,
+            )
+
+        self.assertTrue(under_target.allowed)
+        self.assertEqual(under_target.reason, "add to existing position allowed")
+        self.assertEqual(under_target.target_amount, 500.0)
+        self.assertFalse(at_target.allowed)
+        self.assertEqual(at_target.reason, "position target allocation reached")
+
+    def test_load_latest_candidate_cache_full_reads_optional_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_dir = Path(temp_dir)
+            (cache_dir / "latest_meta.json").write_text('{"tickers":["AAPL"]}', encoding="utf-8")
+            pd.DataFrame({"ticker": ["AAPL"]}).to_csv(cache_dir / "latest_exit.csv", index=False)
+            pd.DataFrame({"ticker": ["MSFT"]}).to_csv(cache_dir / "latest_buy.csv", index=False)
+            pd.DataFrame({"ticker": ["AAPL"], "data_status": ["OK"]}).to_csv(
+                cache_dir / "latest_quality.csv",
+                index=False,
+            )
+            pd.DataFrame({"ticker": ["MSFT"], "data_status": ["ERROR"]}).to_csv(
+                cache_dir / "latest_errors.csv",
+                index=False,
+            )
+
+            with patch("src.candidate_cache.LATEST_META_PATH", cache_dir / "latest_meta.json"), patch(
+                "src.candidate_cache.LATEST_EXIT_PATH", cache_dir / "latest_exit.csv"
+            ), patch(
+                "src.candidate_cache.LATEST_BUY_PATH", cache_dir / "latest_buy.csv"
+            ), patch(
+                "src.candidate_cache.LATEST_QUALITY_PATH", cache_dir / "latest_quality.csv"
+            ), patch(
+                "src.candidate_cache.LATEST_ERRORS_PATH", cache_dir / "latest_errors.csv"
+            ):
+                meta, exit_df, buy_df, quality_df, errors_df = load_latest_candidate_cache_full()
+
+        self.assertEqual(meta["tickers"], ["AAPL"])
+        self.assertEqual(exit_df["ticker"].tolist(), ["AAPL"])
+        self.assertEqual(buy_df["ticker"].tolist(), ["MSFT"])
+        self.assertEqual(quality_df["data_status"].tolist(), ["OK"])
+        self.assertEqual(errors_df["data_status"].tolist(), ["ERROR"])
+
+    def test_get_dynamic_universe_writes_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_dir = Path(temp_dir)
+            with patch(
+                "src.candidate_cache._fetch_trending_tickers_with_meta",
+                return_value=(["NVDA", "AMD", None], "unit_test_source"),
+            ), patch(
+                "src.candidate_cache.CACHE_DIR", cache_dir
+            ), patch(
+                "src.candidate_cache.LATEST_META_PATH", cache_dir / "latest_meta.json"
+            ):
+                universe = get_dynamic_universe(["AAPL", "msft", "^VIX"], limit=3)
+                meta = json.loads((cache_dir / "latest_meta.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(set(universe), {"AAPL", "MSFT", "NVDA", "AMD"})
+        self.assertEqual(meta["source"], "unit_test_source")
+        self.assertEqual(meta["static_count"], 3)
+        self.assertEqual(meta["trending_count"], 2)
+        self.assertEqual(meta["final_count"], 4)
+        self.assertIn("generated_at", meta)
+
+    def test_apply_portfolio_exposure_limits_blocks_risk_breaches(self) -> None:
+        settings = StrategySettings(
+            tickers=["AAPL"],
+            ma_fast=10,
+            ma_slow=50,
+            rsi_buy_limit=65,
+            max_position_pct=0.4,
+            max_total_positions=2,
+            stop_loss_pct=0.10,
+            take_profit_pct=0.1,
+            max_test_order_amount=10.0,
+            max_orders_per_run=1,
+            max_daily_order_amount=100.0,
+            buy_cooldown_days=2,
+            use_ai_score=False,
+            ai_score_buy_threshold=0.55,
+            market_regime_filter_enabled=False,
+            market_regime_ticker="SPY",
+            market_regime_ma_fast=50,
+            market_regime_ma_slow=200,
+            leverage_factor=1.5,
+            max_gross_exposure_pct=1.2,
+            min_cash_buffer_pct=0.10,
+            max_single_name_loss_pct=0.02,
+        )
+
+        with patch("src.risk_manager.load_settings", return_value=settings):
+            gross = apply_portfolio_exposure_limits(
+                ticker="AAPL",
+                order_amount=300.0,
+                cash=1000.0,
+                portfolio_value=1000.0,
+                buying_power=5000.0,
+                current_gross_exposure=950.0,
+            )
+            cash_buffer = apply_portfolio_exposure_limits(
+                ticker="AAPL",
+                order_amount=150.0,
+                cash=200.0,
+                portfolio_value=1000.0,
+                buying_power=5000.0,
+                current_gross_exposure=200.0,
+            )
+            single_name = apply_portfolio_exposure_limits(
+                ticker="AAPL",
+                order_amount=250.0,
+                cash=1000.0,
+                portfolio_value=1000.0,
+                buying_power=5000.0,
+                current_gross_exposure=200.0,
+                current_position_value=0.0,
+            )
+
+        self.assertFalse(gross.allowed)
+        self.assertIn("gross exposure limit", gross.reason)
+        self.assertTrue(cash_buffer.allowed)
+        self.assertIn("cash buffer", cash_buffer.reason)
+        self.assertEqual(cash_buffer.target_amount, 100.0)
+        self.assertFalse(single_name.allowed)
+        self.assertIn("single-name max loss", single_name.reason)
+
+    def test_apply_factor_crowding_limits_blocks_overcrowded_momentum_trade(self) -> None:
+        settings = StrategySettings(
+            tickers=["AAPL", "MSFT", "NVDA"],
+            ma_fast=10,
+            ma_slow=50,
+            rsi_buy_limit=65,
+            max_position_pct=0.4,
+            max_total_positions=3,
+            stop_loss_pct=0.05,
+            take_profit_pct=0.1,
+            max_test_order_amount=10.0,
+            max_orders_per_run=1,
+            max_daily_order_amount=100.0,
+            buy_cooldown_days=1,
+            use_ai_score=False,
+            ai_score_buy_threshold=0.55,
+            market_regime_filter_enabled=False,
+            market_regime_ticker="SPY",
+            market_regime_ma_fast=50,
+            market_regime_ma_slow=200,
+            crowding_guard_enabled=True,
+            crowding_lookback_days=20,
+            crowding_max_positions=2,
+            crowding_momentum_threshold=0.15,
+            crowding_trend_gap_threshold=0.05,
+        )
+        strong_uptrend = list(range(100, 161))
+        ticker_data = {
+            "AAPL": self._price_frame(strong_uptrend),
+            "MSFT": self._price_frame([value * 1.01 for value in strong_uptrend]),
+            "NVDA": self._price_frame([value * 1.02 for value in strong_uptrend]),
+        }
+
+        with patch("src.risk_manager.load_settings", return_value=settings):
+            decision = apply_factor_crowding_limits(
+                ticker="NVDA",
+                open_symbols={"AAPL", "MSFT"},
+                ticker_data=ticker_data,
+            )
+
+        self.assertFalse(decision.allowed)
+        self.assertIn("crowding limit reached", decision.reason)
+
+    def test_apply_factor_crowding_limits_allows_non_crowded_candidate(self) -> None:
+        settings = StrategySettings(
+            tickers=["AAPL", "MSFT", "TLT"],
+            ma_fast=10,
+            ma_slow=50,
+            rsi_buy_limit=65,
+            max_position_pct=0.4,
+            max_total_positions=3,
+            stop_loss_pct=0.05,
+            take_profit_pct=0.1,
+            max_test_order_amount=10.0,
+            max_orders_per_run=1,
+            max_daily_order_amount=100.0,
+            buy_cooldown_days=1,
+
+exec
+/bin/bash -lc "rg -n \"open_symbols\" src/buy_guards.py src/risk_manager.py src/main.py src/candidate_cache.py src/*.py | sed -n '1,200p'" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+src/alpaca_client.py:73:def get_open_symbols() -> set[str]:
+src/portfolio_backtester.py:599:                        open_symbols=set(positions.keys()),
+src/portfolio_backtester.py:670:                "open_symbols": ",".join(sorted(positions.keys())),
+src/sector.py:67:def count_sector_positions(open_symbols: set[str], sector: str) -> int:
+src/sector.py:70:        1 for sym in open_symbols
+src/sector.py:77:    open_symbols: set[str],
+src/sector.py:90:    count = count_sector_positions(open_symbols, sector)
+src/portfolio_backtest_validation.py:28:    "open_symbols",
+src/rank_label_experiment.py:269:                "open_symbols": ",".join(sorted(positions.keys())),
+src/correlation_guard.py:10:    open_symbols: Set[str],
+src/correlation_guard.py:21:    if not open_symbols:
+src/correlation_guard.py:34:    for symbol in open_symbols:
+src/main.py:31:    get_open_symbols,
+src/main.py:345:        open_symbols = get_open_symbols()
+src/main.py:352:        open_symbols = set()
+src/main.py:354:    open_symbols = {str(symbol).upper() for symbol in open_symbols}
+src/main.py:366:    tickers_to_load = list(dict.fromkeys([*settings.tickers, *open_symbols]))
+src/main.py:1035:                if ticker in open_symbols:
+src/main.py:1036:                    open_symbols.remove(ticker)
+src/main.py:1177:                open_symbols=open_symbols,
+src/main.py:1534:                if ticker not in open_symbols:
+src/main.py:1535:                    open_symbols.add(ticker)
+src/main.py:31:    get_open_symbols,
+src/main.py:345:        open_symbols = get_open_symbols()
+src/main.py:352:        open_symbols = set()
+src/main.py:354:    open_symbols = {str(symbol).upper() for symbol in open_symbols}
+src/main.py:366:    tickers_to_load = list(dict.fromkeys([*settings.tickers, *open_symbols]))
+src/main.py:1035:                if ticker in open_symbols:
+src/main.py:1036:                    open_symbols.remove(ticker)
+src/main.py:1177:                open_symbols=open_symbols,
+src/main.py:1534:                if ticker not in open_symbols:
+src/main.py:1535:                    open_symbols.add(ticker)
+src/risk_manager.py:357:    open_symbols: set[str],
+src/risk_manager.py:362:    if not open_symbols:
+src/risk_manager.py:386:    for symbol in open_symbols:
+src/candidate_cache.py:343:    open_symbols = {str(position["symbol"]).upper() for position in positions}
+src/candidate_cache.py:347:    tickers_to_load = list(dict.fromkeys([*watchlist, *open_symbols]))
+src/candidate_cache.py:538:                open_symbols=open_symbols,
+src/candidate_cache.py:343:    open_symbols = {str(position["symbol"]).upper() for position in positions}
+src/candidate_cache.py:347:    tickers_to_load = list(dict.fromkeys([*watchlist, *open_symbols]))
+src/candidate_cache.py:538:                open_symbols=open_symbols,
+src/qlib_backtest_runner.py:541:                "open_symbols": ",".join(sorted(positions.keys())),
+src/qlib_backtest_runner.py:579:        equity_rows[-1]["open_symbols"] = ""
+src/buy_guards.py:51:    open_symbols: set[str],
+src/buy_guards.py:84:        open_symbols,
+src/buy_guards.py:92:        open_symbols,
+src/buy_guards.py:106:            open_symbols,
+src/buy_guards.py:120:            open_symbols=open_symbols,
+src/risk_manager.py:357:    open_symbols: set[str],
+src/risk_manager.py:362:    if not open_symbols:
+src/risk_manager.py:386:    for symbol in open_symbols:
+src/buy_guards.py:51:    open_symbols: set[str],
+src/buy_guards.py:84:        open_symbols,
+src/buy_guards.py:92:        open_symbols,
+src/buy_guards.py:106:            open_symbols,
+src/buy_guards.py:120:            open_symbols=open_symbols,
+src/close_position.py:14:    open_symbols = {position["symbol"] for position in positions}
+src/close_position.py:16:    if ticker not in open_symbols:
+src/instrument_meta.py:82:def count_leveraged_etf_positions(open_symbols: set[str]) -> int:
+src/instrument_meta.py:83:    return sum(1 for sym in open_symbols if get_instrument(sym).is_leveraged_etf)
+src/instrument_meta.py:120:    open_symbols: set[str],
+src/instrument_meta.py:144:        held = count_leveraged_etf_positions(open_symbols)
+
+exec
+/bin/bash -lc "sed -n '430,530p' src/candidate_cache.py" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+    positions_count = int(account["positions_count"])
+    current_gross_exposure = sum(float(position["market_value"]) for position in positions)
+    dry_run_orders_count = 0
+    simulated_daily_notional = get_today_buy_notional()
+    recent_buy_symbols = get_recent_buy_symbols(
+        int(getattr(settings, "buy_cooldown_days", 0))
+    )
+
+    top_sectors: list[str] = []
+    if getattr(settings, "sector_rotation_enabled", False):
+        try:
+            top_sectors = get_sector_leadership()
+        except Exception as exc:
+            print(f"Warning: sector leadership lookup failed: {exc}")
+
+    macro_risk_active = False
+    macro_risk_reason = ""
+    if getattr(settings, "macro_event_risk_enabled", False):
+        macro_risk_active, macro_risk_reason = get_macro_event_risk(
+            lookforward_days=int(getattr(settings, "macro_event_lookahead_days", 2)),
+            lookback_days=int(getattr(settings, "macro_event_lookback_days", 1)),
+        )
+
+    margin_leverage_block_active, margin_leverage_block_reason = evaluate_margin_leverage_buy_block(
+        float(getattr(settings, "leverage_factor", 1.0)),
+        margin_leverage_paper_enabled=bool(
+            getattr(settings, "margin_leverage_paper_enabled", False)
+        ),
+        margin_leverage_stress_gate_required=bool(
+            getattr(settings, "margin_leverage_stress_gate_required", True)
+        ),
+    )
+    dust_min_usd = dust_position_min_usd(settings)
+
+    for ticker in watchlist:
+        frame = ticker_data.get(ticker)
+        if frame is None or frame.empty:
+            buy_rows.append({"ticker": ticker, "error": "missing price data"})
+            continue
+
+        try:
+            signal, latest, ai_score, ai_score_status, ai_score_error = get_signal_for_cache(
+                ticker,
+                frame,
+                settings,
+                ai_model_bundle=ai_model_bundle,
+                vix_df=vix_df,
+                spy_df=spy_df,
+                macro_df=macro_df,
+                market_clock=clock,
+            )
+
+            ai_score = apply_sector_score_bonus(ticker, ai_score, top_sectors)
+            conviction = conviction_adjustments(settings, ai_score)
+
+            position = effective_position(
+                positions_by_symbol.get(ticker),
+                min_usd=dust_min_usd,
+            )
+            if position is not None:
+                risk = check_additional_buy_allowed(
+                    signal=signal,
+                    cash=cash,
+                    portfolio_value=float(account["portfolio_value"]),
+                    current_position_value=float(position["market_value"]),
+                    position_mult=conviction.position_mult,
+                    cash_buffer_mult=conviction.cash_buffer_mult,
+                )
+                risk_allowed = risk.allowed
+                reason = risk.reason
+                target_amount = risk.target_amount
+            else:
+                risk = check_buy_allowed(
+                    signal=signal,
+                    cash=cash,
+                    current_positions_count=positions_count,
+                    portfolio_value=float(account["portfolio_value"]),
+                    ticker=ticker,
+                    position_mult=conviction.position_mult,
+                    cash_buffer_mult=conviction.cash_buffer_mult,
+                )
+                risk_allowed = risk.allowed
+                reason = risk.reason
+                target_amount = risk.target_amount
+
+            if (
+                risk_allowed
+                and getattr(settings, "use_ai_score", False)
+                and (
+                    ai_score is None
+                    or ai_score < float(settings.ai_score_buy_threshold)
+                )
+            ):
+                risk_allowed = False
+                reason = (
+                    f"ai score filter blocked "
+                    f"(score={ai_score}, threshold={settings.ai_score_buy_threshold})"
+                )
+                target_amount = 0.0
+
+            guard = apply_shared_buy_guards(
+
+exec
+/bin/bash -lc "nl -ba src/candidate_cache.py | sed -n '472,515p'" in /home/kimyo/trading-bot
+exec
+/bin/bash -lc "nl -ba src/main.py | sed -n '620,690p'" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+   472	                ticker,
+   473	                frame,
+   474	                settings,
+   475	                ai_model_bundle=ai_model_bundle,
+   476	                vix_df=vix_df,
+   477	                spy_df=spy_df,
+   478	                macro_df=macro_df,
+   479	                market_clock=clock,
+   480	            )
+   481	
+   482	            ai_score = apply_sector_score_bonus(ticker, ai_score, top_sectors)
+   483	            conviction = conviction_adjustments(settings, ai_score)
+   484	
+   485	            position = effective_position(
+   486	                positions_by_symbol.get(ticker),
+   487	                min_usd=dust_min_usd,
+   488	            )
+   489	            if position is not None:
+   490	                risk = check_additional_buy_allowed(
+   491	                    signal=signal,
+   492	                    cash=cash,
+   493	                    portfolio_value=float(account["portfolio_value"]),
+   494	                    current_position_value=float(position["market_value"]),
+   495	                    position_mult=conviction.position_mult,
+   496	                    cash_buffer_mult=conviction.cash_buffer_mult,
+   497	                )
+   498	                risk_allowed = risk.allowed
+   499	                reason = risk.reason
+   500	                target_amount = risk.target_amount
+   501	            else:
+   502	                risk = check_buy_allowed(
+   503	                    signal=signal,
+   504	                    cash=cash,
+   505	                    current_positions_count=positions_count,
+   506	                    portfolio_value=float(account["portfolio_value"]),
+   507	                    ticker=ticker,
+   508	                    position_mult=conviction.position_mult,
+   509	                    cash_buffer_mult=conviction.cash_buffer_mult,
+   510	                )
+   511	                risk_allowed = risk.allowed
+   512	                reason = risk.reason
+   513	                target_amount = risk.target_amount
+   514	
+   515	            if (
+
+ succeeded in 0ms:
+   620	        print("-" * 80)
+   621	        print("Checking open positions for exit conditions...")
+   622	
+   623	        for position in positions:
+   624	            ticker = str(position["symbol"]).upper()
+   625	            try:
+   626	                if is_dust_position(position, min_usd=dust_min_usd):
+   627	                    dust_reason = (
+   628	                        f"dust position cleanup (<${dust_min_usd:g} market value)"
+   629	                    )
+   630	                    dust_mv = float(position["market_value"])
+   631	                    print(
+   632	                        f"{ticker}: DUST position qty={position['qty']}, "
+   633	                        f"market_value={dust_mv:.6f} — scheduling close"
+   634	                    )
+   635	                    exit_summary_rows.append(
+   636	                        f"{ticker}: DUST exit, market_value=${dust_mv:.6f}"
+   637	                    )
+   638	                    log_execution_audit(
+   639	                        event_type="DUST_EXIT",
+   640	                        ticker=ticker,
+   641	                        action="CLOSE",
+   642	                        status="SUBMITTED" if can_submit_orders else "DRY_RUN",
+   643	                        reason=dust_reason,
+   644	                        profile_name=profile_name,
+   645	                        regime=current_regime,
+   646	                    )
+   647	                    if can_submit_orders:
+   648	                        try:
+   649	                            raw_order = close_position_by_symbol(ticker)
+   650	                            if raw_order is None:
+   651	                                raise ValueError(
+   652	                                    f"dust close returned no order for {ticker}"
+   653	                                )
+   654	                            live_order_count += 1
+   655	                            log_order(
+   656	                                ticker=ticker,
+   657	                                notional=0.0,
+   658	                                order_id=str(raw_order.id),
+   659	                                status=str(raw_order.status),
+   660	                                side=str(raw_order.side),
+   661	                                order_type=str(raw_order.type),
+   662	                                reason=dust_reason,
+   663	                            )
+   664	                            print(
+   665	                                f"  PAPER_DUST_CLOSE: {ticker}, "
+   666	                                f"order_id={raw_order.id}, status={raw_order.status}"
+   667	                            )
+   668	                            notify_info(
+   669	                                "🧹 Dust position closed",
+   670	                                f"{ticker}: closed negligible position (${dust_mv:.4f})",
+   671	                            )
+   672	                        except Exception as e:
+   673	                            print(f"  Dust close error for {ticker}: {e}")
+   674	                            api_error_count += 1
+   675	                            if isinstance(e, ConnectionError) and execute_orders:
+   676	                                notify_error(
+   677	                                    f"CRITICAL: Network error during dust close for {ticker}",
+   678	                                    e,
+   679	                                )
+   680	                    else:
+   681	                        print(f"  DRY_RUN: would close dust position {ticker}")
+   682	                    positions_by_symbol.pop(ticker, None)
+   683	                    meaningful_positions_count = max(
+   684	                        0, meaningful_positions_count - 1
+   685	                    )
+   686	                    continue
+   687	
+   688	                data_fresh, data_reason = price_data_freshness.get(
+   689	                    ticker,
+   690	                    (False, "price data not loaded"),
+
+codex
+The patch introduces dust-position handling, but the live and cached buy flows still treat those symbols/counts as active in some guards. That can incorrectly suppress buys even after the code decides dust should be ignored or closed.
+
+Full review comments:
+
+- [P2] Remove dust symbols from the active-position sets before buy guards — /home/kimyo/trading-bot/src/main.py:682-685
+  When a position is classified as dust, this branch removes it from `positions_by_symbol` and decrements `meaningful_positions_count`, but it leaves the symbol in `open_symbols`. The later buy pass still feeds `open_symbols` into sector/correlation/crowding/instrument guards, so a negligible position that is being closed in the same run can still block a replacement buy until the next run. This shows up whenever an account holds a <$5 stub in a constrained sector or leveraged ETF slot.
+
+- [P2] Exclude dust positions from candidate-cache position counts — /home/kimyo/trading-bot/src/candidate_cache.py:501-506
+  `effective_position()` correctly treats dust holdings as flat for the current ticker, but the new-position branch still passes the raw `positions_count` from Alpaca into `check_buy_allowed()`. If the account is only “full” because of one or more dust leftovers, the cache will mark otherwise valid buys as blocked by `max_total_positions`, which makes the cache disagree with the live path that now uses `meaningful_positions_count` for the same check.

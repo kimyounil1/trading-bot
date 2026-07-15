@@ -8,7 +8,7 @@ Traceback (most recent call last):
   File "/home/kimyo/trading-bot/src/portfolio_backtest_validation.py", line 225, in check_portfolio_backtest_thresholds
     result = validate_portfolio_backtest_dir(output_dir, min_equity_rows=2)
              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/kimyo/trading-bot/src/portfolio_backtest_validation.py", line 112, in validate_portfolio_backtest_dir
-    raise ValueError("portfolio_equity: NaN in equity column")
-ValueError: portfolio_equity: NaN in equity column
-audit daily summary ok: rows=0 api_errors=0 stale=0
+  File "/home/kimyo/trading-bot/src/portfolio_backtest_validation.py", line 122, in validate_portfolio_backtest_dir
+    raise ValueError(
+ValueError: summary trades=141 != trades rows=51
+skip: logs/audit_daily/latest_summary.json not found

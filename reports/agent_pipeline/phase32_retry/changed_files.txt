@@ -1,0 +1,15 @@
+TODO.md
+config/execution_lock.json
+logs/ai_threshold/threshold_results.csv
+logs/benchmark_gap/latest_summary.json
+logs/crowding_paper/go_no_go_checklist.json
+logs/guard_impact/latest_summary.json
+logs/llm_advisory/latest_summary.json
+logs/ml/ai_model_metrics.csv
+logs/operational_alpha/baseline/portfolio_summary.csv
+logs/operational_alpha/latest_summary.json
+logs/operational_alpha/with_operational_filters/portfolio_summary.csv
+logs/portfolio_backtest/portfolio_summary.csv
+logs/retrain_history.csv
+src/paper_buy_validation_report.py
+tests/test_paper_buy_validation_report.py

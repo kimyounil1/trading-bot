@@ -1,0 +1,10 @@
+{
+  "run_id": "phase39_sleeve_alloc",
+  "output_dir": "/home/kimyo/trading-bot/reports/agent_pipeline/phase39_sleeve_alloc",
+  "gemini_exit_code": null,
+  "post_workflow_exit_code": 0,
+  "codex_review_exit_code": 0,
+  "review_packet": "/home/kimyo/trading-bot/reports/agent_pipeline/phase39_sleeve_alloc/review_packet.md",
+  "draft_todo": "/home/kimyo/trading-bot/reports/agent_pipeline/phase39_sleeve_alloc/NEXT_TODO.md",
+  "codex_todo": "/home/kimyo/trading-bot/reports/agent_pipeline/phase39_sleeve_alloc/NEXT_TODO.codex.md"
+}

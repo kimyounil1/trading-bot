@@ -1,0 +1,37 @@
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .gitignore
+	modified:   TODO.md
+	modified:   config/profiles/tournament_paper.json
+	modified:   logs/crowding_paper/go_no_go_checklist.json
+	modified:   logs/crowding_paper/reassessment.json
+	modified:   logs/llm_advisory/latest_summary.json
+	modified:   logs/llm_advisory/precision.json
+	modified:   logs/paper_validation/history.jsonl
+	modified:   logs/paper_validation/latest_summary.json
+	modified:   logs/paper_validation/trend_summary.json
+	modified:   src/llm_analyst.py
+	modified:   src/risk_manager.py
+	modified:   src/tournament_alpha_model.py
+	modified:   src/tournament_score_report.py
+	modified:   src/trading/tournament_buy_pipeline.py
+	modified:   tests/test_tournament_alpha_model.py
+	modified:   tests/test_tournament_score_report.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	.envrc
+	config/tournament_execute_config.json
+	logs/ml/model_calibration_bins.csv
+	scripts/exp_alpha_sweep.py
+	scripts/exp_crash_bounce_exit_us.py
+	scripts/exp_guard_relaxation_2w.py
+	scripts/install_tournament_execute_timer.sh
+	scripts/run_tournament_paper_execute.sh
+	tests/test_llm_retry.py
+
+no changes added to commit (use "git add" and/or "git commit -a")

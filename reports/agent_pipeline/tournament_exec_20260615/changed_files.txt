@@ -1,0 +1,17 @@
+.gitignore
+TODO.md
+config/profiles/tournament_paper.json
+logs/crowding_paper/go_no_go_checklist.json
+logs/crowding_paper/reassessment.json
+logs/llm_advisory/latest_summary.json
+logs/llm_advisory/precision.json
+logs/paper_validation/history.jsonl
+logs/paper_validation/latest_summary.json
+logs/paper_validation/trend_summary.json
+src/llm_analyst.py
+src/risk_manager.py
+src/tournament_alpha_model.py
+src/tournament_score_report.py
+src/trading/tournament_buy_pipeline.py
+tests/test_tournament_alpha_model.py
+tests/test_tournament_score_report.py

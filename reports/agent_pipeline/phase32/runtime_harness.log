@@ -1,0 +1,29 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.8, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/kimyo/trading-bot
+plugins: anyio-4.13.0
+collected 45 items
+
+tests/test_report_performance.py .....                                   [ 11%]
+tests/test_reappraise_regime.py ...                                      [ 17%]
+tests/test_portfolio_backtest_golden.py ...                              [ 24%]
+tests/test_portfolio_backtest_gate.py .....                              [ 35%]
+tests/test_daily_audit_summary.py ....                                   [ 44%]
+tests/test_daily_audit_summary_schema.py ....                            [ 53%]
+tests/test_retrain_notifications.py ....                                 [ 62%]
+tests/test_llm_cache_report_schema.py ..                                 [ 66%]
+tests/test_leverage_stress_report.py ...                                 [ 73%]
+tests/test_guard_impact_report.py ..                                     [ 77%]
+tests/test_check_audit_daily_summary.py ...                              [ 84%]
+tests/test_fold_variance_report.py .                                     [ 86%]
+tests/test_promotion_summary.py ..                                       [ 91%]
+tests/test_benchmark_gap_report.py .                                     [ 93%]
+tests/test_champion_promotion_governance.py ...                          [100%]
+
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6
+  /home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 45 passed, 1 warning in 3.61s =========================

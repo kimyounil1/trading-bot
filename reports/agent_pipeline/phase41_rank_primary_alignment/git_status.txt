@@ -1,0 +1,91 @@
+On branch main
+Your branch is ahead of 'origin/main' by 16 commits.
+  (use "git push" to publish your local commits)
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .env.example
+	modified:   README.md
+	modified:   TODO.md
+	modified:   app/streamlit_app.py
+	modified:   config/instrument_registry.json
+	modified:   config/margin_leverage_paper_proposal.json
+	modified:   config/profiles/tournament_paper.json
+	modified:   config/strategy_config.json
+	modified:   config/strategy_profiles.json
+	modified:   logs/crowding_paper/go_no_go_checklist.json
+	modified:   logs/crowding_paper/reassessment.json
+	modified:   logs/llm_advisory/latest_summary.json
+	modified:   logs/llm_advisory/precision.json
+	modified:   logs/paper_validation/history.jsonl
+	modified:   logs/paper_validation/latest_summary.json
+	modified:   logs/paper_validation/trend_summary.json
+	modified:   scripts/llm_retro_scoring.py
+	modified:   scripts/run_weekly_gap_attribution.sh
+	modified:   src/alpaca_client.py
+	modified:   src/brokers/alpaca.py
+	modified:   src/brokers/base.py
+	modified:   src/brokers/paper.py
+	modified:   src/brokers/toss.py
+	modified:   src/buy_guards.py
+	modified:   src/candidate_cache.py
+	modified:   src/features.py
+	modified:   src/instrument_meta.py
+	modified:   src/llm_analyst.py
+	modified:   src/ml_model.py
+	modified:   src/portfolio_backtest_settings.py
+	modified:   src/portfolio_backtester.py
+	modified:   src/rank_ai_gate.py
+	modified:   src/rank_leaderboard.py
+	modified:   src/risk_manager.py
+	modified:   src/run_portfolio_backtest.py
+	modified:   src/settings.py
+	modified:   src/sleeve_rebalance.py
+	modified:   src/tournament_alpha_model.py
+	modified:   src/trading/buy_pipeline.py
+	modified:   src/trading/exit_pipeline.py
+	modified:   src/trading/run_context.py
+	modified:   src/trading/sleeve_rebalance_pipeline.py
+	modified:   src/trading/tournament_buy_pipeline.py
+	modified:   tests/fixtures/ml_quality/golden_fold_stability_report.json
+	modified:   tests/fixtures/ml_quality/golden_model_calibration_report.json
+	modified:   tests/test_alpaca_safe_qty.py
+	modified:   tests/test_broker_adapter.py
+	modified:   tests/test_candidate_cache_and_risk.py
+	modified:   tests/test_instrument_meta.py
+	modified:   tests/test_main_e2e.py
+	modified:   tests/test_rank_ai_gate.py
+	modified:   tests/test_rank_leaderboard.py
+	modified:   tests/test_recent_changes.py
+	modified:   tests/test_settings.py
+	modified:   tests/test_sleeve_rebalance.py
+	modified:   tests/test_sleeve_rebalance_pipeline.py
+	modified:   tests/test_tournament_alpha_model.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	.envrc
+	config/research_gdrive_sync.json
+	config/research_gdrive_sync_config.json
+	docs/research_data_gdrive.md
+	logs/ml/model_calibration_bins.csv
+	scripts/exp_alpha_sweep.py
+	scripts/exp_crash_bounce_exit_us.py
+	scripts/exp_guard_relaxation_2w.py
+	scripts/install_research_gdrive_sync_timer.sh
+	scripts/llm_retro_checkpoint_report.py
+	scripts/sync_research_to_gdrive.sh
+	scripts/watch_llm_retro_batch.sh
+	src/brokers/toss_client.py
+	src/monthly_backtest_review.py
+	src/sleeved_portfolio_backtester.py
+	src/trading/leveraged_product_routing.py
+	tests/test_full_position_close.py
+	tests/test_leveraged_product_discovery.py
+	tests/test_leveraged_product_routing.py
+	tests/test_monthly_backtest_review.py
+	tests/test_operational_backtest_parity.py
+	tests/test_toss_client.py
+
+no changes added to commit (use "git add" and/or "git commit -a")

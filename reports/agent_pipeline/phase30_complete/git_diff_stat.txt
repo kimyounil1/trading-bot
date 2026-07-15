@@ -1,0 +1,12 @@
+ TODO.md                                     | 26 +++-----
+ docs/TODO_ARCHIVE.md                        |  4 +-
+ docs/runbook.md                             |  4 +-
+ logs/crowding_paper/go_no_go_checklist.json |  8 ++-
+ logs/llm_advisory/latest_summary.json       |  6 +-
+ scripts/run_paper_ops_bootstrap.sh          | 47 +++++++++++---
+ scripts/run_pass_complete.sh                |  3 +-
+ src/crowding_paper_gate.py                  | 98 ++++++++++++++++++++++++++++-
+ src/portfolio_backtester.py                 | 17 ++++-
+ tests/test_crowding_paper_gate.py           | 54 ++++++++++++++++
+ tests/test_portfolio_backtest_gate.py       | 34 ++++++++++
+ 11 files changed, 267 insertions(+), 34 deletions(-)

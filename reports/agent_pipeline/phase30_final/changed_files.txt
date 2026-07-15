@@ -1,0 +1,10 @@
+TODO.md
+docs/TODO_ARCHIVE.md
+docs/runbook.md
+logs/crowding_paper/go_no_go_checklist.json
+logs/llm_advisory/latest_summary.json
+scripts/run_paper_ops_bootstrap.sh
+scripts/run_pass_complete.sh
+src/crowding_paper_gate.py
+tests/test_crowding_paper_gate.py
+tests/test_portfolio_backtest_gate.py

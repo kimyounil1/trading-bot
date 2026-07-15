@@ -1,7 +1,0 @@
- .gitignore                                    | 16 +++++++++
- TODO.md                                       | 48 +++++++++------------------
- config/strategy_config.json                   |  3 +-
- docs/TODO_ARCHIVE.md                          |  2 ++
- docs/runbook.md                               | 15 +++++++++
- logs/portfolio_backtest/portfolio_summary.csv |  2 +-
- 6 files changed, 52 insertions(+), 34 deletions(-)

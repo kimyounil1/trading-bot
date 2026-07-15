@@ -1,0 +1,31 @@
+Traceback (most recent call last):
+  File "/home/kimyo/trading-bot/scripts/check_portfolio_backtest_gate.py", line 81, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/home/kimyo/trading-bot/scripts/check_portfolio_backtest_gate.py", line 64, in main
+    result = check_portfolio_backtest_thresholds(args.dir, thresholds)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/kimyo/trading-bot/src/portfolio_backtest_validation.py", line 225, in check_portfolio_backtest_thresholds
+    result = validate_portfolio_backtest_dir(output_dir, min_equity_rows=2)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/kimyo/trading-bot/src/portfolio_backtest_validation.py", line 114, in validate_portfolio_backtest_dir
+    trades_df = pd.read_csv(trades_path)
+                ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/pandas/io/parsers/readers.py", line 1026, in read_csv
+    return _read(filepath_or_buffer, kwds)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/pandas/io/parsers/readers.py", line 620, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/pandas/io/parsers/readers.py", line 1620, in __init__
+    self._engine = self._make_engine(f, self.engine)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/pandas/io/parsers/readers.py", line 1898, in _make_engine
+    return mapping[engine](f, **self.options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/pandas/io/parsers/c_parser_wrapper.py", line 93, in __init__
+    self._reader = parsers.TextReader(src, **kwds)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "pandas/_libs/parsers.pyx", line 581, in pandas._libs.parsers.TextReader.__cinit__
+pandas.errors.EmptyDataError: No columns to parse from file
+skip: logs/audit_daily/latest_summary.json not found

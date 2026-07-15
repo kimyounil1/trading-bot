@@ -1,5 +1,5 @@
 ============================= test session starts ==============================
-platform linux -- Python 3.12.3, pytest-9.0.3, pluggy-1.6.0
+platform linux -- Python 3.12.8, pytest-9.0.3, pluggy-1.6.0
 rootdir: /home/kimyo/trading-bot
 plugins: anyio-4.13.0
 collected 45 items
@@ -26,4 +26,4 @@ tests/test_champion_promotion_governance.py ...                          [100%]
     warnings.warn(  # deprecated in 14.0 - 2024-11-09
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-======================== 45 passed, 1 warning in 2.44s =========================
+======================== 45 passed, 1 warning in 3.03s =========================

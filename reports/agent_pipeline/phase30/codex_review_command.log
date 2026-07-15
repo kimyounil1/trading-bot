@@ -1,0 +1,598 @@
+$ codex --ask-for-approval never --sandbox read-only review /home/kimyo/trading-bot/reports/agent_pipeline/phase30/review_packet.md -c 'model_reasoning_effort="low"'
+exit_code=0
+
+## stdout
+The patch only updates documentation, tracked artifact policy, and operational defaults to reflect the already-decided paper-trading posture. I did not find a discrete functional regression or maintainability issue that would likely merit a follow-up fix.
+
+
+## stderr
+OpenAI Codex v0.135.0
+--------
+workdir: /home/kimyo/trading-bot
+model: gpt-5.4
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: low
+reasoning summaries: none
+session id: 019e80c3-f078-7d53-9557-3460ec9a9ef3
+--------
+user
+/home/kimyo/trading-bot/reports/agent_pipeline/phase30/review_packet.md
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/kimyo/trading-bot/reports/agent_pipeline/phase30/review_packet.md" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+# Agent Review Packet - Run: phase30
+
+## Implementation Agent
+cursor
+
+## Task Description
+Phase 30 paper ops — Codex scoped review
+
+## Changed Files
+
+
+## Git Diff Summary
+```
+
+```
+
+## Test Execution Results (runtime_harness.log)
+```
+============================= test session starts ==============================
+platform linux -- Python 3.12.8, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/kimyo/trading-bot
+plugins: anyio-4.13.0
+collected 45 items
+
+tests/test_report_performance.py .....                                   [ 11%]
+tests/test_reappraise_regime.py ...                                      [ 17%]
+tests/test_portfolio_backtest_golden.py ...                              [ 24%]
+tests/test_portfolio_backtest_gate.py .....                              [ 35%]
+tests/test_daily_audit_summary.py ....                                   [ 44%]
+tests/test_daily_audit_summary_schema.py ....                            [ 53%]
+tests/test_retrain_notifications.py ....                                 [ 62%]
+tests/test_llm_cache_report_schema.py ..                                 [ 66%]
+tests/test_leverage_stress_report.py ...                                 [ 73%]
+tests/test_guard_impact_report.py ..                                     [ 77%]
+tests/test_check_audit_daily_summary.py ...                              [ 84%]
+tests/test_fold_variance_report.py .                                     [ 86%]
+tests/test_promotion_summary.py ..                                       [ 91%]
+tests/test_benchmark_gap_report.py .                                     [ 93%]
+tests/test_champion_promotion_governance.py ...                          [100%]
+
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6
+  /home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 45 passed, 1 warning in 3.03s =========================
+```
+
+## Git Patch
+```diff
+
+```
+
+exec
+/bin/bash -lc 'git log --oneline -n 5' in /home/kimyo/trading-bot
+ succeeded in 0ms:
+b8a7241 chore: gitignore operational alpha summary paths explicitly.
+fb22b4c chore: close Phase 29 — summaries, paper bootstrap, crowding gate NO_GO.
+4be896c chore(reports): add agent pipeline pass artifacts for phases 20–29.
+bb59a5d feat(alpha): benchmark gates, LLM advisory mode, and operational validation.
+20fdbc2 feat(ops): crowding live impact report vs guard backtest [agy]
+
+exec
+/bin/bash -lc 'git status --short' in /home/kimyo/trading-bot
+ succeeded in 0ms:
+ M reports/agent_pipeline/phase30/TASK.md
+ M reports/agent_pipeline/phase30/changed_files.txt
+ M reports/agent_pipeline/phase30/git_diff.patch
+ M reports/agent_pipeline/phase30/git_diff_stat.txt
+ M reports/agent_pipeline/phase30/git_status.txt
+ M reports/agent_pipeline/phase30/review_harness.log
+ M reports/agent_pipeline/phase30/review_packet.md
+ M reports/agent_pipeline/phase30/runtime_harness.log
+?? reports/agent_pipeline/20260529T102625/
+?? reports/agent_pipeline/20260529T102643/
+?? reports/agent_pipeline/20260529T104639/
+?? reports/agent_pipeline/20260529T104814/
+?? reports/agent_pipeline/20260529T105445/
+?? reports/agent_pipeline/20260529T105851/
+?? reports/agent_pipeline/20260529T110615/
+?? reports/agent_pipeline/20260529T110917/
+?? reports/agent_pipeline/20260529T111245/
+?? reports/agent_pipeline/20260529T111637/
+?? reports/agent_pipeline/20260529T112026/
+?? reports/agent_pipeline/20260529T115354/
+?? reports/agent_pipeline/20260529T123013/
+?? reports/agent_pipeline/20260529T123312/
+?? reports/agent_pipeline/20260529T123313/
+?? reports/agent_pipeline/20260529T123506/
+?? reports/agent_pipeline/20260529T123507/
+?? reports/agent_pipeline/20260529T123706/
+?? reports/agent_pipeline/20260529T123707/
+?? reports/agent_pipeline/20260529T123857/
+?? reports/agent_pipeline/20260529T123858/
+?? reports/agent_pipeline/20260529T124145/
+?? reports/agent_pipeline/20260529T124146/
+?? reports/agent_pipeline/20260529T124404/
+?? reports/agent_pipeline/20260529T124405/
+?? reports/agent_pipeline/phase30/post_workflow_command.log
+
+exec
+/bin/bash -lc 'git branch --show-current' in /home/kimyo/trading-bot
+ succeeded in 0ms:
+main
+
+exec
+/bin/bash -lc "sed -n '1,200p' reports/agent_pipeline/phase30/changed_files.txt" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+exec
+/bin/bash -lc "sed -n '1,260p' reports/agent_pipeline/phase30/git_diff.patch" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+exec
+/bin/bash -lc "sed -n '1,200p' reports/agent_pipeline/phase30/git_diff_stat.txt" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+exec
+/bin/bash -lc 'git diff --stat' in /home/kimyo/trading-bot
+ succeeded in 0ms:
+ reports/agent_pipeline/phase30/TASK.md             |   2 +-
+ reports/agent_pipeline/phase30/changed_files.txt   |   6 -
+ reports/agent_pipeline/phase30/git_diff.patch      | 179 ------------------
+ reports/agent_pipeline/phase30/git_diff_stat.txt   |   7 -
+ reports/agent_pipeline/phase30/git_status.txt      |  22 +--
+ reports/agent_pipeline/phase30/review_harness.log  |   8 +-
+ reports/agent_pipeline/phase30/review_packet.md    | 201 +--------------------
+ reports/agent_pipeline/phase30/runtime_harness.log |   4 +-
+ 8 files changed, 14 insertions(+), 415 deletions(-)
+
+exec
+/bin/bash -lc "git show HEAD:reports/agent_pipeline/phase30/git_diff.patch | sed -n '1,260p'" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+diff --git a/.gitignore b/.gitignore
+index c4cf60c..bd00ba7 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,4 +1,5 @@
+ .env
++.antigravitycli/
+ .venv/
+ __pycache__/
+ *.pyc
+@@ -29,6 +30,21 @@ logs/*
+ !logs/allocation_compare/*/*summary*.csv
+ !logs/portfolio_backtest/
+ !logs/portfolio_backtest/*summary*.csv
++!logs/benchmark_gap/
++!logs/benchmark_gap/latest_summary.json
++!logs/operational_alpha/
++!logs/operational_alpha/latest_summary.json
++!logs/llm_cache_warmup/
++!logs/llm_cache_warmup/latest_summary.json
++!logs/llm_advisory/
++!logs/llm_advisory/latest_summary.json
++!logs/guard_impact/
++!logs/guard_impact/latest_summary.json
++!logs/crowding_paper/
++!logs/crowding_paper/go_no_go_checklist.json
++
++# Pytest regenerates these from golden_execution_audit.csv
++tests/fixtures/audit_daily/golden_output/
+ 
+ # Champion model binaries are local-only (retrain + promotion); never commit ad-hoc retrains.
+ models/*
+diff --git a/TODO.md b/TODO.md
+index 607f3e6..70e5dd2 100644
+--- a/TODO.md
++++ b/TODO.md
+@@ -3,14 +3,9 @@
+ ## Definition of Done (완료 기준)
+ 항목을 `[x]`로 두려면 다음을 **모두** 충족:
+ 1. **코드** — 요구사항 반영, 프로젝트 스타일 준수
+-2. **테스트** — 관련 pytest 추가·통과 (기본: `run_pass_complete.sh` subset 또는 명시한 경로)
++2. **테스트** — 관련 pytest 추가·통과
+ 3. **운영** — 필요 시 백테스트/리포트·runbook 반영
+-4. **리뷰** — pytest 필수; **Codex는 고위험·Phase 마감 시만** ([`docs/codex_review_policy.md`](docs/codex_review_policy.md)):
+-
+-```bash
+-RUN_ID=<pass_id> SKIP_CODEX=1 bash scripts/run_pass_complete.sh
+-RUN_ID=phase29_final bash scripts/run_pass_complete.sh "Phase 29 alpha"
+-```
++4. **리뷰** — `RUN_ID=<pass> SKIP_CODEX=1 bash scripts/run_pass_complete.sh` ([`docs/codex_review_policy.md`](docs/codex_review_policy.md))
+ 
+ ---
+ 
+@@ -18,10 +13,8 @@ RUN_ID=phase29_final bash scripts/run_pass_complete.sh "Phase 29 alpha"
+ 
+ | 문서 | 역할 |
+ |------|------|
+-| **`TODO.md`** | 활성 로드맵 |
+-| **`docs/TODO_ARCHIVE.md`** | Phase 0–28 + 백로그 요약 |
+-
+-**루프:** Cursor 구현 → `[AGY]` 테스트 → `SKIP_CODEX=1` pytest → Codex (마감) → 반영.
++| **`TODO.md`** | 활성 로드맵 (다음 Phase만) |
++| **`docs/TODO_ARCHIVE.md`** | Phase 0–29 요약 |
+ 
+ ---
+ 
+@@ -29,37 +22,28 @@ RUN_ID=phase29_final bash scripts/run_pass_complete.sh "Phase 29 alpha"
+ 
+ | 영역 | 상태 |
+ |------|------|
+-| **알파 목표** | 승격 시 **벤치마크 이상** 필수 (`promotion_portfolio_thresholds`, excess ≥ 0 pp) |
+-| **랭킹** | `rank_ai_weight=1.0`, `rank_trend_weight=0.5`, RS 필터 ON |
+-| **포트폴리오 백테스트** | **+96.8%** vs equal-weight B&H **+65.0%** (gap **+31.8pp**), MDD **-7.3%**, Sharpe **3.15** |
+-| **챔피언** | LGBM+XGB; retrain은 PROMOTE 게이트 통과 시만 교체 |
++| **ML 백테스트** | **+96.8%** vs B&H **+65.0%** (gap +31.8pp), `beats_benchmark` |
++| **LLM** | `llm_advisory_only: true` — 주문 차단 없음, audit만 |
++| **Crowding** | `crowding_guard_enabled: false` — paper gate **NO_GO** (Sharpe Δ) |
++| **챔피언** | 로컬 `models/`; 승격 시 벤치 이상 필수 |
+ 
+-**완료:** Phase 0–28, 백로그 → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
++**Phase 29 완료** → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
+ 
+ ---
+ 
+-## Phase 29 — Beat benchmark (알파) ← **진행 중**
++## Phase 30 — Paper ops (유지보수)
+ 
+-- [x] `[Cursor]` 승격 OOS: `min_return_vs_benchmark=0`, `min_sharpe=1.0` (`src/promotion_thresholds.py`)
+-- [x] `[Cursor]` `config/strategy_config.json` — AI 랭킹·RS 필터로 후보 품질 상향
+-- [x] `[Cursor]` `benchmark_gap` 리포트 — `beats_benchmark`, `recommendations`
+-- [x] `[AGY]` `tests/test_promotion_beat_benchmark.py`
+-- [x] `[Cursor]` equal-weight 벤치마크 NaN 버그 수정 (`_build_equal_weight_benchmark_values`)
+-- [x] `[Cursor]` `run_portfolio_backtest` ↔ config 정합 (`portfolio_backtest_settings.py`, 손절/익절 전달)
+-- [x] `[Cursor]` `volume_filter_enabled=false`, `max_position_pct=0.11`, AI·RS 랭킹 유지
+-- [x] `[AGY]` `bash scripts/run_alpha_pipeline.sh` — **+96.8% vs bench +65.0%** (`beats_benchmark=true`, gap +31.8pp)
+-- [x] `[AGY]` LLM/뉴스 필터 impact — `python -m src.llm_backtest_impact_report` (`run_alpha_pipeline` 포함)
+-- [x] `[Cursor]` in-loop 운영 검증 — `bash scripts/run_operational_alpha_validation.sh` (baseline vs LLM+news)
+-- [x] `[Cursor]` 백테스트 진입 141키 `data/llm_cache.json` 워밍업 (`scripts/warm_llm_cache_from_backtest.sh`)
+-- [ ] `[Cursor]` paper `main.py`로 캐시·`execution_audit.csv` 운영 중 갱신
+-- [ ] `[Cursor]` 벤치 초과 유지 시 paper `crowding_guard_enabled` 점진 활성화 검토
++- [ ] 주기: `bash scripts/run_paper_ops_bootstrap.sh` (dry-run + 리포트)
++- [ ] paper에서 `execution_audit`·`data/llm_cache.json` 누적 후 `run_llm_advisory_report.sh`로 따름/무시 비교
++- [ ] Crowding: `bash scripts/run_crowding_paper_gate.sh` 재실행 후 **GO**일 때만 `config/crowding_paper_proposal.json` 값을 `strategy_config`에 반영
+ 
+ ---
+ 
+ ## Quick commands
+ 
+ ```bash
++bash scripts/run_paper_ops_bootstrap.sh
+ bash scripts/run_alpha_pipeline.sh
+-bash scripts/run_ops_reports.sh --weekly
+-RUN_ID=phase29 SKIP_CODEX=1 bash scripts/run_pass_complete.sh
++bash scripts/warm_llm_cache_from_backtest.sh   # 선택: 캐시 재충전
++RUN_ID=phase30 SKIP_CODEX=1 bash scripts/run_pass_complete.sh
+ ```
+diff --git a/config/strategy_config.json b/config/strategy_config.json
+index 5ae7ecc..050ed83 100644
+--- a/config/strategy_config.json
++++ b/config/strategy_config.json
+@@ -168,5 +168,6 @@
+   "margin_leverage_stress_gate_required": true,
+   "trailing_stop_pct": 0.05,
+   "rebalance_threshold_pct": 0.20,
+-  "sector_rotation_enabled": true
++  "sector_rotation_enabled": true,
++  "crowding_guard_enabled": false
+ }
+diff --git a/docs/TODO_ARCHIVE.md b/docs/TODO_ARCHIVE.md
+index 0893900..63d0699 100644
+--- a/docs/TODO_ARCHIVE.md
++++ b/docs/TODO_ARCHIVE.md
+@@ -27,6 +27,7 @@
+ | 26 | Live alignment (paper) | Crowding go/no-go, execution vs slippage diff, leverage/LLM cache alerts |
+ | 27 | Universe + instrument meta | Master CSV, UNIVERSE_PROFILE, leveraged ETF registry and buy gates |
+ | 28 | Margin leverage paper | Stress go/no-go gate, proposal caps, main buy block |
++| 29 | Beat benchmark (alpha) | Promotion ≥ bench, EW benchmark fix, alpha/operational pipelines, LLM advisory-only, cache warmup |
+ 
+ **Milestones**
+ - **2026-05-27:** Phase 0–19 closed (code + pytest + runbook).
+@@ -36,3 +37,4 @@
+ - **2026-05-30:** Phase 26 closed; paper crowding gate, execution alignment, stress/cache Telegram alerts.
+ - **2026-05-30:** Phase 27 closed; universe master/smoke/research profiles, instrument registry, leverage ETF gates.
+ - **2026-05-30:** Phase 28 closed; margin leverage paper gate wired to leverage stress + main.
++- **2026-05-31:** Phase 29 closed; +96.8% vs B&H +65%, LLM advisory (no block), crowding paper gate NO_GO.
+diff --git a/docs/runbook.md b/docs/runbook.md
+index 10b7eea..61d7e2e 100644
+--- a/docs/runbook.md
++++ b/docs/runbook.md
+@@ -83,6 +83,21 @@ LIVE_LLM=1 bash scripts/run_operational_alpha_validation.sh   # cache miss 시 G
+ 산출물: `data/llm_cache.json`, `logs/llm_cache_warmup/latest_summary.json`, `logs/operational_alpha/latest_summary.json`  
+ 워밍업은 진입일 키(`{티커}_{YYYY-MM-DD}`)로 저장. 당일 yfinance에 기사가 없으면 **현재 헤드라인 fallback**으로 Gemini 호출(완전한 과거 뉴스 아카이브는 아님). paper `main.py` 실행 시 같은 키로 캐시가 계속 쌓임.
+ 
++```bash
++bash scripts/run_paper_ops_bootstrap.sh   # dry-run + advisory + alpha + operational summaries
++```
++
++### 2.3.2 Crowding guard (paper)
++
++`strategy_config.json` 기본: **`crowding_guard_enabled: false`**. Paper 실험 값은 `config/crowding_paper_proposal.json`만.
++
++```bash
++bash scripts/run_guard_impact_report.sh
++bash scripts/run_crowding_paper_gate.sh   # writes logs/crowding_paper/go_no_go_checklist.json
++```
++
++2026-05-31 gate 결과: **NO_GO** (Sharpe delta below floor). **GO** 전까지 prod config에 crowding 켜지 않음.
++
+ ### 2.4 유니버스 프로필 (`UNIVERSE_PROFILE`)
+ 
+ | 프로필 | 스캔 풀 | 용도 |
+diff --git a/logs/portfolio_backtest/portfolio_summary.csv b/logs/portfolio_backtest/portfolio_summary.csv
+index fcc8c9b..840ffc9 100644
+--- a/logs/portfolio_backtest/portfolio_summary.csv
++++ b/logs/portfolio_backtest/portfolio_summary.csv
+@@ -1,2 +1,2 @@
+ initial_cash,final_equity,total_return,benchmark_return,max_drawdown,sharpe_ratio,trades,win_rate
+-10000.0,15072.372552764085,0.5072372552764086,0.5823625689672778,-0.10211053509473034,1.5211408575289322,42,0.5714285714285714
++10000.0,19681.309045199054,0.9681309045199054,0.6504853238288733,-0.0731374832818028,3.1519064349744568,141,0.6028368794326241
+
+exec
+/bin/bash -lc "git show HEAD:reports/agent_pipeline/phase30/git_diff.patch | sed -n '261,520p'" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+exec
+/bin/bash -lc "sed -n '150,185p' config/strategy_config.json" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+  "news_sentiment_threshold": -0.3,
+  "max_portfolio_drawdown_pct": 0.15,
+  "correlation_guard_enabled": true,
+  "max_correlation_threshold": 0.85,
+  "correlation_lookback_days": 60,
+  "earnings_filter_enabled": true,
+  "earnings_lookback_days": 3,
+  "earnings_lookforward_days": 1,
+  "take_profit_partial_pct": 0.15,
+  "partial_exit_ratio": 0.5,
+  "leverage_factor": 1.0,
+  "dynamic_universe_enabled": true,
+  "dynamic_count": 50,
+  "allow_leveraged_etfs": false,
+  "max_leveraged_etf_positions": 1,
+  "max_effective_leverage_exposure_pct": 1.25,
+  "block_leveraged_etfs_vix_above": 28.0,
+  "margin_leverage_paper_enabled": false,
+  "margin_leverage_stress_gate_required": true,
+  "trailing_stop_pct": 0.05,
+  "rebalance_threshold_pct": 0.20,
+  "sector_rotation_enabled": true,
+  "crowding_guard_enabled": false
+}
+
+exec
+/bin/bash -lc 'rg -n "crowding_guard_enabled" -S' in /home/kimyo/trading-bot
+ succeeded in 0ms:
+config/strategy_config.json:172:  "crowding_guard_enabled": false
+TODO.md:27:| **Crowding** | `crowding_guard_enabled: false` — paper gate **NO_GO** (Sharpe Δ) |
+reports/agent_pipeline/phase20_promotion_v3/codex_review_command.log:2256:    crowding_guard_enabled: bool = False
+config/crowding_paper_proposal.json:3:  "crowding_guard_enabled": true,
+logs/guard_impact/latest_summary.json:9:  "crowding_guard_enabled_in_config": false,
+docs/runbook.md:92:`strategy_config.json` 기본: **`crowding_guard_enabled: false`**. Paper 실험 값은 `config/crowding_paper_proposal.json`만.
+src/crowding_live_metrics.py:56:            "Live audit shows crowding skips but config has crowding_guard_enabled=false; "
+reports/agent_pipeline/20260529T111637/codex_review_command.log:1086:    crowding_guard_enabled: bool = False
+src/main.py:1043:            if risk_allowed and position is None and getattr(settings, "crowding_guard_enabled", False):
+reports/agent_pipeline/20260529T111245/codex_review_command.log:1845:    crowding_guard_enabled: bool = False
+tests/test_candidate_cache_and_risk.py:282:            crowding_guard_enabled=True,
+tests/test_candidate_cache_and_risk.py:325:            crowding_guard_enabled=True,
+src/portfolio_backtester.py:318:    crowding_guard_enabled: bool = False,
+src/portfolio_backtester.py:596:                if crowding_guard_enabled:
+tests/test_settings.py:42:            crowding_guard_enabled=True,
+tests/test_settings.py:126:            crowding_guard_enabled=True,
+src/settings.py:105:    crowding_guard_enabled: bool = False
+src/guard_impact_report.py:85:    settings_off = replace(settings, crowding_guard_enabled=False)
+src/guard_impact_report.py:86:    settings_on = replace(settings, crowding_guard_enabled=True)
+src/guard_impact_report.py:91:            crowding_guard_enabled=False,
+src/guard_impact_report.py:96:            crowding_guard_enabled=True,
+src/guard_impact_report.py:112:            "crowding_guard_enabled_in_config": bool(settings.crowding_guard_enabled),
+src/crowding_live_impact_report.py:52:        "crowding_guard_enabled_in_config": None,
+src/crowding_live_impact_report.py:58:        backtest_block["crowding_guard_enabled_in_config"] = guard_impact.get(
+src/crowding_live_impact_report.py:59:            "crowding_guard_enabled_in_config"
+src/crowding_live_impact_report.py:104:        guard_enabled_in_config=bool(backtest_block.get("crowding_guard_enabled_in_config")),
+src/guard_impact_metrics.py:12:    "crowding_guard_enabled_in_config",
+tests/test_guard_impact_report.py:41:        "crowding_guard_enabled_in_config": False,
+reports/agent_pipeline/phase26_complete/review_packet.md:84:-- [ ] `[Cursor]` `crowding_guard_enabled` paper 설정안 + `guard_impact_report` 결과 기반 go/no-go 체크리스트
+reports/agent_pipeline/phase26_complete/git_diff.patch:20:-- [ ] `[Cursor]` `crowding_guard_enabled` paper 설정안 + `guard_impact_report` 결과 기반 go/no-go 체크리스트
+tests/fixtures/crowding_live/guard_impact_summary.json:6:  "crowding_guard_enabled_in_config": false
+reports/agent_pipeline/phase29/review_packet.md:159:+- [ ] `[Cursor]` 벤치 초과 유지 시 paper `crowding_guard_enabled` 점진 활성화 검토
+reports/agent_pipeline/phase29/git_diff.patch:87:+- [ ] `[Cursor]` 벤치 초과 유지 시 paper `crowding_guard_enabled` 점진 활성화 검토
+reports/agent_pipeline/phase23_pass_v2/codex_review_command.log:845:+    "crowding_guard_enabled_in_config",
+reports/agent_pipeline/phase23_pass_v2/codex_review_command.log:961:+    settings_off = replace(settings, crowding_guard_enabled=False)
+reports/agent_pipeline/phase23_pass_v2/codex_review_command.log:962:+    settings_on = replace(settings, crowding_guard_enabled=True)
+reports/agent_pipeline/phase23_pass_v2/codex_review_command.log:967:+            crowding_guard_enabled=False,
+reports/agent_pipeline/phase23_pass_v2/codex_review_command.log:972:+            crowding_guard_enabled=True,
+reports/agent_pipeline/phase23_pass_v2/codex_review_command.log:988:+            "crowding_guard_enabled_in_config": bool(settings.crowding_guard_enabled),
+reports/agent_pipeline/phase23_pass_v2/codex_review_command.log:1280:+    crowding_guard_enabled: bool = False,
+reports/agent_pipeline/phase23_pass_v2/codex_review_command.log:1288:+                if crowding_guard_enabled:
+reports/agent_pipeline/phase23_pass_v2/review_packet.md:808:+- [x] `[Cursor]` Factor/crowding guard 백테스트 영향도 — `src/guard_impact_report.py`, backtester `crowding_guard_enabled`
+reports/agent_pipeline/phase23_pass_v2/review_packet.md:2284:+    "crowding_guard_enabled_in_config",
+reports/agent_pipeline/phase23_pass_v2/review_packet.md:2400:+    settings_off = replace(settings, crowding_guard_enabled=False)
+reports/agent_pipeline/phase23_pass_v2/review_packet.md:2401:+    settings_on = replace(settings, crowding_guard_enabled=True)
+reports/agent_pipeline/phase23_pass_v2/review_packet.md:2406:+            crowding_guard_enabled=False,
+reports/agent_pipeline/phase23_pass_v2/review_packet.md:2411:+            crowding_guard_enabled=True,
+reports/agent_pipeline/phase23_pass_v2/review_packet.md:2427:+            "crowding_guard_enabled_in_config": bool(settings.crowding_guard_enabled),
+reports/agent_pipeline/phase23_pass_v2/review_packet.md:3872:+    crowding_guard_enabled: bool = False,
+reports/agent_pipeline/phase23_pass_v2/review_packet.md:3880:+                if crowding_guard_enabled:
+reports/agent_pipeline/phase23_pass_v2/review_packet.md:6087:+        "crowding_guard_enabled_in_config": False,
+reports/agent_pipeline/phase23_pass_v2/git_diff.patch:618:+- [x] `[Cursor]` Factor/crowding guard 백테스트 영향도 — `src/guard_impact_report.py`, backtester `crowding_guard_enabled`
+reports/agent_pipeline/phase23_pass_v2/git_diff.patch:2094:+    "crowding_guard_enabled_in_config",
+reports/agent_pipeline/phase23_pass_v2/git_diff.patch:2210:+    settings_off = replace(settings, crowding_guard_enabled=False)
+reports/agent_pipeline/phase23_pass_v2/git_diff.patch:2211:+    settings_on = replace(settings, crowding_guard_enabled=True)
+reports/agent_pipeline/phase23_pass_v2/git_diff.patch:2216:+            crowding_guard_enabled=False,
+reports/agent_pipeline/phase23_pass_v2/git_diff.patch:2221:+            crowding_guard_enabled=True,
+reports/agent_pipeline/phase23_pass_v2/git_diff.patch:2237:+            "crowding_guard_enabled_in_config": bool(settings.crowding_guard_enabled),
+reports/agent_pipeline/phase23_pass_v2/git_diff.patch:3682:+    crowding_guard_enabled: bool = False,
+reports/agent_pipeline/phase23_pass_v2/git_diff.patch:3690:+                if crowding_guard_enabled:
+reports/agent_pipeline/phase23_pass_v2/git_diff.patch:5897:+        "crowding_guard_enabled_in_config": False,
+
+exec
+/bin/bash -lc 'git show HEAD''^:config/strategy_config.json | sed -n '"'150,185p'" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+  "news_sentiment_threshold": -0.3,
+  "max_portfolio_drawdown_pct": 0.15,
+  "correlation_guard_enabled": true,
+  "max_correlation_threshold": 0.85,
+  "correlation_lookback_days": 60,
+  "earnings_filter_enabled": true,
+  "earnings_lookback_days": 3,
+  "earnings_lookforward_days": 1,
+  "take_profit_partial_pct": 0.15,
+  "partial_exit_ratio": 0.5,
+  "leverage_factor": 1.0,
+  "dynamic_universe_enabled": true,
+  "dynamic_count": 50,
+  "allow_leveraged_etfs": false,
+  "max_leveraged_etf_positions": 1,
+  "max_effective_leverage_exposure_pct": 1.25,
+  "block_leveraged_etfs_vix_above": 28.0,
+  "margin_leverage_paper_enabled": false,
+  "margin_leverage_stress_gate_required": true,
+  "trailing_stop_pct": 0.05,
+  "rebalance_threshold_pct": 0.20,
+  "sector_rotation_enabled": true,
+  "crowding_guard_enabled": false
+}
+
+exec
+/bin/bash -lc 'find tests/fixtures/audit_daily -maxdepth 3 -type f | sort' in /home/kimyo/trading-bot
+ succeeded in 0ms:
+tests/fixtures/audit_daily/golden_execution_audit.csv
+tests/fixtures/audit_daily/golden_latest_summary.json
+tests/fixtures/audit_daily/golden_output/audit_20260530.json
+tests/fixtures/audit_daily/golden_output/latest_summary.json
+tests/fixtures/audit_daily/golden_output/skip_reasons_20260530.csv
+
+exec
+/bin/bash -lc 'rg -n "golden_output" tests src' in /home/kimyo/trading-bot
+ succeeded in 0ms:
+tests/test_daily_audit_summary_schema.py:38:        FIXTURE_DIR / "golden_output",
+tests/test_daily_audit_summary_schema.py:63:    skip_csv = FIXTURE_DIR / "golden_output" / "skip_reasons_20260530.csv"
+
+exec
+/bin/bash -lc "sed -n '1,220p' tests/test_daily_audit_summary_schema.py" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+"""Schema regression for daily audit artifacts ([AGY])."""
+
+import json
+from datetime import date
+from pathlib import Path
+
+import pandas as pd
+import pytest
+
+from src.daily_audit_summary import (
+    DAILY_AUDIT_SUMMARY_KEYS,
+    SKIP_REASONS_CSV_COLUMNS,
+    aggregate_execution_audit,
+    run_daily_audit_summary,
+    validate_daily_audit_summary,
+    validate_skip_reasons_csv,
+    write_daily_audit_artifacts,
+)
+
+FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "audit_daily"
+GOLDEN_AUDIT_CSV = FIXTURE_DIR / "golden_execution_audit.csv"
+GOLDEN_SUMMARY_JSON = FIXTURE_DIR / "golden_latest_summary.json"
+
+
+@pytest.fixture(scope="module", autouse=True)
+def build_golden_summary_fixture():
+    FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
+    df = pd.read_csv(GOLDEN_AUDIT_CSV)
+    report = aggregate_execution_audit(df)
+    report["generated_at"] = "2026-05-30T12:00:00Z"
+    validate_daily_audit_summary(report)
+    GOLDEN_SUMMARY_JSON.write_text(
+        json.dumps(report, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    write_daily_audit_artifacts(
+        report,
+        FIXTURE_DIR / "golden_output",
+        day=date(2026, 5, 30),
+    )
+    yield report
+
+
+def test_golden_execution_audit_context_skip_rates():
+    df = pd.read_csv(GOLDEN_AUDIT_CSV)
+    report = aggregate_execution_audit(df)
+    assert report["context_skip_counts"]["earnings"] == 1
+    assert report["context_skip_counts"]["macro_event"] == 1
+    assert report["context_skip_counts"]["stale"] == 1
+    assert report["context_skip_counts"]["other"] == 1
+    assert report["api_error_count"] == 1
+    assert sum(report["context_skip_rate_of_skips"].values()) == pytest.approx(1.0, abs=1e-3)
+
+
+def test_golden_latest_summary_schema():
+    report = json.loads(GOLDEN_SUMMARY_JSON.read_text(encoding="utf-8"))
+    validate_daily_audit_summary(report)
+    for key in DAILY_AUDIT_SUMMARY_KEYS:
+        assert key in report
+
+
+def test_golden_skip_reasons_csv_schema():
+    skip_csv = FIXTURE_DIR / "golden_output" / "skip_reasons_20260530.csv"
+    frame = validate_skip_reasons_csv(skip_csv)
+    assert list(frame.columns) == list(SKIP_REASONS_CSV_COLUMNS)
+
+
+def test_run_daily_audit_summary_matches_golden_counts(tmp_path):
+    out = tmp_path / "out"
+    report = run_daily_audit_summary(
+        audit_path=GOLDEN_AUDIT_CSV,
+        output_dir=out,
+        day=date(2026, 5, 30),
+    )
+    golden = json.loads(GOLDEN_SUMMARY_JSON.read_text(encoding="utf-8"))
+    for key in (
+        "row_count",
+        "api_error_count",
+        "stale_bar_count",
+        "context_skip_counts",
+        "skip_by_event",
+    ):
+        assert report[key] == golden[key]
+
+exec
+/bin/bash -lc 'test -f scripts/run_paper_ops_bootstrap.sh && echo exists' in /home/kimyo/trading-bot
+ succeeded in 0ms:
+exists
+
+exec
+/bin/bash -lc 'test -f scripts/run_crowding_paper_gate.sh && echo crowding_exists' in /home/kimyo/trading-bot
+ succeeded in 0ms:
+crowding_exists
+
+exec
+/bin/bash -lc "sed -n '1,220p' scripts/run_paper_ops_bootstrap.sh" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+#!/usr/bin/env bash
+# One-shot paper ops bootstrap: dry-run bot, advisory report, alpha + operational summaries.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+export PYTHONPATH=.
+
+echo "=== [1/4] Bot dry-run (execution_audit + signals) ==="
+bash scripts/run_bot_once.sh dry-run
+
+echo "=== [2/4] LLM advisory report ==="
+bash scripts/run_llm_advisory_report.sh
+
+echo "=== [3/4] Alpha pipeline ==="
+bash scripts/run_alpha_pipeline.sh
+
+echo "=== [4/4] Operational in-loop (cache replay) ==="
+bash scripts/run_operational_alpha_validation.sh
+
+echo "Done. See logs/execution_audit.csv and logs/*/latest_summary.json"
+
+codex
+The patch only updates documentation, tracked artifact policy, and operational defaults to reflect the already-decided paper-trading posture. I did not find a discrete functional regression or maintainability issue that would likely merit a follow-up fix.

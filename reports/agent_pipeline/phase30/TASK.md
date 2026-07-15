@@ -1,1 +1,1 @@
-Pass phase30: Cursor implementation + AGY tests complete. Request Codex review.
+Phase 30 paper ops — Codex scoped review

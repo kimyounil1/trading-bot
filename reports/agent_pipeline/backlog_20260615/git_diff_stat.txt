@@ -1,0 +1,20 @@
+ .gitignore                                         |  13 ++-
+ TODO.md                                            |   6 +-
+ config/profiles/tournament_paper.json              |   2 +-
+ logs/crowding_paper/go_no_go_checklist.json        |   2 +-
+ logs/crowding_paper/reassessment.json              |   6 +-
+ logs/llm_advisory/latest_summary.json              |   4 +-
+ logs/llm_advisory/precision.json                   |  20 ++--
+ logs/paper_validation/history.jsonl                |   1 +
+ logs/paper_validation/latest_summary.json          | 109 +++++++++----------
+ logs/paper_validation/trend_summary.json           |  41 ++++---
+ src/llm_analyst.py                                 | 118 +++++++++++++++++++--
+ src/risk_manager.py                                |   5 +-
+ src/tournament_alpha_model.py                      |  63 ++++++++---
+ src/tournament_score_report.py                     | 103 +++++++++++++++++-
+ src/trading/tournament_buy_pipeline.py             |  42 ++++++--
+ .../ml_quality/golden_fold_stability_report.json   |   2 +-
+ .../golden_model_calibration_report.json           |   2 +-
+ tests/test_tournament_alpha_model.py               |  25 +++++
+ tests/test_tournament_score_report.py              |  75 ++++++++++++-
+ 19 files changed, 499 insertions(+), 140 deletions(-)

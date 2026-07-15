@@ -1,0 +1,16 @@
+ TODO.md                                            |   2 +-
+ config/execution_lock.json                         |   4 +-
+ logs/ai_threshold/threshold_results.csv            |  16 +-
+ logs/benchmark_gap/latest_summary.json             | 155 +++++++------
+ logs/crowding_paper/go_no_go_checklist.json        |  50 ++---
+ logs/guard_impact/latest_summary.json              |  36 +--
+ logs/llm_advisory/latest_summary.json              | 243 ++++++++++++++++++++-
+ logs/ml/ai_model_metrics.csv                       |  16 +-
+ .../baseline/portfolio_summary.csv                 |   2 +-
+ logs/operational_alpha/latest_summary.json         |  36 +--
+ .../with_operational_filters/portfolio_summary.csv |   2 +-
+ logs/portfolio_backtest/portfolio_summary.csv      |   2 +-
+ logs/retrain_history.csv                           |   3 +
+ src/paper_buy_validation_report.py                 |  52 +++++
+ tests/test_paper_buy_validation_report.py          |  32 +++
+ 15 files changed, 497 insertions(+), 154 deletions(-)

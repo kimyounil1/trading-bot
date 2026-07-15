@@ -1,0 +1,2980 @@
+$ codex --ask-for-approval never --sandbox read-only review /home/kimyo/trading-bot/reports/agent_pipeline/phase32_rank_ai/review_packet.md -c 'model_reasoning_effort="low"'
+exit_code=0
+
+## stdout
+The patch adds useful rank-gate reporting, but it has a few compatibility and robustness regressions: the new report can crash on older candidate-cache files, it can misreport gate enablement from CSV strings, and audit logging now fails if the log file exists but is empty.
+
+Full review comments:
+
+- [P2] Handle candidate caches that predate the `risk_allowed` column — /home/kimyo/trading-bot/src/rank_ai_gate_impact_report.py:87-89
+  `_candidate_cache_stats` assumes `df.get("risk_allowed", False)` returns a Series, but on older `latest_buy.csv` files it returns the scalar `False`, so the next line raises on `risk_allowed.dtype`. In the common compatibility scenario where someone runs this report against a cache produced before the new column existed, the entire rank-gate report crashes instead of returning zeros.
+
+- [P2] Parse `rank_ai_gate_enabled` values instead of truthifying strings — /home/kimyo/trading-bot/src/rank_ai_gate_impact_report.py:91-91
+  `bool(df.get("rank_ai_gate_enabled", ...).iloc[0])` treats any non-empty string as `True`, so a CSV row containing the text `False` or `false` is reported as gate-enabled. This makes the paper-ops/rank-gate summaries inaccurate for caches read back from CSV when pandas does not infer a boolean dtype for that column.
+
+- [P2] Avoid indexing the first line of an empty audit file — /home/kimyo/trading-bot/src/logger.py:160-161
+  The new schema-normalization path unconditionally reads `splitlines()[0]` whenever `execution_audit.csv` exists. If the file has been created but is still empty (for example after truncation/rotation or a pre-created artifact in CI), the first audit append now fails with `IndexError` before any row is written.
+
+
+## stderr
+OpenAI Codex v0.135.0
+--------
+workdir: /home/kimyo/trading-bot
+model: gpt-5.4
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: low
+reasoning summaries: none
+session id: 019e86f1-88bd-74f3-afb6-bf231f4c3fdd
+--------
+user
+/home/kimyo/trading-bot/reports/agent_pipeline/phase32_rank_ai/review_packet.md
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+exec
+/bin/bash -lc "sed -n '1,240p' /home/kimyo/trading-bot/reports/agent_pipeline/phase32_rank_ai/review_packet.md" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+# Agent Review Packet - Run: phase32_rank_ai
+
+## Implementation Agent
+cursor
+
+## Task Description
+# [AGY] Phase 32 — Rank AI paper gate tests & harness
+
+## Context (Cursor `[cursor]` — do not modify unless tests require)
+
+Production / reports already landed:
+
+- `src/rank_ai_gate.py` — cross-sectional rank buy/add gate
+- `src/rank_ai_gate_impact_report.py` — paper impact from audit + candidate cache
+- `src/execution_audit_io.py` — stable audit CSV schema (`rank_ai_score`, `rank_ai_percentile`)
+- `src/logger.py` — audit append with schema normalize
+- `src/main.py`, `src/candidate_cache.py` — gate wired on buy/add path only (sells unchanged)
+- `docs/ai_authority_gates.md` — Tier 0–3 authority rules
+- `scripts/run_rank_ai_gate_report.sh`
+
+## Your scope (tests & harness only)
+
+1. **Extend** `tests/test_rank_ai_gate_impact_report.py`:
+   - empty audit + empty cache notes
+   - audit with rank blocked / passed reason strings
+   - candidate cache `risk_allowed` + percentile cutoff logic
+
+2. **Extend** `tests/test_execution_audit_io.py`:
+   - normalize rewrites file readable by `pd.read_csv`
+   - row with only legacy header (no rank cols) + row with trailing rank fields
+
+3. **Add** `tests/test_paper_ops_summary_rank_gate.py`:
+   - `build_paper_ops_summary` includes `rank_ai_gate` block when fixture JSON present
+
+4. Optional harness (no `main.py` edits): `tests/harness/test_rank_gate_report_smoke.py` that calls `build_rank_ai_gate_impact_report` with tmp fixtures only.
+
+## Do not
+
+- Edit `src/main.py`, order paths, `config/strategy_config.json`, or `.env`
+- Change rank model artifacts under `logs/ml/`
+- Run live/paper `--execute`
+
+## Verify
+
+```bash
+PYTHONPATH=. .venv/bin/python -m pytest \
+  tests/test_rank_ai_gate_impact_report.py \
+  tests/test_execution_audit_io.py \
+  tests/test_rank_ai_gate.py \
+  tests/test_paper_ops_summary_rank_gate.py \
+  -q
+```
+
+## After pytest green
+
+Orchestrator (Cursor terminal):
+
+```bash
+RUN_ID=phase32_rank_ai AGY_PROMPT=prompts/agy/phase32_rank_ai_paper.md \
+  bash scripts/run_balanced_pass.sh
+```
+
+Commit message: `[agy] phase32 rank AI paper gate tests`
+
+## Changed Files
+- .env.example
+- .github/workflows/ci.yml
+- TODO.md
+- app/streamlit_app.py
+- config/execution_lock.json
+- config/strategy_config.json
+- config/strategy_profiles.json
+- docs/promotion_gates.md
+- docs/runbook.md
+- logs/ai_threshold/threshold_results.csv
+- logs/benchmark_gap/latest_summary.json
+- logs/crowding_paper/go_no_go_checklist.json
+- logs/guard_impact/latest_summary.json
+- logs/llm_advisory/latest_summary.json
+- logs/ml/ai_model_metrics.csv
+- logs/operational_alpha/baseline/portfolio_summary.csv
+- logs/operational_alpha/latest_summary.json
+- logs/operational_alpha/with_operational_filters/portfolio_summary.csv
+- logs/portfolio_backtest/portfolio_summary.csv
+- logs/retrain_history.csv
+- scripts/run_model_quality_report.sh
+- scripts/run_paper_ops_bootstrap.sh
+- src/benchmark_gap_report.py
+- src/buy_guards.py
+- src/candidate_cache.py
+- src/cms_helpers.py
+- src/crowding_live_impact_report.py
+- src/crowding_live_metrics.py
+- src/daily_audit_summary.py
+- src/llm_analyst.py
+- src/llm_vllm.py
+- src/logger.py
+- src/main.py
+- src/ml_quality_report.py
+- src/paper_ops_summary.py
+- src/risk_manager.py
+- src/settings.py
+- tests/fixtures/ml_quality/golden_fold_stability_report.json
+- tests/fixtures/ml_quality/golden_model_calibration_report.json
+- tests/test_buy_guards.py
+- tests/test_candidate_cache_and_risk.py
+- tests/test_cms_reconcile.py
+- tests/test_crowding_live_impact_report.py
+- tests/test_llm_analyst_genai.py
+- tests/test_llm_vllm_fallback.py
+- tests/test_ml_quality_report.py
+- tests/test_paper_ops_summary.py
+- tests/test_settings.py
+
+## Git Diff Summary
+```
+ .env.example                                       |   8 +-
+ .github/workflows/ci.yml                           |   1 +
+ TODO.md                                            | 101 ++++--
+ app/streamlit_app.py                               | 337 ++++++++++++++++-----
+ config/execution_lock.json                         |   4 +-
+ config/strategy_config.json                        |  20 +-
+ config/strategy_profiles.json                      |  12 +-
+ docs/promotion_gates.md                            |   2 +
+ docs/runbook.md                                    |  50 ++-
+ logs/ai_threshold/threshold_results.csv            |  16 +-
+ logs/benchmark_gap/latest_summary.json             | 155 ++++++----
+ logs/crowding_paper/go_no_go_checklist.json        |   2 +-
+ logs/guard_impact/latest_summary.json              |  36 +--
+ logs/llm_advisory/latest_summary.json              | 223 +++++++++++++-
+ logs/ml/ai_model_metrics.csv                       |  16 +-
+ .../baseline/portfolio_summary.csv                 |   2 +-
+ logs/operational_alpha/latest_summary.json         |  36 +--
+ .../with_operational_filters/portfolio_summary.csv |   2 +-
+ logs/portfolio_backtest/portfolio_summary.csv      |   2 +-
+ logs/retrain_history.csv                           |   3 +
+ scripts/run_model_quality_report.sh                |  15 +-
+ scripts/run_paper_ops_bootstrap.sh                 |  26 +-
+ src/benchmark_gap_report.py                        |  50 +++
+ src/buy_guards.py                                  |   5 +-
+ src/candidate_cache.py                             |  47 ++-
+ src/cms_helpers.py                                 |  80 ++---
+ src/crowding_live_impact_report.py                 |  34 ++-
+ src/crowding_live_metrics.py                       |  68 +++++
+ src/daily_audit_summary.py                         |   6 +-
+ src/llm_analyst.py                                 |  25 +-
+ src/llm_vllm.py                                    |   7 +-
+ src/logger.py                                      |  61 ++--
+ src/main.py                                        | 151 ++++++++-
+ src/ml_quality_report.py                           |   9 +
+ src/paper_ops_summary.py                           |  39 +++
+ src/risk_manager.py                                |  73 ++++-
+ src/settings.py                                    |  37 ++-
+ .../ml_quality/golden_fold_stability_report.json   |   2 +-
+ .../golden_model_calibration_report.json           |   2 +-
+ tests/test_buy_guards.py                           |  49 +++
+ tests/test_candidate_cache_and_risk.py             |  10 +-
+ tests/test_cms_reconcile.py                        |   2 +-
+ tests/test_crowding_live_impact_report.py          |  14 +
+ tests/test_llm_analyst_genai.py                    |  13 +-
+ tests/test_llm_vllm_fallback.py                    |  23 +-
+ tests/test_ml_quality_report.py                    |   2 +
+ tests/test_paper_ops_summary.py                    |   4 +-
+ tests/test_settings.py                             |  13 +
+ 48 files changed, 1487 insertions(+), 408 deletions(-)
+```
+
+## Test Execution Results (runtime_harness.log)
+```
+============================= test session starts ==============================
+platform linux -- Python 3.12.8, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/kimyo/trading-bot
+plugins: anyio-4.13.0
+collected 45 items
+
+tests/test_report_performance.py .....                                   [ 11%]
+tests/test_reappraise_regime.py ...                                      [ 17%]
+tests/test_portfolio_backtest_golden.py ...                              [ 24%]
+tests/test_portfolio_backtest_gate.py .....                              [ 35%]
+tests/test_daily_audit_summary.py ....                                   [ 44%]
+tests/test_daily_audit_summary_schema.py ....                            [ 53%]
+tests/test_retrain_notifications.py ....                                 [ 62%]
+tests/test_llm_cache_report_schema.py ..                                 [ 66%]
+tests/test_leverage_stress_report.py ...                                 [ 73%]
+tests/test_guard_impact_report.py ..                                     [ 77%]
+tests/test_check_audit_daily_summary.py ...                              [ 84%]
+tests/test_fold_variance_report.py .                                     [ 86%]
+tests/test_promotion_summary.py ..                                       [ 91%]
+tests/test_benchmark_gap_report.py .                                     [ 93%]
+tests/test_champion_promotion_governance.py ...                          [100%]
+
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6
+  /home/kimyo/trading-bot/.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 45 passed, 1 warning in 3.24s =========================
+```
+
+## Git Patch
+```diff
+diff --git a/.env.example b/.env.example
+index 79ddcf2..94cc6bd 100644
+--- a/.env.example
++++ b/.env.example
+@@ -10,10 +10,12 @@ TELEGRAM_ENABLED=True
+ GEMINI_API_KEY=
+ # Optional override (default: gemini-2.5-flash)
+ # LLM_MODEL=gemini-2.5-flash
+-# Dry-run: live Gemini on cache miss when 1 (paper --execute always live)
+-# LLM_LIVE_IN_DRY_RUN=0
++# Dry-run: live LLM on cache miss by default (paper --execute always live)
++# LLM_CACHE_ONLY_DRY_RUN=1   # dry-run uses cache only, no API
++# LLM_LIVE_IN_DRY_RUN=0      # legacy alias for cache-only dry-run
++# TRADING_BOT_SKIP_LLM=1     # pytest/CI — set automatically in tests/conftest.py
+ 
+-# Local vLLM fallback (OpenAI-compatible) when Gemini quota/errors
++# Local vLLM fallback (OpenAI-compatible) when Gemini quota/errors — default OFF
+ # LLM_VLLM_ENABLED=1
+ # LLM_VLLM_BASE_URL=http://192.168.219.116:11434/v1
+ # LLM_VLLM_MODEL=gemma4-26B
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index c337a1e..683c94f 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -22,6 +22,7 @@ jobs:
+       ALPACA_PAPER: "true"
+       TELEGRAM_ENABLED: "false"
+       GEMINI_API_KEY: ""
++      TRADING_BOT_SKIP_LLM: "1"
+ 
+     steps:
+       - name: Checkout
+diff --git a/TODO.md b/TODO.md
+index 35492f0..71112c3 100644
+--- a/TODO.md
++++ b/TODO.md
+@@ -13,38 +13,99 @@
+ 
+
+exec
+/bin/bash -lc "git status --short && echo '---' && git diff --stat HEAD~1..HEAD" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+ M .env.example
+ M .github/workflows/ci.yml
+ M TODO.md
+ M app/streamlit_app.py
+ M config/execution_lock.json
+ M config/strategy_config.json
+ M config/strategy_profiles.json
+ M docs/promotion_gates.md
+ M docs/runbook.md
+ M logs/ai_threshold/threshold_results.csv
+ M logs/benchmark_gap/latest_summary.json
+ M logs/crowding_paper/go_no_go_checklist.json
+ M logs/guard_impact/latest_summary.json
+ M logs/llm_advisory/latest_summary.json
+ M logs/ml/ai_model_metrics.csv
+ M logs/operational_alpha/baseline/portfolio_summary.csv
+ M logs/operational_alpha/latest_summary.json
+ M logs/operational_alpha/with_operational_filters/portfolio_summary.csv
+ M logs/portfolio_backtest/portfolio_summary.csv
+ M logs/retrain_history.csv
+ M reports/agent_pipeline/phase30/TASK.md
+ M reports/agent_pipeline/phase30/changed_files.txt
+ M reports/agent_pipeline/phase30/git_diff.patch
+ M reports/agent_pipeline/phase30/git_diff_stat.txt
+ M reports/agent_pipeline/phase30/git_status.txt
+ M reports/agent_pipeline/phase30/review_harness.log
+ M reports/agent_pipeline/phase30/review_packet.md
+ M reports/agent_pipeline/phase30/runtime_harness.log
+ M scripts/run_model_quality_report.sh
+ M scripts/run_paper_ops_bootstrap.sh
+ M src/benchmark_gap_report.py
+ M src/buy_guards.py
+ M src/candidate_cache.py
+ M src/cms_helpers.py
+ M src/crowding_live_impact_report.py
+ M src/crowding_live_metrics.py
+ M src/daily_audit_summary.py
+ M src/llm_analyst.py
+ M src/llm_vllm.py
+ M src/logger.py
+ M src/main.py
+ M src/ml_quality_report.py
+ M src/paper_ops_summary.py
+ M src/risk_manager.py
+ M src/settings.py
+ M tests/fixtures/ml_quality/golden_fold_stability_report.json
+ M tests/fixtures/ml_quality/golden_model_calibration_report.json
+ M tests/test_buy_guards.py
+ M tests/test_candidate_cache_and_risk.py
+ M tests/test_cms_reconcile.py
+ M tests/test_crowding_live_impact_report.py
+ M tests/test_llm_analyst_genai.py
+ M tests/test_llm_vllm_fallback.py
+ M tests/test_ml_quality_report.py
+ M tests/test_paper_ops_summary.py
+ M tests/test_settings.py
+?? docs/ai_authority_gates.md
+?? logs/crowding_paper/decision_record.json
+?? logs/ml/calibration_experiment_report.json
+?? logs/ml/feature_drift_report.json
+?? logs/ml/fold_metrics.csv
+?? logs/ml/fold_stability_report.json
+?? logs/ml/label_challenger/
+?? logs/ml/label_horizon_report.json
+?? logs/ml/model_calibration_report.json
+?? logs/ml/model_promotion_report.json
+?? logs/ml/model_rollback_report.json
+?? logs/ml/rank_label_experiment/
+?? logs/ml/rank_label_experiment_h10_top20_q80/
+?? logs/ml/rank_label_experiment_h20_top10_q90/
+?? logs/ml/rank_label_experiment_h20_top15_q85/
+?? logs/ml/rank_label_experiment_h20_top20_q80/
+?? logs/ml/rank_label_experiment_h20_top20_q85/
+?? logs/ml/rank_label_experiment_h40_top20_q80/
+?? logs/ml/rank_label_experiment_top20/
+?? logs/ml/rank_label_experiment_top40/
+?? logs/ml/threshold_retune_report.json
+?? logs/ml/threshold_retune_results.csv
+?? prompts/agy/phase32_rank_ai_paper.md
+?? reports/agent_pipeline/20260529T102625/
+?? reports/agent_pipeline/20260529T102643/
+?? reports/agent_pipeline/20260529T104639/
+?? reports/agent_pipeline/20260529T104814/
+?? reports/agent_pipeline/20260529T105445/
+?? reports/agent_pipeline/20260529T105851/
+?? reports/agent_pipeline/20260529T110615/
+?? reports/agent_pipeline/20260529T110917/
+?? reports/agent_pipeline/20260529T111245/
+?? reports/agent_pipeline/20260529T111637/
+?? reports/agent_pipeline/20260529T112026/
+?? reports/agent_pipeline/20260529T115354/
+?? reports/agent_pipeline/20260529T123013/
+?? reports/agent_pipeline/20260529T123312/
+?? reports/agent_pipeline/20260529T123313/
+?? reports/agent_pipeline/20260529T123506/
+?? reports/agent_pipeline/20260529T123507/
+?? reports/agent_pipeline/20260529T123706/
+?? reports/agent_pipeline/20260529T123707/
+?? reports/agent_pipeline/20260529T123857/
+?? reports/agent_pipeline/20260529T123858/
+?? reports/agent_pipeline/20260529T124145/
+?? reports/agent_pipeline/20260529T124146/
+?? reports/agent_pipeline/20260529T124404/
+?? reports/agent_pipeline/20260529T124405/
+?? reports/agent_pipeline/phase30/CODEX_REVIEW_AND_TODO.md
+?? reports/agent_pipeline/phase30/NEXT_TODO.codex.md
+?? reports/agent_pipeline/phase30/codex_review_command.log
+?? reports/agent_pipeline/phase30/orchestrator_summary.json
+?? reports/agent_pipeline/phase30/post_workflow_command.log
+?? reports/agent_pipeline/phase30_complete/
+?? reports/agent_pipeline/phase30_final/
+?? reports/agent_pipeline/phase31/CODEX_REVIEW_AND_TODO.md
+?? reports/agent_pipeline/phase31/NEXT_TODO.codex.md
+?? reports/agent_pipeline/phase31/NEXT_TODO.md
+?? reports/agent_pipeline/phase31/changed_files.txt
+?? reports/agent_pipeline/phase31/codex_review_command.log
+?? reports/agent_pipeline/phase31/gemini_review_harness.log
+?? reports/agent_pipeline/phase31/git_diff.patch
+?? reports/agent_pipeline/phase31/git_diff_stat.txt
+?? reports/agent_pipeline/phase31/git_status.txt
+?? reports/agent_pipeline/phase31/orchestrator_summary.json
+?? reports/agent_pipeline/phase31/post_workflow_command.log
+?? reports/agent_pipeline/phase31/review_harness.log
+?? reports/agent_pipeline/phase31/review_packet.md
+?? reports/agent_pipeline/phase31/runtime_harness.log
+?? reports/agent_pipeline/phase31/summary.json
+?? reports/agent_pipeline/phase32_rank_ai/
+?? scripts/exp_alpha_sweep.py
+?? scripts/run_rank_ai_gate_report.sh
+?? src/calibration_experiment.py
+?? src/cms_reconcile.py
+?? src/execution_audit_io.py
+?? src/label_challenger_experiment.py
+?? src/label_horizon_report.py
+?? src/llm_ai_agreement_report.py
+?? src/model_quality_summary.py
+?? src/ops_report_presenter.py
+?? src/position_dust.py
+?? src/position_sizing.py
+?? src/rank_ai_gate.py
+?? src/rank_ai_gate_impact_report.py
+?? src/rank_label_experiment.py
+?? tests/conftest.py
+?? tests/harness/test_rank_gate_report_smoke.py
+?? tests/test_calibration_experiment.py
+?? tests/test_execution_audit_io.py
+?? tests/test_label_challenger_experiment.py
+?? tests/test_label_horizon_report.py
+?? tests/test_model_quality_summary.py
+?? tests/test_ops_report_presenter.py
+?? tests/test_paper_ops_summary_rank_gate.py
+?? tests/test_position_dust.py
+?? tests/test_position_sizing.py
+?? tests/test_rank_ai_gate.py
+?? tests/test_rank_ai_gate_impact_report.py
+?? tests/test_rank_label_experiment.py
+---
+ .env.example                       |   7 ++
+ TODO.md                            |   1 +
+ docs/runbook.md                    |   6 ++
+ scripts/run_pass_complete.sh       |   3 +-
+ src/llm_analyst.py                 |  54 ++++++++++++++--
+ src/llm_vllm.py                    | 128 +++++++++++++++++++++++++++++++++++++
+ tests/test_execution_resilience.py |  11 ++--
+ tests/test_llm_analyst_genai.py    |  29 ++++-----
+ tests/test_llm_vllm_fallback.py    |  50 +++++++++++++++
+ 9 files changed, 264 insertions(+), 25 deletions(-)
+
+exec
+/bin/bash -lc "find reports/agent_pipeline/phase32_rank_ai -maxdepth 1 -type f -printf '%f
+' | sort && echo '---' && sed -n '1,220p' reports/agent_pipeline/phase32_rank_ai/git_diff.patch" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+AGY_TASK.md
+NEXT_TODO.md
+TASK.md
+changed_files.txt
+gemini_review_harness.log
+git_diff.patch
+git_diff_stat.txt
+git_status.txt
+post_workflow_command.log
+review_harness.log
+review_packet.md
+runtime_harness.log
+summary.json
+---
+diff --git a/.env.example b/.env.example
+index 79ddcf2..94cc6bd 100644
+--- a/.env.example
++++ b/.env.example
+@@ -10,10 +10,12 @@ TELEGRAM_ENABLED=True
+ GEMINI_API_KEY=
+ # Optional override (default: gemini-2.5-flash)
+ # LLM_MODEL=gemini-2.5-flash
+-# Dry-run: live Gemini on cache miss when 1 (paper --execute always live)
+-# LLM_LIVE_IN_DRY_RUN=0
++# Dry-run: live LLM on cache miss by default (paper --execute always live)
++# LLM_CACHE_ONLY_DRY_RUN=1   # dry-run uses cache only, no API
++# LLM_LIVE_IN_DRY_RUN=0      # legacy alias for cache-only dry-run
++# TRADING_BOT_SKIP_LLM=1     # pytest/CI — set automatically in tests/conftest.py
+ 
+-# Local vLLM fallback (OpenAI-compatible) when Gemini quota/errors
++# Local vLLM fallback (OpenAI-compatible) when Gemini quota/errors — default OFF
+ # LLM_VLLM_ENABLED=1
+ # LLM_VLLM_BASE_URL=http://192.168.219.116:11434/v1
+ # LLM_VLLM_MODEL=gemma4-26B
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index c337a1e..683c94f 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -22,6 +22,7 @@ jobs:
+       ALPACA_PAPER: "true"
+       TELEGRAM_ENABLED: "false"
+       GEMINI_API_KEY: ""
++      TRADING_BOT_SKIP_LLM: "1"
+ 
+     steps:
+       - name: Checkout
+diff --git a/TODO.md b/TODO.md
+index 35492f0..71112c3 100644
+--- a/TODO.md
++++ b/TODO.md
+@@ -13,38 +13,99 @@
+ 
+ | 문서 | 역할 |
+ |------|------|
+-| **`TODO.md`** | 활성 로드맵 (다음 Phase만) |
++| **`TODO.md`** | 활성 로드맵 (지금 할 일만) |
+ | **`docs/TODO_ARCHIVE.md`** | Phase 0–31 요약 |
+ 
+ ---
+ 
+-## Current Status (2026-06-01)
++## Current Status (2026-06-02)
+ 
+ | 영역 | 상태 |
+ |------|------|
+-| **ML 백테스트** | **+96.8%** vs B&H **+65.0%** (gap +31.8pp) |
++| **Alpha 백테스트** | trailing stop 20% 적용 후 **+76.1%** vs 동일비중 **+67.1%** (gap **+9.0pp**) · SPY 대비 **+28.9pp** |
+ | **Extended hours / CMS** | broker_adapter, buy_guards parity, Alpaca order board, CMS reconcile |
+-| **CI/CD** | GitHub Actions green — **257** pytest (`main`) |
+-| **Crowding** | gate **GO_PAPER** (리포트) · config **`crowding_guard_enabled: false`** (운영 정책) |
++| **CI/CD** | GitHub Actions green — pytest on `main` |
++| **Crowding** | gate **GO_PAPER** · **`crowding_guard_enabled: true`** (2026-06-01 paper apply) |
+ | **Paper ops** | `logs/paper_ops/latest_summary.json` + extended fill report |
+-| **LLM SDK** | `google-genai` (`src/llm_analyst.py`) — legacy `google-generativeai` 제거 |
++| **LLM (paper)** | AI+LLM 둘 다 통과 시 매수 · dry-run live LLM · pytest/CI는 LLM 스킵 |
++| **AI 모델 품질** | `logs/model_quality/latest_summary.json`: AI는 **filter/sizing overlay 유지** (AUC 0.5094, Brier 0.3371, fold std 0.0745) |
+ 
+-**Phase 31 완료** → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md) · Codex `RUN_ID=phase31`
++**Phase 31 완료** → [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
+ 
+ ---
+ 
+-## Phase 32 — Integrations & deprecations
++## Now — Phase 32 (active)
++
++우선순위 순. **Toss(32-A)는 API 키 발급 전까지 보류.**
++
++### 32-C Ops · crowding
++- [x] Crowding **GO** 재평가 — guard impact `2026-06-01`, 4/4 checklist PASS
++- [x] proposal 반영 — `crowding_guard_enabled: true` (`run_crowding_paper_gate.sh --apply-config`)
++- [x] paper dry-run crowding `SKIP_BUY` 모니터링 — `run_crowding_live_impact_report.sh`, bootstrap step 3
++
++### 32-D Paper validation (LLM + AI)
++- [x] `llm_advisory_only: false` — LLM REJECT 시 매수 차단 (paper/dry-run)
++- [x] dry-run 기본 live LLM · `TRADING_BOT_SKIP_LLM` in pytest/CI
++- [x] `src/llm_ai_agreement_report.py` — AI vs LLM 일치율 리포트
++- [ ] paper/dry-run 누적 후 **AI+LLM 합의** vs **AI만** 체결·스킵 비교 (`execution_audit` / advisory 리포트)
++- [ ] `RUN_ID=phase32` pass complete (Codex scoped review)
++
++### 32-E Alpha / benchmark alignment
++- [x] Tight trailing stop 원인 검증 — 5% → 20% 완화 시 벤치마크 gap **−8.3pp → +9.0pp**
++- [x] 실제 paper config 반영 — `trailing_stop_pct: 0.2`
++- [x] `bash scripts/run_alpha_pipeline.sh` 재실행 — `logs/benchmark_gap/latest_summary.json` 갱신
++- [x] CMS에 동일비중 벤치 / SPY / Sharpe / MDD 표시
++- [x] `src/benchmark_gap_report.py`에 SPY 단독 비교 추가
++
++### 32-F AI model quality (active next)
++- [x] `src/model_quality_summary.py` — promotion/calibration/fold/threshold/benchmark 종합 요약
++- [x] CMS 모델 품질 카드 연결 — `logs/model_quality/latest_summary.json`
++- [x] calibration 실험 경로 추가 — 다음 retrain부터 `model_calibration_rows.csv` 저장, Platt/isotonic 후보 평가
++- [x] **Calibration 개선 실험 실행** — 20d >2% challenger raw OOF 기준 isotonic Brier 0.324→0.250, 단 AUC 0.500→0.482로 악화
++- [x] **Label/horizon 후보 리포트** — `logs/ml/label_horizon_report.json`, 현재 20d >0%보다 **20d >2%** label balance 우수
++- [x] **Label/horizon retrain 실험** — 20d >2% AUC 0.534로 개선됐지만 OOS 포트폴리오 **-1.9% vs 벤치 +20.0%**, 챔피언 유지
++- [ ] **다음 label 후보 실험** — AUC만 보지 말고 OOS portfolio gate 기준으로 40d >2%, 10d >0% 등 추가 후보 비교
++- [x] **Cross-sectional rank AI 실험** — 날짜별 future return percentile 라벨, top bucket만 매수/추매 허용
++  - [x] 날짜별 `future_return` percentile 및 top bucket binary label 생성
++  - [x] binary top-bucket classifier와 rank percentile regression 후보 blend
++  - [x] 날짜별 prediction score로 종목 정렬
++  - [x] top bucket만 신규 매수/추매 허용
++  - [x] 기존 매도 룰(stop/take/trailing)은 유지
++  - [x] OOS 동일비중 벤치 대비 초과수익 검증
++  - [x] AUC보다 portfolio curve, drawdown, turnover로 gate 판단
++  - 결과: top 30%는 AUC **0.548**, OOS **+4.15% vs 벤치 +9.73%**로 실패
++  - 결과: top 20%는 AUC **0.584**, OOS **+11.34% vs 벤치 +9.73%**, gap **+1.61pp**이나 Sharpe **0.991 < 1.0**으로 gate 미통과
++  - 결과: horizon 10d/top20%는 AUC **0.628**이나 OOS **+5.95% vs 벤치 +11.92%**로 실패 — AUC만으로 promotion 불가 확인
++  - 결과: horizon 40d/top20%는 OOS gap **+0.01pp**이나 Sharpe/turnover gate 실패
++  - 결과: horizon 20d/top15%는 AUC **0.611**, OOS **+24.14% vs 벤치 +9.73%**, gap **+14.41pp**, Sharpe **1.765**, MDD **-11.2%**, turnover **1.00**으로 gate 통과
++  - 결과: horizon 20d/top10%는 AUC **0.655**, OOS **+16.40% vs 벤치 +9.73%**, gap **+6.67pp**, Sharpe **1.228**로 gate 통과
++  - 결론: rank label 방향은 기존 absolute label보다 유망. 대표 후보는 **20d/top15%/score q85**. 아직 즉시 live 연결은 금지하고 paper/deeper OOS 검증으로 승격
++- [x] **Rank AI follow-up** — top 20% 후보를 horizon 10/20/40d, score cutoff, turnover cap으로 재검증
++- [x] **Rank AI paper 후보 설계** — 20d/top15%/score q85를 paper buy/add gate 후보로 별도 플래그 설계
++  - [x] `rank_ai_buy_gate_enabled` 설정 추가 — 기본 paper config에서 enabled
++  - [x] `src/rank_ai_gate.py` — 최신 feature 기반 cross-sectional rank score/percentile 계산
++  - [x] main/candidate cache 매수·추매 후보에 rank gate 적용, 기존 매도 룰은 유지
++  - [x] 실제 artifact smoke check — 샘플 20개 중 `NVDA`, `META`, `SNPS`, `ANET` gate 통과
++- [x] **Rank AI paper impact 리포트** — `src/rank_ai_gate_impact_report.py`, `logs/rank_ai_gate/latest_summary.json`, bootstrap step 연동
++- [x] **execution_audit 스키마 정규화** — `src/execution_audit_io.py`, rank 컬럼 추가 후 mixed-row 호환
++- [x] **Rank AI paper 누적 검증 (1차)** — dry-run + cache refresh 후 audit rank 스킵 **16건**, 제출 **41건** (`logs/rank_ai_gate/latest_summary.json`)
++- [ ] **Rank AI paper 누적 검증 (2주)** — gate ON 상태로 2주 이상 스킵/제출·baseline 대비 회귀 없음 확인
++- [ ] **Phase32 rank AI multi-agent pass** — `RUN_ID=phase32_rank_ai` AGY tests + Codex (`prompts/agy/phase32_rank_ai_paper.md`)
++- [x] **AI 권한 확대 기준 문서화** — [`docs/ai_authority_gates.md`](docs/ai_authority_gates.md) (Tier 0–3, rank paper gate 조건)
++- [ ] 모델 개선 후 threshold retune + promotion gate 재평가
++
++### 32-B LLM SDK (done)
++- [x] `google.generativeai` → `google.genai`
++- [x] 로컬 vLLM 폴백 (Gemini quota/5xx)
+ 
+-### 32-A Toss (KR day market)
+-- [ ] Toss Open API adapter (`broker_provider: toss`) — 주문 제출 (현재: `trading_session` day_market stub only)
+-- [ ] CMS/bot execute path for Toss paper
++---
+ 
+-### 32-B LLM SDK
+-- [x] `google.generativeai` → `google.genai` (`llm_analyst.py`, `google-genai` in requirements, tests)
+-- [x] 로컬 vLLM 서브모델 폴백 (`192.168.219.116:11434`, `gemma4-26B`) — Gemini quota/5xx 시
++## Backlog — Phase 32-A Toss (blocked)
+ 
+-### 32-C Ops
+-- [ ] Crowding **GO** 재평가 후 `APPLY_CROWDING_CONFIG=1` bootstrap으로 proposal 반영 여부 결정
++**보류 사유:** Toss Open API 키 미발급. 키 확보 후 재개.
++
++- [ ] Toss Open API adapter (`broker_provider: toss`) — 주문 제출 (현재: `trading_session` day_market stub)
++- [ ] CMS/bot execute path for Toss paper
+ 
+ ---
+ 
+@@ -53,8 +114,14 @@
+ ```bash
+ bash scripts/run_paper_ops_bootstrap.sh
+ SKIP_ALPHA=1 bash scripts/run_paper_ops_bootstrap.sh
+-APPLY_CROWDING_CONFIG=1 bash scripts/run_paper_ops_bootstrap.sh   # GO + 명시적 merge만
++APPLY_CROWDING_CONFIG=1 bash scripts/run_paper_ops_bootstrap.sh   # crowding merge — 명시적일 때만
+ bash scripts/run_cms.sh
++.venv/bin/python -m src.llm_ai_agreement_report
++bash scripts/run_alpha_pipeline.sh
++bash scripts/run_model_quality_report.sh
++.venv/bin/python -m src.calibration_experiment
++.venv/bin/python -m src.label_horizon_report
++.venv/bin/python -m src.label_challenger_experiment --prediction-horizon 20 --target-return-threshold 0.02
+ .venv/bin/python -m pytest tests/ -q
+ RUN_ID=phase32 bash scripts/run_pass_complete.sh
+ ```
+diff --git a/app/streamlit_app.py b/app/streamlit_app.py
+index 0d19f91..9238741 100644
+--- a/app/streamlit_app.py
++++ b/app/streamlit_app.py
+@@ -50,9 +50,9 @@ from src.cms_helpers import (
+     orders_to_frame as _orders_to_frame,
+     partition_alpaca_orders,
+     pct,
+-    reconcile_cms_execute_with_alpaca,
+     sort_buy_candidates,
+ )
++from src.cms_reconcile import reconcile_cms_execute_with_alpaca
+ 
+ 
+ def load_trading_clock(settings=None):
+@@ -288,12 +288,32 @@ def sidebar_settings_editor() -> None:
+         step=0.01,
+     )
+ 
++    st.sidebar.subheader("주문 크기")
+     max_test_order_amount = st.sidebar.number_input(
+-        "테스트 주문 금액 상한",
+-        min_value=1.0,
++        "고정 달러 상한 ($, 0이면 끔)",
++        min_value=0.0,
+         max_value=100000.0,
+         value=float(settings.max_test_order_amount),
+-        step=1.0,
++        step=100.0,
++        help="평소에는 0을 두고 총자산 비율 상한만 사용합니다.",
++    )
++
++    max_single_order_pct = st.sidebar.number_input(
++        "1회 주문 상한 (총자산 비율)",
++        min_value=0.01,
++        max_value=1.0,
++        value=float(getattr(settings, "max_single_order_pct", 1.0)),
++        step=0.01,
++        help="한 번에 넣을 수 있는 최대 비중. 예: 0.35 = 35%",
++    )
++
++    max_daily_order_pct = st.sidebar.number_input(
++        "일일 매수 예산 (총자산 비율)",
++        min_value=0.0,
++        max_value=1.0,
++        value=float(getattr(settings, "max_daily_order_pct", 0.0)),
++        step=0.01,
++        help="0이면 아래 '하루 매수 달러 상한'을 사용합니다.",
+     )
+ 
+     max_orders_per_run = st.sidebar.number_input(
+@@ -305,11 +325,46 @@ def sidebar_settings_editor() -> None:
+
+exec
+/bin/bash -lc "sed -n '1,240p' src/execution_audit_io.py" in /home/kimyo/trading-bot
+exec
+/bin/bash -lc "sed -n '1,260p' src/rank_ai_gate.py" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+"""Read/write execution_audit.csv with a stable column schema."""
+
+from __future__ import annotations
+
+import csv
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+
+from src.config import EXECUTION_AUDIT_LOG_PATH
+
+EXECUTION_AUDIT_COLUMNS: tuple[str, ...] = (
+    "timestamp",
+    "event_type",
+    "ticker",
+    "action",
+    "status",
+    "reason",
+    "profile_name",
+    "regime",
+    "signal",
+    "ai_score",
+    "rank_ai_score",
+    "rank_ai_percentile",
+    "llm_verdict",
+    "order_id",
+    "order_type",
+    "side",
+    "notional",
+    "quantity",
+    "filled_qty",
+    "filled_avg_price",
+)
+
+_LEGACY_EXTRA_COLUMNS: tuple[str, ...] = ("rank_ai_score", "rank_ai_percentile")
+
+
+def read_execution_audit_csv(path: str | Path) -> pd.DataFrame:
+    """Parse audit rows by header name; append trailing rank columns when present."""
+    path = Path(path)
+    if not path.is_file():
+        return pd.DataFrame(columns=list(EXECUTION_AUDIT_COLUMNS))
+
+    with path.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.reader(handle))
+    if len(rows) <= 1:
+        return pd.DataFrame(columns=list(EXECUTION_AUDIT_COLUMNS))
+
+    header = [cell.strip() for cell in rows[0]]
+    records: list[dict[str, Any]] = []
+    for fields in rows[1:]:
+        if not fields:
+            continue
+        record = {column: None for column in EXECUTION_AUDIT_COLUMNS}
+        for index, column in enumerate(header):
+            if index < len(fields) and column in record:
+                record[column] = fields[index]
+        extra = fields[len(header) :]
+        extra_index = 0
+        for column in _LEGACY_EXTRA_COLUMNS:
+            if column in header:
+                continue
+            if extra_index < len(extra):
+                record[column] = extra[extra_index]
+                extra_index += 1
+        records.append(record)
+    return pd.DataFrame.from_records(records)
+
+
+def normalize_execution_audit_file(path: str | Path = EXECUTION_AUDIT_LOG_PATH) -> Path:
+    """Rewrite audit log with the canonical header and column order."""
+    path = Path(path)
+    if not path.is_file():
+        return path
+    df = read_execution_audit_csv(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    df = df.reindex(columns=list(EXECUTION_AUDIT_COLUMNS))
+    df.to_csv(path, index=False)
+    return path
+
+ succeeded in 0ms:
+"""Paper-only cross-sectional rank AI buy/add gate."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import joblib
+import pandas as pd
+
+from src.features import FEATURE_COLUMNS, build_features
+
+
+@dataclass(frozen=True)
+class RankAIGateScore:
+    ticker: str
+    score: float
+    percentile: float
+    allowed: bool
+    reason: str
+
+
+@dataclass(frozen=True)
+class RankAIGateDecision:
+    risk_allowed: bool
+    risk_reason: str
+    target_amount: float
+    score: float | None = None
+    percentile: float | None = None
+
+
+def _rank_gate_enabled(settings: Any) -> bool:
+    return bool(getattr(settings, "rank_ai_buy_gate_enabled", False))
+
+
+def _model_path(settings: Any) -> Path:
+    return Path(
+        str(
+            getattr(
+                settings,
+                "rank_ai_buy_gate_model_path",
+                "logs/ml/rank_label_experiment_h20_top15_q85/rank_models.joblib",
+            )
+        )
+    )
+
+
+def _build_latest_inference_features(
+    df: pd.DataFrame,
+    *,
+    prediction_horizon: int,
+    vix_df: pd.DataFrame | None,
+    spy_df: pd.DataFrame | None,
+    macro_df: pd.DataFrame | None,
+) -> pd.DataFrame:
+    """Build latest feature row without needing real future returns.
+
+    ``build_features`` is training-oriented and drops the last horizon rows
+    because labels are unknown. For inference, append synthetic future rows with
+    unchanged prices so latest historical rows survive the label drop. The target
+    is ignored; only FEATURE_COLUMNS are used for prediction.
+    """
+
+    if df.empty:
+        raise ValueError("empty price frame")
+    working = df.copy().sort_values("date").reset_index(drop=True)
+    last = working.iloc[-1].copy()
+    last_date = pd.to_datetime(last["date"])
+    synthetic_rows = []
+    for offset in range(1, prediction_horizon + 1):
+        row = last.copy()
+        row["date"] = last_date + pd.Timedelta(days=offset)
+        synthetic_rows.append(row)
+    if synthetic_rows:
+        working = pd.concat([working, pd.DataFrame(synthetic_rows)], ignore_index=True)
+
+    features = build_features(
+        working,
+        prediction_horizon=prediction_horizon,
+        target_return_threshold=0.0,
+        vix_df=vix_df,
+        spy_df=spy_df,
+        macro_df=macro_df,
+    )
+    original_last_date = pd.to_datetime(df["date"]).max()
+    latest_features = features[pd.to_datetime(features["date"]) <= original_last_date]
+    if latest_features.empty:
+        raise ValueError("no current inference feature row")
+    return latest_features.tail(1)
+
+
+def build_rank_ai_gate_scores(
+    ticker_data: dict[str, pd.DataFrame],
+    settings: Any,
+    *,
+    vix_df: pd.DataFrame | None = None,
+    spy_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
+) -> dict[str, RankAIGateScore]:
+    if not _rank_gate_enabled(settings):
+        return {}
+
+    path = _model_path(settings)
+    if not path.is_file():
+        if bool(getattr(settings, "rank_ai_buy_gate_fail_closed", True)):
+            raise FileNotFoundError(f"rank AI gate model not found: {path}")
+        return {}
+
+    bundle = joblib.load(path)
+    classifier = bundle["classifier"]
+    regressor = bundle["regressor"]
+    config = bundle.get("config") or {}
+    horizon = int(
+        getattr(
+            settings,
+            "rank_ai_buy_gate_prediction_horizon",
+            config.get("prediction_horizon", 20),
+        )
+    )
+    raw_scores: list[tuple[str, float]] = []
+    for ticker, frame in ticker_data.items():
+        symbol = str(ticker).upper()
+        if symbol.startswith("^") or symbol == "SPY":
+            continue
+        try:
+            feature_row = _build_latest_inference_features(
+                frame,
+                prediction_horizon=horizon,
+                vix_df=vix_df,
+                spy_df=spy_df,
+                macro_df=macro_df,
+            )
+            x_latest = feature_row[FEATURE_COLUMNS]
+            clf_score = float(classifier.predict_proba(x_latest)[:, 1][0])
+            reg_score = float(regressor.predict(x_latest)[0])
+            score = (clf_score + min(max(reg_score, 0.0), 1.0)) / 2.0
+        except Exception:
+            continue
+        raw_scores.append((symbol, score))
+
+    if not raw_scores:
+        if bool(getattr(settings, "rank_ai_buy_gate_fail_closed", True)):
+            raise ValueError("rank AI gate produced no scores")
+        return {}
+
+    score_df = pd.DataFrame(raw_scores, columns=["ticker", "score"])
+    score_df["percentile"] = score_df["score"].rank(pct=True, method="average")
+    cutoff = float(getattr(settings, "rank_ai_buy_gate_min_score_quantile", 0.85))
+
+    scores: dict[str, RankAIGateScore] = {}
+    for _, row in score_df.iterrows():
+        ticker = str(row["ticker"])
+        percentile = float(row["percentile"])
+        score = float(row["score"])
+        allowed = percentile >= cutoff
+        if allowed:
+            reason = f"rank ai gate passed (pct={percentile:.3f}, cutoff={cutoff:.3f})"
+        else:
+            reason = f"rank ai gate blocked (pct={percentile:.3f}, cutoff={cutoff:.3f})"
+        scores[ticker] = RankAIGateScore(
+            ticker=ticker,
+            score=score,
+            percentile=percentile,
+            allowed=allowed,
+            reason=reason,
+        )
+    return scores
+
+
+def apply_rank_ai_buy_gate(
+    *,
+    ticker: str,
+    settings: Any,
+    risk_allowed: bool,
+    risk_reason: str,
+    target_amount: float,
+    scores: dict[str, RankAIGateScore],
+) -> RankAIGateDecision:
+    if not _rank_gate_enabled(settings) or not risk_allowed:
+        return RankAIGateDecision(risk_allowed, risk_reason, target_amount)
+
+    symbol = str(ticker).upper()
+    score = scores.get(symbol)
+    if score is None:
+        if bool(getattr(settings, "rank_ai_buy_gate_fail_closed", True)):
+            return RankAIGateDecision(
+                False,
+                f"rank ai gate missing score for {symbol}",
+                0.0,
+            )
+        return RankAIGateDecision(risk_allowed, risk_reason, target_amount)
+
+    if not score.allowed:
+        return RankAIGateDecision(
+            False,
+            score.reason,
+            0.0,
+            score=score.score,
+            percentile=score.percentile,
+        )
+
+    pass_reason = score.reason
+    if risk_reason and risk_reason != pass_reason:
+        pass_reason = f"{risk_reason} | {score.reason}"
+    return RankAIGateDecision(
+        True,
+        pass_reason,
+        target_amount,
+        score=score.score,
+        percentile=score.percentile,
+    )
+
+exec
+/bin/bash -lc "sed -n '1,240p' src/paper_ops_summary.py" in /home/kimyo/trading-bot
+exec
+/bin/bash -lc "sed -n '1,260p' src/rank_ai_gate_impact_report.py" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+"""Aggregate paper ops bootstrap artifacts into one summary JSON."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from src.settings import load_settings
+
+DEFAULT_OUTPUT_DIR = Path("logs/paper_ops")
+DEFAULT_AUDIT_PATH = Path("logs/execution_audit.csv")
+DEFAULT_LLM_CACHE_PATH = Path("data/llm_cache.json")
+DEFAULT_LLM_ADVISORY_PATH = Path("logs/llm_advisory/latest_summary.json")
+DEFAULT_CROWDING_GATE_PATH = Path("logs/crowding_paper/go_no_go_checklist.json")
+DEFAULT_CROWDING_LIVE_PATH = Path("logs/crowding_live/latest_summary.json")
+DEFAULT_EXTENDED_FILL_PATH = Path("logs/paper_ops/extended_hours_fill_report.json")
+DEFAULT_RANK_AI_GATE_PATH = Path("logs/rank_ai_gate/latest_summary.json")
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _load_json_if_exists(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return payload if isinstance(payload, dict) else None
+
+
+def build_paper_ops_summary(
+    *,
+    audit_path: Path = DEFAULT_AUDIT_PATH,
+    llm_cache_path: Path = DEFAULT_LLM_CACHE_PATH,
+    llm_advisory_path: Path = DEFAULT_LLM_ADVISORY_PATH,
+    crowding_gate_path: Path = DEFAULT_CROWDING_GATE_PATH,
+    crowding_live_path: Path = DEFAULT_CROWDING_LIVE_PATH,
+    extended_fill_path: Path = DEFAULT_EXTENDED_FILL_PATH,
+    rank_ai_gate_path: Path = DEFAULT_RANK_AI_GATE_PATH,
+) -> dict[str, Any]:
+    llm_advisory = _load_json_if_exists(llm_advisory_path) or {}
+    rank_ai_gate = _load_json_if_exists(rank_ai_gate_path) or {}
+    crowding_gate = _load_json_if_exists(crowding_gate_path) or {}
+    crowding_live = _load_json_if_exists(crowding_live_path) or {}
+    extended_fill = _load_json_if_exists(extended_fill_path) or {}
+
+    llm_cache_keys = 0
+    if llm_cache_path.is_file():
+        cache_payload = json.loads(llm_cache_path.read_text(encoding="utf-8"))
+        if isinstance(cache_payload, dict):
+            llm_cache_keys = len(cache_payload)
+
+    audit_rows = 0
+    if audit_path.is_file():
+        audit_rows = max(0, sum(1 for _ in audit_path.open(encoding="utf-8")) - 1)
+
+    config_apply = crowding_gate.get("config_apply") or {}
+    settings = load_settings()
+    crowding_enabled_in_config = bool(getattr(settings, "crowding_guard_enabled", False))
+    rank_gate_cfg = rank_ai_gate.get("gate") or {}
+    rank_audit = rank_ai_gate.get("execution_audit") or {}
+    rank_cache = rank_ai_gate.get("candidate_cache") or {}
+    return {
+        "generated_at": _utc_now_iso(),
+        "execution_audit_path": str(audit_path),
+        "execution_audit_rows": audit_rows,
+        "llm_cache_path": str(llm_cache_path),
+        "llm_cache_keys": llm_cache_keys,
+        "llm_advisory_path": str(llm_advisory_path),
+        "llm_advisory": {
+            "rows": llm_advisory.get("rows", 0),
+            "advisory_would_reject": llm_advisory.get("advisory_would_reject", 0),
+            "buy_submitted": llm_advisory.get("buy_submitted", 0),
+            "buy_submitted_despite_llm_reject": llm_advisory.get(
+                "buy_submitted_despite_llm_reject", 0
+            ),
+        },
+        "crowding_gate_path": str(crowding_gate_path),
+        "crowding_decision": crowding_gate.get("decision"),
+        "crowding_guard_enabled_in_config": crowding_enabled_in_config,
+        "crowding_gate_last_apply_attempted": bool(config_apply.get("applied", False)),
+        "crowding_config_applied": crowding_enabled_in_config,
+        "crowding_live_path": str(crowding_live_path),
+        "crowding_live": {
+            "lookback_days": crowding_live.get("live", {}).get("lookback_days"),
+            "crowding_skip_count": crowding_live.get("live", {}).get("crowding_skip_count", 0),
+            "skip_buy_count": crowding_live.get("live", {}).get("skip_buy_count", 0),
+            "crowding_skip_rate_of_skips": crowding_live.get("live", {}).get(
+                "crowding_skip_rate_of_skips", 0.0
+            ),
+            "by_kind": crowding_live.get("live", {}).get("by_kind", {}),
+            "top_tickers": dict(
+                list(
+                    sorted(
+                        (crowding_live.get("live", {}).get("by_ticker") or {}).items(),
+                        key=lambda item: item[1],
+                        reverse=True,
+                    )
+                )[:10]
+            ),
+            "alignment_notes": crowding_live.get("alignment", {}).get("notes", []),
+        },
+        "extended_hours_fill_path": str(extended_fill_path),
+        "extended_hours_fill": {
+            "extended_limit_orders": extended_fill.get("extended_limit_orders", 0),
+            "filled": extended_fill.get("filled", 0),
+            "open_pending": extended_fill.get("open_pending", 0),
+            "fill_rate_terminal": extended_fill.get("fill_rate_terminal"),
+            "status": extended_fill.get("status"),
+        },
+        "rank_ai_gate_path": str(rank_ai_gate_path),
+        "rank_ai_gate": {
+            "enabled": rank_gate_cfg.get("enabled", getattr(settings, "rank_ai_buy_gate_enabled", False)),
+            "min_score_quantile": rank_gate_cfg.get("min_score_quantile"),
+            "skip_buy_rank_blocked": rank_audit.get("skip_buy_rank_blocked", 0),
+            "buy_submitted": rank_audit.get("buy_submitted", 0),
+            "cache_rank_blocked_rows": rank_cache.get("rank_blocked_rows", 0),
+            "cache_rank_passed_rows": rank_cache.get("rank_passed_rows", 0),
+        },
+        "notes": [
+            "Run via: bash scripts/run_paper_ops_bootstrap.sh",
+            "Crowding proposal merges only with: APPLY_CROWDING_CONFIG=1 bash scripts/run_paper_ops_bootstrap.sh",
+            "crowding_config_applied reflects strategy_config.json (not stale gate config_apply).",
+            "After dry-run: bash scripts/run_crowding_live_impact_report.sh for SKIP_BUY crowding monitoring.",
+        ],
+    }
+
+
+def write_paper_ops_summary(
+    output_dir: Path = DEFAULT_OUTPUT_DIR,
+    **kwargs: Any,
+) -> Path:
+    report = build_paper_ops_summary(**kwargs)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / "latest_summary.json"
+    path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+    return path
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Write paper ops bootstrap summary JSON")
+    parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
+    args = parser.parse_args()
+    path = write_paper_ops_summary(Path(args.output_dir))
+    print(f"Wrote {path}")
+
+
+if __name__ == "__main__":
+    main()
+
+ succeeded in 0ms:
+"""Paper rank AI buy/add gate impact from execution_audit and candidate cache."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+
+from src.config import EXECUTION_AUDIT_LOG_PATH
+from src.daily_audit_summary import load_execution_audit
+from src.settings import load_settings
+
+DEFAULT_OUTPUT_DIR = Path("logs/rank_ai_gate")
+DEFAULT_CANDIDATE_BUY = Path("logs/candidate_cache/latest_buy.csv")
+
+_RANK_BLOCKED_RE = re.compile(r"rank ai gate blocked", re.IGNORECASE)
+_RANK_PASSED_RE = re.compile(r"rank ai gate passed", re.IGNORECASE)
+_RANK_MISSING_RE = re.compile(r"rank ai gate missing score", re.IGNORECASE)
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _audit_rank_stats(audit_df: pd.DataFrame) -> dict[str, Any]:
+    if audit_df.empty:
+        return {
+            "rows": 0,
+            "skip_buy_rank_blocked": 0,
+            "skip_buy_rank_missing_score": 0,
+            "buy_submitted": 0,
+            "buy_submitted_with_rank_pass_reason": 0,
+            "top_blocked_tickers": {},
+        }
+
+    event_types = audit_df.get("event_type", pd.Series(dtype=str)).astype(str)
+    reasons = audit_df.get("reason", pd.Series(dtype=str)).astype(str)
+    tickers = audit_df.get("ticker", pd.Series(dtype=str)).astype(str).str.upper()
+
+    skip_mask = event_types == "SKIP_BUY"
+    blocked_mask = skip_mask & reasons.str.contains(_RANK_BLOCKED_RE)
+    missing_mask = skip_mask & reasons.str.contains(_RANK_MISSING_RE)
+    submitted_mask = event_types == "BUY_SUBMITTED"
+    passed_reason_mask = submitted_mask & reasons.str.contains(_RANK_PASSED_RE)
+
+    blocked_tickers = tickers[blocked_mask]
+    top_blocked = (
+        blocked_tickers.value_counts().head(10).to_dict()
+        if not blocked_tickers.empty
+        else {}
+    )
+
+    return {
+        "rows": int(len(audit_df)),
+        "skip_buy_rank_blocked": int(blocked_mask.sum()),
+        "skip_buy_rank_missing_score": int(missing_mask.sum()),
+        "buy_submitted": int(submitted_mask.sum()),
+        "buy_submitted_with_rank_pass_reason": int(passed_reason_mask.sum()),
+        "top_blocked_tickers": top_blocked,
+    }
+
+
+def _candidate_cache_stats(
+    buy_path: Path,
+    *,
+    min_score_quantile: float,
+) -> dict[str, Any]:
+    if not buy_path.is_file():
+        return {
+            "available": False,
+            "path": str(buy_path),
+            "rows": 0,
+        }
+
+    df = pd.read_csv(buy_path)
+    if df.empty:
+        return {"available": True, "path": str(buy_path), "rows": 0}
+
+    df = df.copy()
+    df["ticker"] = df.get("ticker", "").astype(str).str.upper()
+    reasons = df.get("reason", pd.Series(dtype=str)).astype(str)
+    risk_allowed = df.get("risk_allowed", False)
+    if risk_allowed.dtype == object:
+        risk_allowed = risk_allowed.astype(str).str.lower().isin({"true", "1", "yes"})
+
+    rank_enabled = bool(df.get("rank_ai_gate_enabled", pd.Series([False])).iloc[0])
+    pct = pd.to_numeric(df.get("rank_ai_percentile"), errors="coerce")
+    rank_blocked = reasons.str.contains(_RANK_BLOCKED_RE, na=False)
+    rank_passed = risk_allowed & pct.notna() & (pct >= min_score_quantile)
+
+    signal_buy = df.get("signal", pd.Series(dtype=str)).astype(str).str.upper() == "BUY"
+
+    return {
+        "available": True,
+        "path": str(buy_path),
+        "rows": int(len(df)),
+        "rank_ai_gate_enabled": rank_enabled,
+        "buy_signal_rows": int(signal_buy.sum()),
+        "risk_allowed_rows": int(risk_allowed.sum()),
+        "rank_blocked_rows": int(rank_blocked.sum()),
+        "rank_passed_rows": int(rank_passed.sum()),
+        "median_rank_percentile": (
+            float(pct.median()) if pct.notna().any() else None
+        ),
+        "top_blocked_tickers": (
+            df.loc[rank_blocked, "ticker"].value_counts().head(10).to_dict()
+            if rank_blocked.any()
+            else {}
+        ),
+        "top_passed_tickers": (
+            df.loc[rank_passed, "ticker"]
+            .value_counts()
+            .head(10)
+            .to_dict()
+            if rank_passed.any()
+            else {}
+        ),
+    }
+
+
+def build_rank_ai_gate_impact_report(
+    *,
+    audit_path: str | Path = EXECUTION_AUDIT_LOG_PATH,
+    candidate_buy_path: str | Path = DEFAULT_CANDIDATE_BUY,
+    lookback_days: int = 30,
+) -> dict[str, Any]:
+    settings = load_settings()
+    audit_file = Path(audit_path)
+    audit_df = (
+        load_execution_audit(audit_file, lookback_days=lookback_days)
+        if audit_file.is_file()
+        else pd.DataFrame()
+    )
+
+    gate_enabled = bool(getattr(settings, "rank_ai_buy_gate_enabled", False))
+    cutoff = float(getattr(settings, "rank_ai_buy_gate_min_score_quantile", 0.85))
+    audit_stats = _audit_rank_stats(audit_df)
+    cache_stats = _candidate_cache_stats(Path(candidate_buy_path), min_score_quantile=cutoff)
+
+    notes: list[str] = []
+    if not gate_enabled:
+        notes.append("rank_ai_buy_gate_enabled is false in strategy_config — report is informational only.")
+    if audit_stats["rows"] == 0:
+        notes.append("No execution_audit rows in lookback — run: bash scripts/run_bot_once.sh dry-run")
+    if not cache_stats.get("available"):
+        notes.append(
+            "Candidate cache missing — run: .venv/bin/python -m src.generate_candidate_cache"
+        )
+    if gate_enabled and audit_stats["skip_buy_rank_blocked"] == 0 and audit_stats["buy_submitted"] == 0:
+        notes.append(
+            "Gate enabled but no rank skip/submit events yet — accumulate more dry-run or paper runs."
+        )
+
+    return {
+        "generated_at": _utc_now_iso(),
+        "lookback_days": lookback_days,
+        "gate": {
+            "enabled": gate_enabled,
+            "model_path": str(getattr(settings, "rank_ai_buy_gate_model_path", "")),
+            "prediction_horizon": int(
+                getattr(settings, "rank_ai_buy_gate_prediction_horizon", 20)
+            ),
+            "top_bucket_pct": float(
+                getattr(settings, "rank_ai_buy_gate_top_bucket_pct", 0.15)
+            ),
+            "min_score_quantile": cutoff,
+            "fail_closed": bool(getattr(settings, "rank_ai_buy_gate_fail_closed", True)),
+        },
+        "execution_audit": {
+            "path": str(audit_file),
+            **audit_stats,
+        },
+        "candidate_cache": cache_stats,
+        "notes": notes,
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Rank AI buy gate paper impact report")
+    parser.add_argument("--audit-path", default=EXECUTION_AUDIT_LOG_PATH)
+    parser.add_argument("--candidate-buy-path", default=str(DEFAULT_CANDIDATE_BUY))
+    parser.add_argument("--lookback-days", type=int, default=30)
+    parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
+    args = parser.parse_args()
+
+    report = build_rank_ai_gate_impact_report(
+        audit_path=args.audit_path,
+        candidate_buy_path=args.candidate_buy_path,
+        lookback_days=args.lookback_days,
+    )
+    out_dir = Path(args.output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "latest_summary.json"
+    out_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    audit = report["execution_audit"]
+    cache = report["candidate_cache"]
+    print("=== Rank AI gate impact (paper) ===")
+    print(f"Gate enabled: {report['gate']['enabled']}")
+    print(f"Audit rows: {audit.get('rows', 0)}")
+    print(f"SKIP_BUY (rank blocked): {audit.get('skip_buy_rank_blocked', 0)}")
+    print(f"BUY submitted: {audit.get('buy_submitted', 0)}")
+    if cache.get("available"):
+        print(f"Cache rank blocked: {cache.get('rank_blocked_rows', 0)}")
+        print(f"Cache rank passed: {cache.get('rank_passed_rows', 0)}")
+    print(f"Wrote {out_path}")
+
+
+if __name__ == "__main__":
+    main()
+
+exec
+/bin/bash -lc "sed -n '1,240p' tests/test_rank_ai_gate_impact_report.py" in /home/kimyo/trading-bot
+exec
+/bin/bash -lc "sed -n '1,220p' tests/test_paper_ops_summary_rank_gate.py" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+import json
+from pathlib import Path
+
+from src.paper_ops_summary import build_paper_ops_summary
+
+
+def _rank_gate_fixture() -> dict:
+    return {
+        "generated_at": "2026-06-01T12:00:00Z",
+        "gate": {
+            "enabled": True,
+            "min_score_quantile": 0.85,
+        },
+        "execution_audit": {
+            "skip_buy_rank_blocked": 3,
+            "buy_submitted": 7,
+        },
+        "candidate_cache": {
+            "rank_blocked_rows": 2,
+            "rank_passed_rows": 5,
+        },
+    }
+
+
+def test_paper_ops_summary_includes_rank_ai_gate_block(tmp_path: Path) -> None:
+    rank_path = tmp_path / "rank_ai_gate.json"
+    rank_path.write_text(json.dumps(_rank_gate_fixture()), encoding="utf-8")
+
+    report = build_paper_ops_summary(
+        audit_path=tmp_path / "missing_audit.csv",
+        llm_cache_path=tmp_path / "missing_cache.json",
+        llm_advisory_path=tmp_path / "missing_advisory.json",
+        crowding_gate_path=tmp_path / "missing_gate.json",
+        crowding_live_path=tmp_path / "missing_live.json",
+        rank_ai_gate_path=rank_path,
+    )
+
+    assert report["rank_ai_gate_path"] == str(rank_path)
+    rank = report["rank_ai_gate"]
+    assert rank["enabled"] is True
+    assert rank["min_score_quantile"] == 0.85
+    assert rank["skip_buy_rank_blocked"] == 3
+    assert rank["buy_submitted"] == 7
+    assert rank["cache_rank_blocked_rows"] == 2
+    assert rank["cache_rank_passed_rows"] == 5
+
+
+def test_paper_ops_summary_rank_ai_gate_defaults_when_missing(tmp_path: Path) -> None:
+    report = build_paper_ops_summary(
+        audit_path=tmp_path / "missing_audit.csv",
+        llm_cache_path=tmp_path / "missing_cache.json",
+        llm_advisory_path=tmp_path / "missing_advisory.json",
+        crowding_gate_path=tmp_path / "missing_gate.json",
+        crowding_live_path=tmp_path / "missing_live.json",
+        rank_ai_gate_path=tmp_path / "missing_rank.json",
+    )
+
+    rank = report["rank_ai_gate"]
+    assert rank["skip_buy_rank_blocked"] == 0
+    assert rank["buy_submitted"] == 0
+    assert rank["cache_rank_blocked_rows"] == 0
+    assert rank["cache_rank_passed_rows"] == 0
+
+ succeeded in 0ms:
+import json
+from pathlib import Path
+
+import pandas as pd
+
+from src.rank_ai_gate_impact_report import build_rank_ai_gate_impact_report
+
+
+def test_rank_gate_impact_report_from_audit_and_cache(tmp_path, monkeypatch):
+    audit_path = tmp_path / "execution_audit.csv"
+    audit_path.write_text(
+        "timestamp,event_type,ticker,action,status,reason\n"
+        "2026-06-01T10:00:00,SKIP_BUY,AAA,BUY,SKIPPED,rank ai gate blocked (pct=0.700)\n"
+        "2026-06-01T10:01:00,BUY_SUBMITTED,BBB,BUY,accepted,rank ai gate passed (pct=0.900)\n",
+        encoding="utf-8",
+    )
+    buy_path = tmp_path / "latest_buy.csv"
+    pd.DataFrame(
+        [
+            {
+                "ticker": "AAA",
+                "signal": "BUY",
+                "risk_allowed": False,
+                "reason": "rank ai gate blocked (pct=0.700, cutoff=0.850)",
+                "rank_ai_percentile": 0.7,
+                "rank_ai_gate_enabled": True,
+            },
+            {
+                "ticker": "BBB",
+                "signal": "BUY",
+                "risk_allowed": True,
+                "reason": "ok",
+                "rank_ai_percentile": 0.92,
+                "rank_ai_gate_enabled": True,
+            },
+        ]
+    ).to_csv(buy_path, index=False)
+
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        "src.rank_ai_gate_impact_report.load_settings",
+        lambda: SimpleNamespace(
+            rank_ai_buy_gate_enabled=True,
+            rank_ai_buy_gate_model_path="logs/ml/rank_label_experiment_h20_top15_q85/rank_models.joblib",
+            rank_ai_buy_gate_prediction_horizon=20,
+            rank_ai_buy_gate_top_bucket_pct=0.15,
+            rank_ai_buy_gate_min_score_quantile=0.85,
+            rank_ai_buy_gate_fail_closed=True,
+        ),
+    )
+
+    report = build_rank_ai_gate_impact_report(
+        audit_path=audit_path,
+        candidate_buy_path=buy_path,
+        lookback_days=90,
+    )
+
+    assert report["execution_audit"]["skip_buy_rank_blocked"] == 1
+    assert report["execution_audit"]["buy_submitted"] == 1
+    assert report["candidate_cache"]["rank_blocked_rows"] == 1
+    assert report["candidate_cache"]["rank_passed_rows"] == 1
+
+
+def _mock_gate_settings(monkeypatch, **overrides):
+    from types import SimpleNamespace
+
+    values = {
+        "rank_ai_buy_gate_enabled": True,
+        "rank_ai_buy_gate_model_path": "logs/ml/rank_label_experiment_h20_top15_q85/rank_models.joblib",
+        "rank_ai_buy_gate_prediction_horizon": 20,
+        "rank_ai_buy_gate_top_bucket_pct": 0.15,
+        "rank_ai_buy_gate_min_score_quantile": 0.85,
+        "rank_ai_buy_gate_fail_closed": True,
+    }
+    values.update(overrides)
+    monkeypatch.setattr(
+        "src.rank_ai_gate_impact_report.load_settings",
+        lambda: SimpleNamespace(**values),
+    )
+
+
+def test_rank_gate_impact_empty_audit_and_cache_notes(tmp_path, monkeypatch):
+    _mock_gate_settings(monkeypatch)
+    audit_path = tmp_path / "missing_audit.csv"
+    cache_path = tmp_path / "missing_buy.csv"
+
+    report = build_rank_ai_gate_impact_report(
+        audit_path=audit_path,
+        candidate_buy_path=cache_path,
+        lookback_days=30,
+    )
+
+    assert report["execution_audit"]["rows"] == 0
+    assert report["candidate_cache"]["available"] is False
+    notes = "\n".join(report["notes"])
+    assert "No execution_audit rows" in notes
+    assert "Candidate cache missing" in notes
+
+
+def test_rank_gate_impact_audit_blocked_passed_missing_reasons(tmp_path, monkeypatch):
+    _mock_gate_settings(monkeypatch)
+    audit_path = tmp_path / "execution_audit.csv"
+    audit_path.write_text(
+        "timestamp,event_type,ticker,action,status,reason\n"
+        "2026-06-01T10:00:00,SKIP_BUY,AAA,BUY,SKIPPED,rank ai gate blocked (pct=0.700)\n"
+        "2026-06-01T10:01:00,SKIP_BUY,BBB,BUY,SKIPPED,rank ai gate missing score\n"
+        "2026-06-01T10:02:00,BUY_SUBMITTED,CCC,BUY,accepted,rank ai gate passed (pct=0.900)\n",
+        encoding="utf-8",
+    )
+
+    report = build_rank_ai_gate_impact_report(
+        audit_path=audit_path,
+        candidate_buy_path=tmp_path / "missing_buy.csv",
+        lookback_days=90,
+    )
+
+    audit = report["execution_audit"]
+    assert audit["skip_buy_rank_blocked"] == 1
+    assert audit["skip_buy_rank_missing_score"] == 1
+    assert audit["buy_submitted"] == 1
+    assert audit["buy_submitted_with_rank_pass_reason"] == 1
+    assert audit["top_blocked_tickers"] == {"AAA": 1}
+
+
+def test_rank_gate_impact_cache_risk_allowed_and_percentile_cutoff(tmp_path, monkeypatch):
+    _mock_gate_settings(monkeypatch, rank_ai_buy_gate_min_score_quantile=0.85)
+    buy_path = tmp_path / "latest_buy.csv"
+    pd.DataFrame(
+        [
+            {
+                "ticker": "LOW",
+                "signal": "BUY",
+                "risk_allowed": True,
+                "reason": "ok",
+                "rank_ai_percentile": 0.80,
+                "rank_ai_gate_enabled": True,
+            },
+            {
+                "ticker": "HIGH",
+                "signal": "BUY",
+                "risk_allowed": True,
+                "reason": "rank ai gate passed (pct=0.920)",
+                "rank_ai_percentile": 0.92,
+                "rank_ai_gate_enabled": True,
+            },
+            {
+                "ticker": "BLOCK",
+                "signal": "BUY",
+                "risk_allowed": False,
+                "reason": "rank ai gate blocked (pct=0.700, cutoff=0.850)",
+                "rank_ai_percentile": 0.70,
+                "rank_ai_gate_enabled": True,
+            },
+            {
+                "ticker": "HIGH_NO_RISK",
+                "signal": "BUY",
+                "risk_allowed": False,
+                "reason": "other block",
+                "rank_ai_percentile": 0.95,
+                "rank_ai_gate_enabled": True,
+            },
+        ]
+    ).to_csv(buy_path, index=False)
+
+    report = build_rank_ai_gate_impact_report(
+        audit_path=tmp_path / "missing_audit.csv",
+        candidate_buy_path=buy_path,
+        lookback_days=30,
+    )
+
+    cache = report["candidate_cache"]
+    assert cache["available"] is True
+    assert cache["rank_blocked_rows"] == 1
+    assert cache["rank_passed_rows"] == 1
+    assert cache["top_blocked_tickers"] == {"BLOCK": 1}
+    assert cache["top_passed_tickers"] == {"HIGH": 1}
+
+exec
+/bin/bash -lc "sed -n '1,220p' tests/test_execution_audit_io.py" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+from pathlib import Path
+
+import pandas as pd
+
+from src.execution_audit_io import (
+    EXECUTION_AUDIT_COLUMNS,
+    normalize_execution_audit_file,
+    read_execution_audit_csv,
+)
+
+
+def test_read_execution_audit_csv_maps_legacy_and_extended_rows(tmp_path: Path) -> None:
+    path = tmp_path / "execution_audit.csv"
+    path.write_text(
+        "timestamp,event_type,ticker,action,status,reason,profile_name,regime,signal,ai_score,llm_verdict\n"
+        "2026-06-01T10:00:00,SKIP_BUY,AAA,BUY,SKIPPED,old skip,PRO,NEU,BUY,0.5,ACCEPT: ok\n"
+        "2026-06-01T11:00:00,SKIP_BUY,BBB,BUY,SKIPPED,rank ai gate blocked,PRO,NEU,BUY,0.6,REJECT: no,0.61,0.72\n",
+        encoding="utf-8",
+    )
+
+    df = read_execution_audit_csv(path)
+
+    assert list(df.columns) == list(EXECUTION_AUDIT_COLUMNS)
+    assert df.loc[0, "llm_verdict"] == "ACCEPT: ok"
+    assert df.loc[0, "rank_ai_score"] is None
+    assert df.loc[1, "rank_ai_score"] == "0.61"
+    assert df.loc[1, "rank_ai_percentile"] == "0.72"
+
+
+def test_normalize_execution_audit_file_rewrites_header(tmp_path: Path) -> None:
+    path = tmp_path / "execution_audit.csv"
+    path.write_text(
+        "timestamp,event_type,ticker,action,status,reason\n"
+        "2026-06-01T10:00:00,SKIP_BUY,AAA,BUY,SKIPPED,reason\n",
+        encoding="utf-8",
+    )
+
+    normalize_execution_audit_file(path)
+    header = path.read_text(encoding="utf-8").splitlines()[0]
+
+    assert header == ",".join(EXECUTION_AUDIT_COLUMNS)
+
+
+def test_normalize_execution_audit_file_readable_by_pandas(tmp_path: Path) -> None:
+    path = tmp_path / "execution_audit.csv"
+    path.write_text(
+        "timestamp,event_type,ticker,action,status,reason\n"
+        "2026-06-01T10:00:00,SKIP_BUY,AAA,BUY,SKIPPED,reason\n",
+        encoding="utf-8",
+    )
+
+    normalize_execution_audit_file(path)
+    df = pd.read_csv(path)
+
+    assert list(df.columns) == list(EXECUTION_AUDIT_COLUMNS)
+    assert df.loc[0, "ticker"] == "AAA"
+    assert pd.isna(df.loc[0, "rank_ai_score"])
+
+
+def test_normalize_mixed_legacy_header_and_trailing_rank_rows(tmp_path: Path) -> None:
+    path = tmp_path / "execution_audit.csv"
+    path.write_text(
+        "timestamp,event_type,ticker,action,status,reason,profile_name,regime,signal,ai_score,llm_verdict\n"
+        "2026-06-01T10:00:00,SKIP_BUY,AAA,BUY,SKIPPED,legacy only,PRO,NEU,BUY,0.5,ACCEPT: ok\n"
+        "2026-06-01T11:00:00,SKIP_BUY,BBB,BUY,SKIPPED,rank blocked,PRO,NEU,BUY,0.6,REJECT: no,0.61,0.72\n",
+        encoding="utf-8",
+    )
+
+    normalize_execution_audit_file(path)
+    df = pd.read_csv(path)
+
+    assert list(df.columns) == list(EXECUTION_AUDIT_COLUMNS)
+    assert df.loc[0, "llm_verdict"] == "ACCEPT: ok"
+    assert pd.isna(df.loc[0, "rank_ai_score"])
+    assert df.loc[1, "rank_ai_score"] == 0.61
+    assert df.loc[1, "rank_ai_percentile"] == 0.72
+
+    reread = read_execution_audit_csv(path)
+    assert reread.loc[1, "rank_ai_percentile"] == "0.72"
+
+exec
+/bin/bash -lc 'rg -n "rank_ai" src/logger.py src/main.py src/candidate_cache.py src/settings.py tests/test_rank_ai_gate_impact_report.py tests/test_execution_audit_io.py tests/test_paper_ops_summary_rank_gate.py' in /home/kimyo/trading-bot
+ succeeded in 0ms:
+src/settings.py:50:    rank_ai_weight: float = 0.0
+src/settings.py:136:    rank_ai_buy_gate_enabled: bool = False
+src/settings.py:137:    rank_ai_buy_gate_model_path: str = "logs/ml/rank_label_experiment_h20_top15_q85/rank_models.joblib"
+src/settings.py:138:    rank_ai_buy_gate_prediction_horizon: int = 20
+src/settings.py:139:    rank_ai_buy_gate_top_bucket_pct: float = 0.15
+src/settings.py:140:    rank_ai_buy_gate_min_score_quantile: float = 0.85
+src/settings.py:141:    rank_ai_buy_gate_fail_closed: bool = True
+src/settings.py:283:    if settings.rank_ai_buy_gate_prediction_horizon <= 0:
+src/settings.py:284:        raise ValueError("rank_ai_buy_gate_prediction_horizon must be positive")
+src/settings.py:285:    if not 0 < settings.rank_ai_buy_gate_top_bucket_pct < 1:
+src/settings.py:286:        raise ValueError("rank_ai_buy_gate_top_bucket_pct must be between 0 and 1")
+src/settings.py:287:    if not 0 < settings.rank_ai_buy_gate_min_score_quantile <= 1:
+src/settings.py:288:        raise ValueError("rank_ai_buy_gate_min_score_quantile must be between 0 and 1")
+src/main.py:61:from src.rank_ai_gate import apply_rank_ai_buy_gate, build_rank_ai_gate_scores
+src/main.py:505:        rank_ai_gate_scores = build_rank_ai_gate_scores(
+src/main.py:512:        if rank_ai_gate_scores:
+src/main.py:515:                f"scored {len(rank_ai_gate_scores)} symbols"
+src/main.py:518:        if bool(getattr(settings, "rank_ai_buy_gate_fail_closed", True)):
+src/main.py:521:        rank_ai_gate_scores = {}
+src/main.py:1192:            rank_gate = apply_rank_ai_buy_gate(
+src/main.py:1198:                scores=rank_ai_gate_scores,
+src/main.py:1303:                    rank_ai_score=rank_gate.score,
+src/main.py:1304:                    rank_ai_percentile=rank_gate.percentile,
+src/main.py:1314:                    "rank_ai_score": rank_gate.score,
+src/main.py:1315:                    "rank_ai_percentile": rank_gate.percentile,
+src/main.py:1465:                rank_ai_score=candidate.get("rank_ai_score"),
+src/main.py:1466:                rank_ai_percentile=candidate.get("rank_ai_percentile"),
+src/logger.py:115:    rank_ai_score: float = None,
+src/logger.py:116:    rank_ai_percentile: float = None,
+src/logger.py:147:            "rank_ai_score": _round_or_none(rank_ai_score, 4),
+src/logger.py:148:            "rank_ai_percentile": _round_or_none(rank_ai_percentile, 4),
+tests/test_paper_ops_summary_rank_gate.py:25:def test_paper_ops_summary_includes_rank_ai_gate_block(tmp_path: Path) -> None:
+tests/test_paper_ops_summary_rank_gate.py:26:    rank_path = tmp_path / "rank_ai_gate.json"
+tests/test_paper_ops_summary_rank_gate.py:35:        rank_ai_gate_path=rank_path,
+tests/test_paper_ops_summary_rank_gate.py:38:    assert report["rank_ai_gate_path"] == str(rank_path)
+tests/test_paper_ops_summary_rank_gate.py:39:    rank = report["rank_ai_gate"]
+tests/test_paper_ops_summary_rank_gate.py:48:def test_paper_ops_summary_rank_ai_gate_defaults_when_missing(tmp_path: Path) -> None:
+tests/test_paper_ops_summary_rank_gate.py:55:        rank_ai_gate_path=tmp_path / "missing_rank.json",
+tests/test_paper_ops_summary_rank_gate.py:58:    rank = report["rank_ai_gate"]
+src/candidate_cache.py:41:from src.rank_ai_gate import apply_rank_ai_buy_gate, build_rank_ai_gate_scores
+src/candidate_cache.py:360:        rank_ai_gate_scores = build_rank_ai_gate_scores(
+src/candidate_cache.py:368:        if bool(getattr(settings, "rank_ai_buy_gate_fail_closed", True)):
+src/candidate_cache.py:371:        rank_ai_gate_scores = {}
+src/candidate_cache.py:548:            rank_gate = apply_rank_ai_buy_gate(
+src/candidate_cache.py:554:                scores=rank_ai_gate_scores,
+src/candidate_cache.py:618:                    "rank_ai_score": rank_gate.score,
+src/candidate_cache.py:619:                    "rank_ai_percentile": rank_gate.percentile,
+src/candidate_cache.py:620:                    "rank_ai_gate_enabled": getattr(settings, "rank_ai_buy_gate_enabled", False),
+tests/test_execution_audit_io.py:25:    assert df.loc[0, "rank_ai_score"] is None
+tests/test_execution_audit_io.py:26:    assert df.loc[1, "rank_ai_score"] == "0.61"
+tests/test_execution_audit_io.py:27:    assert df.loc[1, "rank_ai_percentile"] == "0.72"
+tests/test_execution_audit_io.py:57:    assert pd.isna(df.loc[0, "rank_ai_score"])
+tests/test_execution_audit_io.py:74:    assert pd.isna(df.loc[0, "rank_ai_score"])
+tests/test_execution_audit_io.py:75:    assert df.loc[1, "rank_ai_score"] == 0.61
+tests/test_execution_audit_io.py:76:    assert df.loc[1, "rank_ai_percentile"] == 0.72
+tests/test_execution_audit_io.py:79:    assert reread.loc[1, "rank_ai_percentile"] == "0.72"
+tests/test_rank_ai_gate_impact_report.py:6:from src.rank_ai_gate_impact_report import build_rank_ai_gate_impact_report
+tests/test_rank_ai_gate_impact_report.py:25:                "rank_ai_percentile": 0.7,
+tests/test_rank_ai_gate_impact_report.py:26:                "rank_ai_gate_enabled": True,
+tests/test_rank_ai_gate_impact_report.py:33:                "rank_ai_percentile": 0.92,
+tests/test_rank_ai_gate_impact_report.py:34:                "rank_ai_gate_enabled": True,
+tests/test_rank_ai_gate_impact_report.py:42:        "src.rank_ai_gate_impact_report.load_settings",
+tests/test_rank_ai_gate_impact_report.py:44:            rank_ai_buy_gate_enabled=True,
+tests/test_rank_ai_gate_impact_report.py:45:            rank_ai_buy_gate_model_path="logs/ml/rank_label_experiment_h20_top15_q85/rank_models.joblib",
+tests/test_rank_ai_gate_impact_report.py:46:            rank_ai_buy_gate_prediction_horizon=20,
+tests/test_rank_ai_gate_impact_report.py:47:            rank_ai_buy_gate_top_bucket_pct=0.15,
+tests/test_rank_ai_gate_impact_report.py:48:            rank_ai_buy_gate_min_score_quantile=0.85,
+tests/test_rank_ai_gate_impact_report.py:49:            rank_ai_buy_gate_fail_closed=True,
+tests/test_rank_ai_gate_impact_report.py:53:    report = build_rank_ai_gate_impact_report(
+tests/test_rank_ai_gate_impact_report.py:69:        "rank_ai_buy_gate_enabled": True,
+tests/test_rank_ai_gate_impact_report.py:70:        "rank_ai_buy_gate_model_path": "logs/ml/rank_label_experiment_h20_top15_q85/rank_models.joblib",
+tests/test_rank_ai_gate_impact_report.py:71:        "rank_ai_buy_gate_prediction_horizon": 20,
+tests/test_rank_ai_gate_impact_report.py:72:        "rank_ai_buy_gate_top_bucket_pct": 0.15,
+tests/test_rank_ai_gate_impact_report.py:73:        "rank_ai_buy_gate_min_score_quantile": 0.85,
+tests/test_rank_ai_gate_impact_report.py:74:        "rank_ai_buy_gate_fail_closed": True,
+tests/test_rank_ai_gate_impact_report.py:78:        "src.rank_ai_gate_impact_report.load_settings",
+tests/test_rank_ai_gate_impact_report.py:88:    report = build_rank_ai_gate_impact_report(
+tests/test_rank_ai_gate_impact_report.py:112:    report = build_rank_ai_gate_impact_report(
+tests/test_rank_ai_gate_impact_report.py:127:    _mock_gate_settings(monkeypatch, rank_ai_buy_gate_min_score_quantile=0.85)
+tests/test_rank_ai_gate_impact_report.py:136:                "rank_ai_percentile": 0.80,
+tests/test_rank_ai_gate_impact_report.py:137:                "rank_ai_gate_enabled": True,
+tests/test_rank_ai_gate_impact_report.py:144:                "rank_ai_percentile": 0.92,
+tests/test_rank_ai_gate_impact_report.py:145:                "rank_ai_gate_enabled": True,
+tests/test_rank_ai_gate_impact_report.py:152:                "rank_ai_percentile": 0.70,
+tests/test_rank_ai_gate_impact_report.py:153:                "rank_ai_gate_enabled": True,
+tests/test_rank_ai_gate_impact_report.py:160:                "rank_ai_percentile": 0.95,
+tests/test_rank_ai_gate_impact_report.py:161:                "rank_ai_gate_enabled": True,
+tests/test_rank_ai_gate_impact_report.py:166:    report = build_rank_ai_gate_impact_report(
+
+exec
+/bin/bash -lc "sed -n '1,220p' src/daily_audit_summary.py" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+"""Aggregate daily execution audit logs (skips, API errors, stale data)."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from collections import Counter
+from datetime import date, datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+
+from src.config import EXECUTION_AUDIT_LOG_PATH
+from src.execution_audit_io import read_execution_audit_csv
+
+DEFAULT_OUTPUT_DIR = Path("logs/audit_daily")
+
+SKIP_EVENT_TYPES = frozenset({"SKIP_BUY", "SKIP_EXIT"})
+API_ERROR_EVENT_TYPES = frozenset({"BUY_ERROR", "EXIT_ERROR"})
+ORDER_SUBMITTED_EVENT_TYPES = frozenset({"BUY_SUBMITTED", "FULL_EXIT", "PARTIAL_EXIT"})
+
+DAILY_AUDIT_SUMMARY_KEYS = (
+    "generated_at",
+    "row_count",
+    "event_type_counts",
+    "skip_by_event",
+    "skip_reason_counts",
+    "api_error_count",
+    "api_error_samples",
+    "stale_bar_count",
+    "orders_submitted_count",
+    "unique_tickers",
+    "context_skip_counts",
+    "context_skip_rate_of_skips",
+)
+
+SKIP_REASONS_CSV_COLUMNS = ("reason", "count")
+
+CONTEXT_SKIP_BUCKETS = ("earnings", "macro_event", "stale", "other")
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _parse_audit_timestamps(series: pd.Series) -> pd.Series:
+    return pd.to_datetime(series, errors="coerce", utc=True)
+
+
+def load_execution_audit(
+    audit_path: str | Path = EXECUTION_AUDIT_LOG_PATH,
+    *,
+    day: date | None = None,
+    lookback_days: int | None = None,
+) -> pd.DataFrame:
+    path = Path(audit_path)
+    if not path.is_file():
+        return pd.DataFrame()
+
+    try:
+        df = pd.read_csv(path)
+    except pd.errors.ParserError:
+        df = read_execution_audit_csv(path)
+    if df.empty or "timestamp" not in df.columns:
+        return df
+
+    df = df.copy()
+    df["_ts"] = _parse_audit_timestamps(df["timestamp"])
+    df = df.dropna(subset=["_ts"])
+
+    if day is not None:
+        start = pd.Timestamp(day, tz="UTC")
+        end = start + pd.Timedelta(days=1)
+        df = df[(df["_ts"] >= start) & (df["_ts"] < end)]
+    elif lookback_days is not None and lookback_days > 0:
+        cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=lookback_days)
+        df = df[df["_ts"] >= cutoff]
+
+    return df.drop(columns=["_ts"])
+
+
+def _normalize_skip_reason(reason: str) -> str:
+    text = str(reason or "").strip()
+    if not text:
+        return "unknown"
+    lower = text.lower()
+    if "stale" in lower:
+        return "stale_price_data"
+    if "dry_run" in lower or "dry-run" in lower:
+        return "dry_run_only"
+    if "cooldown" in lower:
+        return "cooldown"
+    if "crowding" in lower:
+        return "factor_crowding"
+    if "max orders" in lower:
+        return "max_orders"
+    if "regime" in lower or "bear" in lower:
+        return "regime_or_signal"
+    if "llm" in lower or "reject" in lower:
+        return "llm_or_policy"
+    return text[:80]
+
+
+def _classify_context_skip(reason: str) -> str:
+    lower = str(reason or "").lower()
+    if "earnings" in lower:
+        return "earnings"
+    if "macro event" in lower or "macro_event" in lower:
+        return "macro_event"
+    if "stale" in lower:
+        return "stale"
+    return "other"
+
+
+def aggregate_context_skips(df: pd.DataFrame) -> tuple[dict[str, int], dict[str, float]]:
+    if df is None or df.empty or "event_type" not in df.columns:
+        empty = {bucket: 0 for bucket in CONTEXT_SKIP_BUCKETS}
+        return empty, {bucket: 0.0 for bucket in CONTEXT_SKIP_BUCKETS}
+
+    event_types = df["event_type"].astype(str)
+    reasons = df["reason"].astype(str) if "reason" in df.columns else pd.Series(dtype=str)
+    skip_mask = event_types.isin(SKIP_EVENT_TYPES)
+    skip_reasons = reasons[skip_mask].tolist()
+    counts = Counter(_classify_context_skip(r) for r in skip_reasons)
+    total_skips = max(len(skip_reasons), 1)
+    context_counts = {bucket: int(counts.get(bucket, 0)) for bucket in CONTEXT_SKIP_BUCKETS}
+    context_rates = {
+        bucket: round(context_counts[bucket] / total_skips, 4) for bucket in CONTEXT_SKIP_BUCKETS
+    }
+    return context_counts, context_rates
+
+
+def validate_daily_audit_summary(report: dict[str, Any]) -> dict[str, Any]:
+    for key in DAILY_AUDIT_SUMMARY_KEYS:
+        if key not in report:
+            raise ValueError(f"Missing daily audit summary key: {key}")
+    if not isinstance(report["row_count"], int) or report["row_count"] < 0:
+        raise ValueError("row_count must be a non-negative int")
+    if not isinstance(report["api_error_count"], int) or report["api_error_count"] < 0:
+        raise ValueError("api_error_count must be a non-negative int")
+    for bucket in CONTEXT_SKIP_BUCKETS:
+        if bucket not in report["context_skip_counts"]:
+            raise ValueError(f"Missing context skip bucket: {bucket}")
+    return report
+
+
+def validate_skip_reasons_csv(path: str | Path) -> pd.DataFrame:
+    frame = pd.read_csv(path)
+    missing = [col for col in SKIP_REASONS_CSV_COLUMNS if col not in frame.columns]
+    if missing:
+        raise ValueError(f"skip_reasons CSV missing columns: {missing}")
+    if (frame["count"] < 0).any():
+        raise ValueError("skip_reasons count must be non-negative")
+    return frame
+
+
+def aggregate_execution_audit(df: pd.DataFrame) -> dict[str, Any]:
+    if df is None or df.empty:
+        return {
+            "generated_at": _utc_now_iso(),
+            "row_count": 0,
+            "event_type_counts": {},
+            "skip_by_event": {},
+            "skip_reason_counts": {},
+            "api_error_count": 0,
+            "api_error_samples": [],
+            "stale_bar_count": 0,
+            "orders_submitted_count": 0,
+            "unique_tickers": 0,
+            "context_skip_counts": {bucket: 0 for bucket in CONTEXT_SKIP_BUCKETS},
+            "context_skip_rate_of_skips": {bucket: 0.0 for bucket in CONTEXT_SKIP_BUCKETS},
+        }
+
+    event_types = df["event_type"].astype(str) if "event_type" in df.columns else pd.Series(dtype=str)
+    reasons = df["reason"].astype(str) if "reason" in df.columns else pd.Series(dtype=str)
+
+    skip_mask = event_types.isin(SKIP_EVENT_TYPES)
+    skip_reasons = Counter(
+        _normalize_skip_reason(r) for r in reasons[skip_mask].tolist()
+    )
+    skip_by_event = Counter(event_types[skip_mask].tolist())
+
+    api_mask = event_types.isin(API_ERROR_EVENT_TYPES)
+    api_error_count = int(api_mask.sum())
+
+    stale_mask = reasons.str.contains("stale", case=False, na=False)
+    stale_bar_count = int(stale_mask.sum())
+
+    orders_submitted = int(event_types.isin(ORDER_SUBMITTED_EVENT_TYPES).sum())
+    tickers = df["ticker"].astype(str).nunique() if "ticker" in df.columns else 0
+
+    api_samples = (
+        df.loc[api_mask, ["timestamp", "event_type", "ticker", "reason"]]
+        .head(10)
+        .to_dict(orient="records")
+        if api_mask.any()
+        else []
+    )
+    context_counts, context_rates = aggregate_context_skips(df)
+
+    return {
+        "generated_at": _utc_now_iso(),
+        "row_count": int(len(df)),
+        "event_type_counts": dict(Counter(event_types.tolist())),
+        "skip_by_event": dict(skip_by_event),
+        "skip_reason_counts": dict(skip_reasons.most_common()),
+        "api_error_count": api_error_count,
+        "api_error_samples": api_samples,
+        "stale_bar_count": stale_bar_count,
+        "orders_submitted_count": orders_submitted,
+        "unique_tickers": int(tickers),
+        "context_skip_counts": context_counts,
+        "context_skip_rate_of_skips": context_rates,
+    }
+
+
+def format_daily_audit_report(report: dict[str, Any]) -> str:
+    lines = [
+        "=== Daily Execution Audit Summary ===",
+
+exec
+/bin/bash -lc "sed -n '1160,1325p' src/main.py && echo '---' && sed -n '520,640p' src/candidate_cache.py && echo '---' && sed -n '100,180p' src/logger.py" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+                )
+            ):
+                risk_allowed = False
+                risk_reason = (
+                    f"ai score filter blocked "
+                    f"(score={ai_score}, threshold={settings.ai_score_buy_threshold})"
+                )
+                target_amount = 0.0
+
+            guard = apply_shared_buy_guards(
+                ticker=ticker,
+                position=held_position,
+                settings=settings,
+                risk_allowed=risk_allowed,
+                risk_reason=risk_reason,
+                target_amount=target_amount,
+                ai_score=ai_score,
+                open_symbols=open_symbols,
+                ticker_data=ticker_data,
+                vix_df=vix_df,
+                macro_risk_active=macro_risk_active,
+                macro_risk_reason=macro_risk_reason,
+                margin_leverage_block_active=margin_leverage_block_active,
+                margin_leverage_block_reason=margin_leverage_block_reason,
+                llm_cache_only=llm_cache_only_for_run(execute_orders=execute_orders),
+            )
+            risk_allowed = guard.risk_allowed
+            risk_reason = guard.risk_reason
+            target_amount = guard.target_amount
+            llm_is_ok = guard.llm_is_ok
+            llm_reason = guard.llm_reason
+
+            rank_gate = apply_rank_ai_buy_gate(
+                ticker=ticker,
+                settings=settings,
+                risk_allowed=risk_allowed,
+                risk_reason=risk_reason,
+                target_amount=target_amount,
+                scores=rank_ai_gate_scores,
+            )
+            risk_allowed = rank_gate.risk_allowed
+            risk_reason = rank_gate.risk_reason
+            target_amount = rank_gate.target_amount
+
+            if risk_allowed and held_position is None and llm_is_ok is False:
+                llm_advisory_only = bool(getattr(settings, "llm_advisory_only", True))
+                if llm_advisory_only:
+                    log_execution_audit(
+                        event_type="LLM_ADVISORY",
+                        ticker=ticker,
+                        action="BUY",
+                        status="WOULD_REJECT",
+                        reason=format_audit_reason(llm_reason, ticker),
+                        profile_name=profile_name,
+                        regime=current_regime,
+                        signal=signal,
+                        ai_score=ai_score,
+                        llm_verdict=_format_llm_verdict(llm_is_ok, llm_reason),
+                        notional=target_amount,
+                    )
+
+            order_amount = cap_single_order_amount(
+                target_amount,
+                float(account["portfolio_value"]),
+                settings,
+            )
+
+            if risk_allowed:
+                safety = apply_buy_safety_limits(
+                    ticker=ticker,
+                    order_amount=order_amount,
+                    submitted_notional_today=submitted_notional_today,
+                    recent_buy_symbols=recent_buy_symbols,
+                    portfolio_value=float(account["portfolio_value"]),
+                )
+                risk_allowed = safety.allowed
+                risk_reason = safety.reason if not safety.allowed else risk_reason
+                order_amount = safety.target_amount
+
+            if risk_allowed:
+                exposure = apply_portfolio_exposure_limits(
+                    ticker=ticker,
+                    order_amount=order_amount,
+                    cash=float(cash),
+                    portfolio_value=float(account["portfolio_value"]) * float(getattr(settings, "leverage_factor", 1.0)),
+                    buying_power=float(account.get("buying_power", 0.0)),
+                    current_gross_exposure=current_gross_exposure,
+                    current_position_value=float(held_position["market_value"]) if held_position is not None else 0.0,
+                    cash_buffer_mult=conviction.cash_buffer_mult,
+                )
+                risk_allowed = exposure.allowed
+                risk_reason = exposure.reason if not exposure.allowed else risk_reason
+                order_amount = exposure.target_amount
+
+            if risk_allowed:
+                leverage_cap = apply_effective_leverage_exposure_limits(
+                    ticker=ticker,
+                    order_amount=order_amount,
+                    portfolio_value=float(account["portfolio_value"]),
+                    positions_by_symbol=positions_by_symbol,
+                )
+                risk_allowed = leverage_cap.allowed
+                risk_reason = leverage_cap.reason if not leverage_cap.allowed else risk_reason
+                order_amount = leverage_cap.target_amount
+
+            log_signal(
+                ticker=ticker,
+                signal=signal,
+                close=latest["close"],
+                ma20=latest["ma20"],
+                ma50=latest["ma50"],
+                rsi=latest["rsi"],
+                ai_score=ai_score,
+            )
+
+            print(
+                f"{ticker}: signal={signal}, "
+                f"risk_allowed={risk_allowed}, "
+                f"reason='{risk_reason}', "
+                f"target_amount={target_amount:.2f}, "
+                f"order_amount={order_amount:.2f}, "
+                f"ai_score={ai_score}, "
+                f"close={latest['close']:.2f}, "
+                f"rsi={latest['rsi']:.2f}"
+            )
+
+            buy_summary_rows.append(
+                f"{ticker}: signal={signal}, allowed={risk_allowed}, "
+                f"reason={risk_reason}, order=${order_amount:.2f}, "
+                f"ai_score={ai_score}"
+            )
+            if not risk_allowed:
+                skipped_reasons[f"buy:{risk_reason}"] += 1
+                log_execution_audit(
+                    event_type="SKIP_BUY",
+                    ticker=ticker,
+                    action="BUY",
+                    status="SKIPPED",
+                    reason=format_audit_reason(risk_reason, ticker),
+                    profile_name=profile_name,
+                    regime=current_regime,
+                    signal=signal,
+                    ai_score=ai_score,
+                    rank_ai_score=rank_gate.score,
+                    rank_ai_percentile=rank_gate.percentile,
+                    llm_verdict=_format_llm_verdict(llm_is_ok, llm_reason),
+                    notional=order_amount,
+                )
+
+            if risk_allowed:
+                approved_buys.append({
+                    "ticker": ticker,
+                    "order_amount": order_amount,
+                    "ai_score": ai_score,
+                    "rank_ai_score": rank_gate.score,
+                    "rank_ai_percentile": rank_gate.percentile,
+                    "risk_reason": risk_reason,
+                    "signal": signal,
+                    "llm_verdict": _format_llm_verdict(llm_is_ok, llm_reason),
+                    "limit_price": float(latest["close"]),
+                })
+
+        except Exception as exc:
+            print(f"{ticker}: ERROR - {exc}")
+            buy_summary_rows.append(f"{ticker}: ERROR - {exc}")
+            api_error_count += 1
+---
+                risk_allowed = False
+                reason = (
+                    f"ai score filter blocked "
+                    f"(score={ai_score}, threshold={settings.ai_score_buy_threshold})"
+                )
+                target_amount = 0.0
+
+            guard = apply_shared_buy_guards(
+                ticker=ticker,
+                position=position,
+                settings=settings,
+                risk_allowed=risk_allowed,
+                risk_reason=reason,
+                target_amount=target_amount,
+                ai_score=ai_score,
+                open_symbols=open_symbols,
+                ticker_data=ticker_data,
+                vix_df=vix_df,
+                macro_risk_active=macro_risk_active,
+                macro_risk_reason=macro_risk_reason,
+                margin_leverage_block_active=margin_leverage_block_active,
+                margin_leverage_block_reason=margin_leverage_block_reason,
+                llm_cache_only=llm_cache_only_for_run(execute_orders=False),
+            )
+            risk_allowed = guard.risk_allowed
+            reason = guard.risk_reason
+            target_amount = guard.target_amount
+
+            rank_gate = apply_rank_ai_buy_gate(
+                ticker=ticker,
+                settings=settings,
+                risk_allowed=risk_allowed,
+                risk_reason=reason,
+                target_amount=target_amount,
+                scores=rank_ai_gate_scores,
+            )
+            risk_allowed = rank_gate.risk_allowed
+            reason = rank_gate.risk_reason
+            target_amount = rank_gate.target_amount
+
+            order_amount = cap_single_order_amount(
+                target_amount,
+                float(account["portfolio_value"]),
+                settings,
+            )
+
+            if risk_allowed:
+                safety = apply_buy_safety_limits(
+                    ticker=ticker,
+                    order_amount=order_amount,
+                    submitted_notional_today=simulated_daily_notional,
+                    recent_buy_symbols=recent_buy_symbols,
+                    portfolio_value=float(account["portfolio_value"]),
+                )
+                risk_allowed = safety.allowed
+                reason = safety.reason if not safety.allowed else reason
+                order_amount = safety.target_amount
+
+            if risk_allowed:
+                exposure = apply_portfolio_exposure_limits(
+                    ticker=ticker,
+                    order_amount=order_amount,
+                    cash=cash,
+                    portfolio_value=float(account["portfolio_value"])
+                    * float(getattr(settings, "leverage_factor", 1.0)),
+                    buying_power=float(account.get("buying_power", 0.0)),
+                    current_gross_exposure=current_gross_exposure,
+                    current_position_value=(
+                        float(position["market_value"]) if position is not None else 0.0
+                    ),
+                    cash_buffer_mult=conviction.cash_buffer_mult,
+                )
+                risk_allowed = exposure.allowed
+                reason = exposure.reason if not exposure.allowed else reason
+                order_amount = exposure.target_amount
+
+            execution_label, would_submit = execution_label_for_cache(
+                risk_allowed=risk_allowed,
+                reason=reason,
+                dry_run_orders_count=dry_run_orders_count,
+                max_orders_per_run=int(settings.max_orders_per_run),
+                orders_allowed=bool(clock.orders_allowed),
+            )
+            if would_submit:
+                dry_run_orders_count += 1
+                simulated_daily_notional += order_amount
+
+            buy_rows.append(
+                {
+                    "ticker": ticker,
+                    "signal": signal,
+                    "ai_score": ai_score,
+                    "ai_score_status": ai_score_status,
+                    "ai_score_error": ai_score_error,
+                    "ai_threshold": getattr(settings, "ai_score_buy_threshold", None),
+                    "use_ai_score": getattr(settings, "use_ai_score", False),
+                    "risk_allowed": risk_allowed,
+                    "reason": reason,
+                    "rank_ai_score": rank_gate.score,
+                    "rank_ai_percentile": rank_gate.percentile,
+                    "rank_ai_gate_enabled": getattr(settings, "rank_ai_buy_gate_enabled", False),
+                    "target_amount": target_amount,
+                    "order_amount": order_amount,
+                    "daily_order_used": simulated_daily_notional,
+                    "daily_order_limit": getattr(settings, "max_daily_order_amount", None),
+                    "buy_cooldown_days": getattr(settings, "buy_cooldown_days", None),
+                    "execution_label": execution_label,
+                    "would_submit_if_execute": would_submit,
+                    "close": float(latest["close"]),
+                    "rsi": float(latest["rsi"]),
+                    "ma_fast": float(latest["ma_fast"]),
+                    "ma_slow": float(latest["ma_slow"]),
+                }
+            )
+        except Exception as exc:
+            buy_rows.append({"ticker": ticker, "error": str(exc)})
+
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    meta = {
+        "generated_at": generated_at,
+        "market_is_open": clock.orders_allowed,
+---
+    write_header = not log_file.exists()
+    df.to_csv(log_file, mode="a", header=write_header, index=False)
+
+
+def log_execution_audit(
+    event_type: str,
+    ticker: str,
+    action: str,
+    status: str,
+    reason: str = "",
+    *,
+    profile_name: str = "",
+    regime: str = "",
+    signal: str = "",
+    ai_score: float = None,
+    rank_ai_score: float = None,
+    rank_ai_percentile: float = None,
+    llm_verdict: str = "",
+    order_id: str = "",
+    order_type: str = "",
+    side: str = "",
+    notional: float = None,
+    quantity: float = None,
+    filled_qty: float = None,
+    filled_avg_price: float = None,
+) -> None:
+    log_file = Path(EXECUTION_AUDIT_LOG_PATH)
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+
+    def _round_or_none(value, digits: int):
+        if value is None or value == "" or str(value).lower() in {"none", "null"}:
+            return None
+        return round(float(value), digits)
+
+    row = {column: None for column in EXECUTION_AUDIT_COLUMNS}
+    row.update(
+        {
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "event_type": event_type,
+            "ticker": ticker,
+            "action": action,
+            "status": status,
+            "reason": reason,
+            "profile_name": profile_name,
+            "regime": regime,
+            "signal": signal,
+            "ai_score": _round_or_none(ai_score, 4),
+            "rank_ai_score": _round_or_none(rank_ai_score, 4),
+            "rank_ai_percentile": _round_or_none(rank_ai_percentile, 4),
+            "llm_verdict": llm_verdict,
+            "order_id": order_id,
+            "order_type": order_type,
+            "side": side,
+            "notional": _round_or_none(notional, 2),
+            "quantity": _round_or_none(quantity, 4),
+            "filled_qty": _round_or_none(filled_qty, 4),
+            "filled_avg_price": _round_or_none(filled_avg_price, 4),
+        }
+    )
+
+    if log_file.exists():
+        first_line = log_file.read_text(encoding="utf-8").splitlines()[0]
+        expected = ",".join(EXECUTION_AUDIT_COLUMNS)
+        if first_line.strip() != expected:
+            normalize_execution_audit_file(log_file)
+
+    df = pd.DataFrame([row], columns=list(EXECUTION_AUDIT_COLUMNS))
+    write_header = not log_file.exists()
+    df.to_csv(log_file, mode="a", header=write_header, index=False)
+
+exec
+/bin/bash -lc "sed -n '1,220p' tests/harness/test_rank_gate_report_smoke.py" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+"""Smoke: rank AI gate impact report from tmp fixtures only."""
+
+from pathlib import Path
+
+import pandas as pd
+
+from src.rank_ai_gate_impact_report import build_rank_ai_gate_impact_report
+
+
+def test_rank_gate_report_smoke(tmp_path: Path) -> None:
+    audit_path = tmp_path / "execution_audit.csv"
+    audit_path.write_text(
+        "timestamp,event_type,ticker,action,status,reason\n"
+        "2026-06-01T10:00:00,SKIP_BUY,XYZ,BUY,SKIPPED,rank ai gate blocked (pct=0.500)\n",
+        encoding="utf-8",
+    )
+    buy_path = tmp_path / "latest_buy.csv"
+    pd.DataFrame(
+        [
+            {
+                "ticker": "XYZ",
+                "signal": "BUY",
+                "risk_allowed": False,
+                "reason": "rank ai gate blocked (pct=0.500)",
+                "rank_ai_percentile": 0.5,
+                "rank_ai_gate_enabled": True,
+            }
+        ]
+    ).to_csv(buy_path, index=False)
+
+    report = build_rank_ai_gate_impact_report(
+        audit_path=audit_path,
+        candidate_buy_path=buy_path,
+        lookback_days=90,
+    )
+
+    assert report["execution_audit"]["skip_buy_rank_blocked"] >= 1
+    assert report["candidate_cache"]["available"] is True
+    assert "gate" in report
+    assert isinstance(report["notes"], list)
+
+exec
+/bin/bash -lc "sed -n '1,220p' src/settings.py" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+import json
+from dataclasses import asdict, dataclass, field, fields
+from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+# 경로 설정
+CONFIG_PATH = Path("config/strategy_config.json")
+PROFILES_PATH = Path("config/strategy_profiles.json")
+
+
+class AllocationType(Enum):
+    EQUAL_WEIGHT = "equal_weight"
+    FIXED_WEIGHT = "fixed_weight"
+    RISK_PARITY = "risk_parity"
+
+
+@dataclass
+class StrategyProfile:
+    """개별 전략의 기술적 지표 및 필터 설정"""
+
+    name: str
+    tickers: List[str]
+
+    # 기술적 지표 (MA, RSI 등)
+    ma_fast: int
+    ma_slow: int
+    rsi_buy_limit: float
+
+    # 필터 설정
+    use_ai_score: bool
+    ai_score_buy_threshold: float
+    market_regime_filter_enabled: bool
+    market_regime_ticker: str
+    market_regime_ma_fast: int
+    market_regime_ma_slow: int
+    relative_strength_filter_enabled: bool = False
+    relative_strength_benchmark_ticker: str = "SPY"
+    relative_strength_lookback_days: int = 20
+    relative_strength_min_excess_return: float = 0.0
+    volume_filter_enabled: bool = False
+    volume_lookback_days: int = 20
+    min_volume_ratio: float = 1.0
+    volatility_filter_enabled: bool = False
+    volatility_lookback_days: int = 20
+    max_volatility: float = 0.04
+
+    # 랭킹 가중치
+    rank_trend_weight: float = 1.0
+    rank_ai_weight: float = 0.0
+    rank_momentum_weight: float = 0.0
+    rank_volatility_weight: float = 0.0
+
+
+@dataclass
+class StrategySettings(StrategyProfile):
+    """Legacy single-strategy settings used by backtests and tests."""
+
+    name: str = "default"
+    tickers: List[str] = field(default_factory=lambda: ["NVDA", "MSFT", "GOOGL", "AMZN", "AMD"])
+    ma_fast: int = 10
+    ma_slow: int = 50
+    rsi_buy_limit: float = 65.0
+    use_ai_score: bool = False
+    ai_score_buy_threshold: float = 0.55
+    market_regime_filter_enabled: bool = False
+    market_regime_ticker: str = "SPY"
+    market_regime_ma_fast: int = 50
+    market_regime_ma_slow: int = 200
+
+    max_position_pct: float = 0.4
+    max_total_positions: int = 2
+    max_sector_positions: int = 2
+    stop_loss_pct: float = 0.05
+    take_profit_pct: float = 0.1
+    max_test_order_amount: float = 10.0  # legacy $ cap; 0 = disabled (use max_single_order_pct)
+    max_single_order_pct: float = 1.0  # max one order as fraction of portfolio (1.0 = no pct cap)
+    max_daily_order_pct: float = 0.0  # >0: daily buy budget as portfolio fraction; else max_daily_order_amount
+    conviction_sizing_enabled: bool = False
+    conviction_ai_score_strong: float = 0.65  # AI score at/above → max conviction boost
+    conviction_position_mult_max: float = 1.25  # scale target position size up to this multiplier
+    conviction_cash_buffer_mult_min: float = 0.4  # at max conviction, min_cash_buffer_pct *= this
+    max_orders_per_run: int = 1
+    max_daily_order_amount: float = 1000.0
+    buy_cooldown_days: int = 1
+    allocation_method: str = "equal_weight"
+    ai_exit_enabled: bool = False
+    ai_exit_threshold: float = 0.30
+    ai_exit_dynamic_enabled: bool = False
+    ai_exit_vix_low: float = 15.0
+    ai_exit_vix_high: float = 25.0
+    ai_exit_threshold_bull: float = 0.22
+    ai_exit_threshold_bear: float = 0.50
+    news_sentiment_enabled: bool = False
+    news_sentiment_threshold: float = -0.30
+    max_portfolio_drawdown_pct: float = 0.15
+    max_holding_days: int = 30
+    correlation_guard_enabled: bool = False
+    max_correlation_threshold: float = 0.85
+    max_portfolio_avg_correlation_threshold: float = 0.70
+    correlation_lookback_days: int = 60
+    earnings_filter_enabled: bool = False
+    earnings_lookback_days: int = 3
+    earnings_lookforward_days: int = 1
+    take_profit_partial_pct: float = 0.0
+    partial_exit_ratio: float = 0.5
+    leverage_factor: float = 1.0
+    max_gross_exposure_pct: float = 1.0
+    min_cash_buffer_pct: float = 0.05
+    max_single_name_loss_pct: float = 0.02
+    crowding_guard_enabled: bool = False
+    crowding_lookback_days: int = 60
+    crowding_max_positions: int = 2
+    crowding_momentum_threshold: float = 0.15
+    crowding_trend_gap_threshold: float = 0.05
+    dynamic_universe_enabled: bool = False
+    dynamic_count: int = 50
+    allow_leveraged_etfs: bool = False
+    max_leveraged_etf_positions: int = 1
+    max_effective_leverage_exposure_pct: float = 1.25
+    block_leveraged_etfs_vix_above: float = 28.0
+    margin_leverage_paper_enabled: bool = False
+    margin_leverage_stress_gate_required: bool = True
+    trailing_stop_pct: float = 0.05
+    adaptive_trailing_stop_enabled: bool = False
+    atr_multiplier: float = 3.0
+    rebalance_threshold_pct: float = 0.20
+    sector_rotation_enabled: bool = False
+    macro_event_risk_enabled: bool = False
+    macro_event_lookahead_days: int = 2
+    macro_event_lookback_days: int = 1
+    llm_degraded_mode: str = "PASS"  # "PASS" or "FAIL"
+    llm_cache_enabled: bool = True
+    llm_advisory_only: bool = False  # False: block on LLM REJECT; True: advisory-only log
+    dust_position_min_usd: float = 5.0  # below this market value: dust cleanup / ignore for adds
+    rank_ai_buy_gate_enabled: bool = False
+    rank_ai_buy_gate_model_path: str = "logs/ml/rank_label_experiment_h20_top15_q85/rank_models.joblib"
+    rank_ai_buy_gate_prediction_horizon: int = 20
+    rank_ai_buy_gate_top_bucket_pct: float = 0.15
+    rank_ai_buy_gate_min_score_quantile: float = 0.85
+    rank_ai_buy_gate_fail_closed: bool = True
+    broker_provider: str = "alpaca"  # alpaca | toss (future)
+    extended_hours_enabled: bool = True
+    enabled_trading_sessions: List[str] = field(
+        default_factory=lambda: [
+            "regular",
+            "pre_market",
+            "after_hours",
+            "overnight",
+        ]
+    )
+    extended_hours_limit_slippage_pct: float = 0.005
+    day_market_start_kst: str = "10:00"
+    day_market_end_kst: str = "18:00"
+
+
+_STRATEGY_SETTINGS_FIELD_NAMES = {item.name for item in fields(StrategySettings)}
+_PROFILE_OVERRIDE_FIELD_NAMES = _STRATEGY_SETTINGS_FIELD_NAMES - {"name", "tickers"}
+_PROFILES_CONFIG_FIELD_NAMES = {"profiles", "regime_mapping", "manual_override"}
+
+
+DEFAULT_SETTINGS = StrategySettings()
+
+
+def _read_json_object(path: Path) -> Dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON in {path}: {exc}") from exc
+
+    if not isinstance(payload, dict):
+        raise ValueError(f"{path} must contain a top-level JSON object")
+
+    return payload
+
+
+def _validate_strategy_settings_payload(payload: Dict[str, Any], path: Path) -> Dict[str, Any]:
+    unknown_keys = sorted(set(payload) - _STRATEGY_SETTINGS_FIELD_NAMES)
+    if unknown_keys:
+        raise ValueError(f"Unknown keys in {path}: {unknown_keys}")
+
+    tickers = payload.get("tickers")
+    if tickers is not None and (
+        not isinstance(tickers, list) or any(not isinstance(ticker, str) for ticker in tickers)
+    ):
+        raise ValueError(f"{path}: 'tickers' must be a list of strings")
+
+    market_regime_ticker = payload.get("market_regime_ticker")
+    if market_regime_ticker is not None and not isinstance(market_regime_ticker, str):
+        raise ValueError(f"{path}: 'market_regime_ticker' must be a string")
+
+    return payload
+
+
+def _validate_profiles_payload(payload: Dict[str, Any], path: Path) -> Dict[str, Any]:
+    unknown_keys = sorted(set(payload) - _PROFILES_CONFIG_FIELD_NAMES)
+    if unknown_keys:
+        raise ValueError(f"Unknown keys in {path}: {unknown_keys}")
+
+    profiles = payload.get("profiles")
+    if not isinstance(profiles, dict) or not profiles:
+        raise ValueError(f"{path}: 'profiles' must be a non-empty object")
+
+    for profile_name, overrides in profiles.items():
+        if not isinstance(profile_name, str) or not profile_name.strip():
+            raise ValueError(f"{path}: profile names must be non-empty strings")
+        if not isinstance(overrides, dict):
+            raise ValueError(f"{path}: profile '{profile_name}' must be an object")
+        override_unknown = sorted(set(overrides) - _PROFILE_OVERRIDE_FIELD_NAMES)
+        if override_unknown:
+            raise ValueError(
+                f"{path}: profile '{profile_name}' has unknown keys: {override_unknown}"
+            )
+
+    regime_mapping = payload.get("regime_mapping")
+    if not isinstance(regime_mapping, dict) or not regime_mapping:
+        raise ValueError(f"{path}: 'regime_mapping' must be a non-empty object")
+    for regime, profile_name in regime_mapping.items():
+        if not isinstance(regime, str) or not regime.strip():
+            raise ValueError(f"{path}: regime keys must be non-empty strings")
+
+exec
+/bin/bash -lc "sed -n '1,260p' tests/test_rank_ai_gate.py" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+from types import SimpleNamespace
+
+from src.rank_ai_gate import RankAIGateScore, apply_rank_ai_buy_gate
+
+
+def _settings(**overrides):
+    values = {
+        "rank_ai_buy_gate_enabled": True,
+        "rank_ai_buy_gate_min_score_quantile": 0.85,
+        "rank_ai_buy_gate_fail_closed": True,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def test_apply_rank_ai_buy_gate_blocks_below_cutoff():
+    decision = apply_rank_ai_buy_gate(
+        ticker="AAPL",
+        settings=_settings(),
+        risk_allowed=True,
+        risk_reason="ok",
+        target_amount=1000.0,
+        scores={
+            "AAPL": RankAIGateScore(
+                ticker="AAPL",
+                score=0.61,
+                percentile=0.80,
+                allowed=False,
+                reason="rank ai gate blocked (pct=0.800, cutoff=0.850)",
+            )
+        },
+    )
+
+    assert not decision.risk_allowed
+    assert decision.target_amount == 0.0
+    assert "rank ai gate blocked" in decision.risk_reason
+    assert decision.percentile == 0.80
+
+
+def test_apply_rank_ai_buy_gate_allows_above_cutoff():
+    decision = apply_rank_ai_buy_gate(
+        ticker="MSFT",
+        settings=_settings(),
+        risk_allowed=True,
+        risk_reason="risk passed",
+        target_amount=1200.0,
+        scores={
+            "MSFT": RankAIGateScore(
+                ticker="MSFT",
+                score=0.72,
+                percentile=0.90,
+                allowed=True,
+                reason="rank ai gate passed (pct=0.900, cutoff=0.850)",
+            )
+        },
+    )
+
+    assert decision.risk_allowed
+    assert "risk passed" in decision.risk_reason
+    assert "rank ai gate passed" in decision.risk_reason
+    assert decision.target_amount == 1200.0
+    assert decision.score == 0.72
+
+
+def test_apply_rank_ai_buy_gate_missing_score_fails_closed():
+    decision = apply_rank_ai_buy_gate(
+        ticker="NVDA",
+        settings=_settings(),
+        risk_allowed=True,
+        risk_reason="risk passed",
+        target_amount=1200.0,
+        scores={},
+    )
+
+    assert not decision.risk_allowed
+    assert decision.target_amount == 0.0
+    assert "missing score" in decision.risk_reason
+
+exec
+/bin/bash -lc "rg -n 'risk_allowed' tests src | head -40" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+src/buy_guards.py:22:    risk_allowed: bool
+src/buy_guards.py:47:    risk_allowed: bool,
+src/buy_guards.py:64:    if not risk_allowed or position is not None:
+src/buy_guards.py:65:        return BuyGuardResult(risk_allowed, risk_reason, target_amount, llm_is_ok, llm_reason)
+src/buy_guards.py:161:        return BuyGuardResult(risk_allowed, risk_reason, target_amount, None, "")
+src/buy_guards.py:178:    return BuyGuardResult(risk_allowed, risk_reason, target_amount, llm_is_ok, llm_reason)
+src/buy_guards.py:183:    risk_allowed: bool,
+src/buy_guards.py:190:    if risk_allowed:
+src/cms_helpers.py:184:        for col in ["would_submit_if_execute", "risk_allowed", "ai_score"]
+tests/test_rank_ai_gate_impact_report.py:23:                "risk_allowed": False,
+tests/test_rank_ai_gate_impact_report.py:31:                "risk_allowed": True,
+tests/test_rank_ai_gate_impact_report.py:126:def test_rank_gate_impact_cache_risk_allowed_and_percentile_cutoff(tmp_path, monkeypatch):
+tests/test_rank_ai_gate_impact_report.py:134:                "risk_allowed": True,
+tests/test_rank_ai_gate_impact_report.py:142:                "risk_allowed": True,
+tests/test_rank_ai_gate_impact_report.py:150:                "risk_allowed": False,
+tests/test_rank_ai_gate_impact_report.py:158:                "risk_allowed": False,
+src/rank_ai_gate_impact_report.py:87:    risk_allowed = df.get("risk_allowed", False)
+src/rank_ai_gate_impact_report.py:88:    if risk_allowed.dtype == object:
+src/rank_ai_gate_impact_report.py:89:        risk_allowed = risk_allowed.astype(str).str.lower().isin({"true", "1", "yes"})
+src/rank_ai_gate_impact_report.py:94:    rank_passed = risk_allowed & pct.notna() & (pct >= min_score_quantile)
+src/rank_ai_gate_impact_report.py:104:        "risk_allowed_rows": int(risk_allowed.sum()),
+src/rank_ai_gate.py:26:    risk_allowed: bool
+src/rank_ai_gate.py:175:    risk_allowed: bool,
+src/rank_ai_gate.py:180:    if not _rank_gate_enabled(settings) or not risk_allowed:
+src/rank_ai_gate.py:181:        return RankAIGateDecision(risk_allowed, risk_reason, target_amount)
+src/rank_ai_gate.py:192:        return RankAIGateDecision(risk_allowed, risk_reason, target_amount)
+src/candidate_cache.py:493:                risk_allowed = risk.allowed
+src/candidate_cache.py:506:                risk_allowed = risk.allowed
+src/candidate_cache.py:513:                risk_allowed
+src/candidate_cache.py:520:                risk_allowed = False
+src/candidate_cache.py:531:                risk_allowed=risk_allowed,
+src/candidate_cache.py:544:            risk_allowed = guard.risk_allowed
+src/candidate_cache.py:551:                risk_allowed=risk_allowed,
+src/candidate_cache.py:556:            risk_allowed = rank_gate.risk_allowed
+src/candidate_cache.py:566:            if risk_allowed:
+src/candidate_cache.py:574:                risk_allowed = safety.allowed
+src/candidate_cache.py:578:            if risk_allowed:
+src/candidate_cache.py:592:                risk_allowed = exposure.allowed
+src/candidate_cache.py:597:                risk_allowed=risk_allowed,
+src/candidate_cache.py:616:                    "risk_allowed": risk_allowed,
+
+exec
+/bin/bash -lc "nl -ba src/rank_ai_gate_impact_report.py | sed -n '76,102p'" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+    76	            "path": str(buy_path),
+    77	            "rows": 0,
+    78	        }
+    79	
+    80	    df = pd.read_csv(buy_path)
+    81	    if df.empty:
+    82	        return {"available": True, "path": str(buy_path), "rows": 0}
+    83	
+    84	    df = df.copy()
+    85	    df["ticker"] = df.get("ticker", "").astype(str).str.upper()
+    86	    reasons = df.get("reason", pd.Series(dtype=str)).astype(str)
+    87	    risk_allowed = df.get("risk_allowed", False)
+    88	    if risk_allowed.dtype == object:
+    89	        risk_allowed = risk_allowed.astype(str).str.lower().isin({"true", "1", "yes"})
+    90	
+    91	    rank_enabled = bool(df.get("rank_ai_gate_enabled", pd.Series([False])).iloc[0])
+    92	    pct = pd.to_numeric(df.get("rank_ai_percentile"), errors="coerce")
+    93	    rank_blocked = reasons.str.contains(_RANK_BLOCKED_RE, na=False)
+    94	    rank_passed = risk_allowed & pct.notna() & (pct >= min_score_quantile)
+    95	
+    96	    signal_buy = df.get("signal", pd.Series(dtype=str)).astype(str).str.upper() == "BUY"
+    97	
+    98	    return {
+    99	        "available": True,
+   100	        "path": str(buy_path),
+   101	        "rows": int(len(df)),
+   102	        "rank_ai_gate_enabled": rank_enabled,
+
+exec
+/bin/bash -lc "nl -ba src/logger.py | sed -n '136,172p'" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+   136	        {
+   137	            "timestamp": datetime.now().isoformat(timespec="seconds"),
+   138	            "event_type": event_type,
+   139	            "ticker": ticker,
+   140	            "action": action,
+   141	            "status": status,
+   142	            "reason": reason,
+   143	            "profile_name": profile_name,
+   144	            "regime": regime,
+   145	            "signal": signal,
+   146	            "ai_score": _round_or_none(ai_score, 4),
+   147	            "rank_ai_score": _round_or_none(rank_ai_score, 4),
+   148	            "rank_ai_percentile": _round_or_none(rank_ai_percentile, 4),
+   149	            "llm_verdict": llm_verdict,
+   150	            "order_id": order_id,
+   151	            "order_type": order_type,
+   152	            "side": side,
+   153	            "notional": _round_or_none(notional, 2),
+   154	            "quantity": _round_or_none(quantity, 4),
+   155	            "filled_qty": _round_or_none(filled_qty, 4),
+   156	            "filled_avg_price": _round_or_none(filled_avg_price, 4),
+   157	        }
+   158	    )
+   159	
+   160	    if log_file.exists():
+   161	        first_line = log_file.read_text(encoding="utf-8").splitlines()[0]
+   162	        expected = ",".join(EXECUTION_AUDIT_COLUMNS)
+   163	        if first_line.strip() != expected:
+   164	            normalize_execution_audit_file(log_file)
+   165	
+   166	    df = pd.DataFrame([row], columns=list(EXECUTION_AUDIT_COLUMNS))
+   167	    write_header = not log_file.exists()
+   168	    df.to_csv(log_file, mode="a", header=write_header, index=False)
+
+exec
+/bin/bash -lc "git diff --unified=20 -- src/logger.py | sed -n '1,240p'" in /home/kimyo/trading-bot
+ succeeded in 0ms:
+diff --git a/src/logger.py b/src/logger.py
+index 71c12fc..230ec67 100644
+--- a/src/logger.py
++++ b/src/logger.py
+@@ -1,26 +1,30 @@
+ from pathlib import Path
+ from datetime import datetime
+ 
+ import pandas as pd
+ 
+ from src.config import SIGNAL_LOG_PATH, ORDER_LOG_PATH, EXECUTION_AUDIT_LOG_PATH
++from src.execution_audit_io import (
++    EXECUTION_AUDIT_COLUMNS,
++    normalize_execution_audit_file,
++)
+ 
+ 
+ def log_signal(
+     ticker: str,
+     signal: str,
+     close: float,
+     ma20: float,
+     ma50: float,
+     rsi: float,
+     ai_score: float = None,
+ ) -> None:
+     log_file = Path(SIGNAL_LOG_PATH)
+     log_file.parent.mkdir(parents=True, exist_ok=True)
+ 
+     row = {
+         "timestamp": datetime.now().isoformat(timespec="seconds"),
+         "ticker": ticker,
+         "signal": signal,
+         "ai_score": round(float(ai_score), 4) if ai_score is not None else None,
+         "close": round(float(close), 4),
+@@ -91,61 +95,74 @@ def log_order_status(
+         "filled_avg_price": filled_avg_price,
+         "event": "STATUS_CHECK",
+     }
+ 
+     df = pd.DataFrame([row])
+     write_header = not log_file.exists()
+     df.to_csv(log_file, mode="a", header=write_header, index=False)
+ 
+ 
+ def log_execution_audit(
+     event_type: str,
+     ticker: str,
+     action: str,
+     status: str,
+     reason: str = "",
+     *,
+     profile_name: str = "",
+     regime: str = "",
+     signal: str = "",
+     ai_score: float = None,
++    rank_ai_score: float = None,
++    rank_ai_percentile: float = None,
+     llm_verdict: str = "",
+     order_id: str = "",
+     order_type: str = "",
+     side: str = "",
+     notional: float = None,
+     quantity: float = None,
+     filled_qty: float = None,
+     filled_avg_price: float = None,
+ ) -> None:
+     log_file = Path(EXECUTION_AUDIT_LOG_PATH)
+     log_file.parent.mkdir(parents=True, exist_ok=True)
+ 
+     def _round_or_none(value, digits: int):
+         if value is None or value == "" or str(value).lower() in {"none", "null"}:
+             return None
+         return round(float(value), digits)
+ 
+-    row = {
+-        "timestamp": datetime.now().isoformat(timespec="seconds"),
+-        "event_type": event_type,
+-        "ticker": ticker,
+-        "action": action,
+-        "status": status,
+-        "reason": reason,
+-        "profile_name": profile_name,
+-        "regime": regime,
+-        "signal": signal,
+-        "ai_score": _round_or_none(ai_score, 4),
+-        "llm_verdict": llm_verdict,
+-        "order_id": order_id,
+-        "order_type": order_type,
+-        "side": side,
+-        "notional": _round_or_none(notional, 2),
+-        "quantity": _round_or_none(quantity, 4),
+-        "filled_qty": _round_or_none(filled_qty, 4),
+-        "filled_avg_price": _round_or_none(filled_avg_price, 4),
+-    }
+-
+-    df = pd.DataFrame([row])
++    row = {column: None for column in EXECUTION_AUDIT_COLUMNS}
++    row.update(
++        {
++            "timestamp": datetime.now().isoformat(timespec="seconds"),
++            "event_type": event_type,
++            "ticker": ticker,
++            "action": action,
++            "status": status,
++            "reason": reason,
++            "profile_name": profile_name,
++            "regime": regime,
++            "signal": signal,
++            "ai_score": _round_or_none(ai_score, 4),
++            "rank_ai_score": _round_or_none(rank_ai_score, 4),
++            "rank_ai_percentile": _round_or_none(rank_ai_percentile, 4),
++            "llm_verdict": llm_verdict,
++            "order_id": order_id,
++            "order_type": order_type,
++            "side": side,
++            "notional": _round_or_none(notional, 2),
++            "quantity": _round_or_none(quantity, 4),
++            "filled_qty": _round_or_none(filled_qty, 4),
++            "filled_avg_price": _round_or_none(filled_avg_price, 4),
++        }
++    )
++
++    if log_file.exists():
++        first_line = log_file.read_text(encoding="utf-8").splitlines()[0]
++        expected = ",".join(EXECUTION_AUDIT_COLUMNS)
++        if first_line.strip() != expected:
++            normalize_execution_audit_file(log_file)
++
++    df = pd.DataFrame([row], columns=list(EXECUTION_AUDIT_COLUMNS))
+     write_header = not log_file.exists()
+     df.to_csv(log_file, mode="a", header=write_header, index=False)
+
+codex
+The patch adds useful rank-gate reporting, but it has a few compatibility and robustness regressions: the new report can crash on older candidate-cache files, it can misreport gate enablement from CSV strings, and audit logging now fails if the log file exists but is empty.
+
+Full review comments:
+
+- [P2] Handle candidate caches that predate the `risk_allowed` column — /home/kimyo/trading-bot/src/rank_ai_gate_impact_report.py:87-89
+  `_candidate_cache_stats` assumes `df.get("risk_allowed", False)` returns a Series, but on older `latest_buy.csv` files it returns the scalar `False`, so the next line raises on `risk_allowed.dtype`. In the common compatibility scenario where someone runs this report against a cache produced before the new column existed, the entire rank-gate report crashes instead of returning zeros.
+
+- [P2] Parse `rank_ai_gate_enabled` values instead of truthifying strings — /home/kimyo/trading-bot/src/rank_ai_gate_impact_report.py:91-91
+  `bool(df.get("rank_ai_gate_enabled", ...).iloc[0])` treats any non-empty string as `True`, so a CSV row containing the text `False` or `false` is reported as gate-enabled. This makes the paper-ops/rank-gate summaries inaccurate for caches read back from CSV when pandas does not infer a boolean dtype for that column.
+
+- [P2] Avoid indexing the first line of an empty audit file — /home/kimyo/trading-bot/src/logger.py:160-161
+  The new schema-normalization path unconditionally reads `splitlines()[0]` whenever `execution_audit.csv` exists. If the file has been created but is still empty (for example after truncation/rotation or a pre-created artifact in CI), the first audit append now fails with `IndexError` before any row is written.

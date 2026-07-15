@@ -1,0 +1,1 @@
+The patch only updates documentation, tracked artifact policy, and operational defaults to reflect the already-decided paper-trading posture. I did not find a discrete functional regression or maintainability issue that would likely merit a follow-up fix.
