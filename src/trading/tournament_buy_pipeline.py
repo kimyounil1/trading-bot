@@ -375,6 +375,8 @@ def run_tournament_buy_pipeline(ctx: TradingRunContext) -> None:
                 regime=ctx.current_regime,
                 signal=entry_signal,
                 ai_score=ai_score,
+                rank_ai_score=rank_score,
+                rank_ai_percentile=rank_percentile,
                 order_id=submission.order_id,
                 notional=order_amount,
                 order_intent_id=buy_intent.intent_id,
