@@ -51,6 +51,7 @@ logs/ml/*
 !logs/llm_advisory/latest_summary.json
 !logs/llm_advisory/precision.json
 !logs/rank_gate/
+!logs/guard_gates/
 !logs/guard_impact/
 !logs/guard_impact/latest_summary.json
 !logs/crowding_paper/
