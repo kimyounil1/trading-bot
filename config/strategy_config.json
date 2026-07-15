@@ -139,7 +139,7 @@
   "ai_score_calibration_bins_path": "logs/ml/model_calibration_bins.csv",
   "max_position_pct": 0.15,
   "max_total_positions": 12,
-  "max_sector_positions": 2,
+  "max_sector_positions": 4,
   "stop_loss_pct": 0.1,
   "take_profit_pct": 0.2,
   "max_test_order_amount": 0.0,

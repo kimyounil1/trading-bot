@@ -1,0 +1,111 @@
+{
+  "generated_at": "2026-07-15T08:57:31Z",
+  "scenario_set": "rank_cutoff",
+  "evaluation_start": "2026-01-02",
+  "evaluation_end": "2026-07-13",
+  "selection_end": "2026-05-01",
+  "forward_start": "2026-05-04",
+  "initial_cash": 10000.0,
+  "scenarios": [
+    {
+      "scenario": "1_baseline_top15",
+      "overrides": {},
+      "full_return_pct": 60.013,
+      "full_benchmark_pct": 15.724,
+      "full_mdd_pct": -13.62,
+      "full_sharpe": 2.506,
+      "trades": 569,
+      "win_rate_pct": 50.4,
+      "selection": {
+        "return_pct": 35.959,
+        "mdd_pct": -13.62,
+        "sharpe": 2.659,
+        "trading_days": 83
+      },
+      "forward": {
+        "return_pct": 17.668,
+        "mdd_pct": -10.853,
+        "sharpe": 2.243,
+        "trading_days": 48
+      }
+    },
+    {
+      "scenario": "2_top10",
+      "overrides": {
+        "rank_ai_buy_gate_top_bucket_pct": 0.1
+      },
+      "full_return_pct": 60.013,
+      "full_benchmark_pct": 15.724,
+      "full_mdd_pct": -13.62,
+      "full_sharpe": 2.506,
+      "trades": 569,
+      "win_rate_pct": 50.4,
+      "selection": {
+        "return_pct": 35.959,
+        "mdd_pct": -13.62,
+        "sharpe": 2.659,
+        "trading_days": 83
+      },
+      "forward": {
+        "return_pct": 17.668,
+        "mdd_pct": -10.853,
+        "sharpe": 2.243,
+        "trading_days": 48
+      }
+    },
+    {
+      "scenario": "3_top20",
+      "overrides": {
+        "rank_ai_buy_gate_top_bucket_pct": 0.2
+      },
+      "full_return_pct": 60.013,
+      "full_benchmark_pct": 15.724,
+      "full_mdd_pct": -13.62,
+      "full_sharpe": 2.506,
+      "trades": 569,
+      "win_rate_pct": 50.4,
+      "selection": {
+        "return_pct": 35.959,
+        "mdd_pct": -13.62,
+        "sharpe": 2.659,
+        "trading_days": 83
+      },
+      "forward": {
+        "return_pct": 17.668,
+        "mdd_pct": -10.853,
+        "sharpe": 2.243,
+        "trading_days": 48
+      }
+    },
+    {
+      "scenario": "4_top30",
+      "overrides": {
+        "rank_ai_buy_gate_top_bucket_pct": 0.3
+      },
+      "full_return_pct": 60.013,
+      "full_benchmark_pct": 15.724,
+      "full_mdd_pct": -13.62,
+      "full_sharpe": 2.506,
+      "trades": 569,
+      "win_rate_pct": 50.4,
+      "selection": {
+        "return_pct": 35.959,
+        "mdd_pct": -13.62,
+        "sharpe": 2.659,
+        "trading_days": 83
+      },
+      "forward": {
+        "return_pct": 17.668,
+        "mdd_pct": -10.853,
+        "sharpe": 2.243,
+        "trading_days": 48
+      }
+    }
+  ],
+  "notes": [
+    "Sleeved paper-aligned backtest (rank-primary); config on disk untouched.",
+    "Judge on the forward window first; selection window overlaps model selection history.",
+    "LLM gate is NOT replayed (no leak-free historical verdicts) — live counterfactual covers it.",
+    "Adoption gated on TODO.md forward-parity rule (20 trading days / 30 buy plans)."
+  ]
+}
