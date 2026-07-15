@@ -50,6 +50,7 @@ logs/ml/*
 !logs/llm_advisory/
 !logs/llm_advisory/latest_summary.json
 !logs/llm_advisory/precision.json
+!logs/rank_gate/
 !logs/guard_impact/
 !logs/guard_impact/latest_summary.json
 !logs/crowding_paper/
@@ -81,3 +82,4 @@ logs/candidate_cache/
 logs/trades.csv
 logs/orders.csv
 logs/dashboard.log
+.envrc
