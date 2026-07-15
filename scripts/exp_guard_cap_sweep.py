@@ -55,6 +55,17 @@ SCENARIO_SETS: dict[str, list[tuple[str, dict[str, Any]]]] = {
         ("3_top20", {"rank_ai_buy_gate_top_bucket_pct": 0.20}),
         ("4_top30", {"rank_ai_buy_gate_top_bucket_pct": 0.30}),
     ],
+    # Crowding redesign: binary block stays, but vary the cap and what counts
+    # as "crowded" (bull markets put nearly every holding ≥5% above MA50, so
+    # the trend leg saturates and the guard becomes a momentum-entry ban).
+    "crowding": [
+        ("1_baseline_crowd3_m15_g05", {}),
+        ("2_crowd_max4", {"crowding_max_positions": 4}),
+        ("3_crowd_max5", {"crowding_max_positions": 5}),
+        ("4_trend_gap10", {"crowding_trend_gap_threshold": 0.10}),
+        ("5_momentum_leg_only", {"crowding_trend_gap_threshold": 9.9}),
+        ("6_tight_def_m25_g10", {"crowding_momentum_threshold": 0.25, "crowding_trend_gap_threshold": 0.10}),
+    ],
 }
 
 

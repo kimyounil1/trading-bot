@@ -1,0 +1,160 @@
+{
+  "generated_at": "2026-07-15T09:31:26Z",
+  "scenario_set": "crowding",
+  "evaluation_start": "2026-01-02",
+  "evaluation_end": "2026-07-13",
+  "selection_end": "2026-05-01",
+  "forward_start": "2026-05-04",
+  "initial_cash": 10000.0,
+  "scenarios": [
+    {
+      "scenario": "1_baseline_crowd3_m15_g05",
+      "overrides": {},
+      "full_return_pct": 69.456,
+      "full_benchmark_pct": 15.724,
+      "full_mdd_pct": -10.94,
+      "full_sharpe": 2.775,
+      "trades": 536,
+      "win_rate_pct": 49.1,
+      "selection": {
+        "return_pct": 43.471,
+        "mdd_pct": -10.348,
+        "sharpe": 3.053,
+        "trading_days": 83
+      },
+      "forward": {
+        "return_pct": 18.05,
+        "mdd_pct": -10.94,
+        "sharpe": 2.298,
+        "trading_days": 48
+      }
+    },
+    {
+      "scenario": "2_crowd_max4",
+      "overrides": {
+        "crowding_max_positions": 4
+      },
+      "full_return_pct": 58.101,
+      "full_benchmark_pct": 15.724,
+      "full_mdd_pct": -15.184,
+      "full_sharpe": 2.371,
+      "trades": 546,
+      "win_rate_pct": 47.1,
+      "selection": {
+        "return_pct": 32.046,
+        "mdd_pct": -15.184,
+        "sharpe": 2.339,
+        "trading_days": 83
+      },
+      "forward": {
+        "return_pct": 19.657,
+        "mdd_pct": -11.348,
+        "sharpe": 2.39,
+        "trading_days": 48
+      }
+    },
+    {
+      "scenario": "3_crowd_max5",
+      "overrides": {
+        "crowding_max_positions": 5
+      },
+      "full_return_pct": 59.784,
+      "full_benchmark_pct": 15.724,
+      "full_mdd_pct": -15.889,
+      "full_sharpe": 2.398,
+      "trades": 548,
+      "win_rate_pct": 47.3,
+      "selection": {
+        "return_pct": 32.259,
+        "mdd_pct": -15.889,
+        "sharpe": 2.339,
+        "trading_days": 83
+      },
+      "forward": {
+        "return_pct": 20.553,
+        "mdd_pct": -10.854,
+        "sharpe": 2.44,
+        "trading_days": 48
+      }
+    },
+    {
+      "scenario": "4_trend_gap10",
+      "overrides": {
+        "crowding_trend_gap_threshold": 0.1
+      },
+      "full_return_pct": 61.726,
+      "full_benchmark_pct": 15.724,
+      "full_mdd_pct": -13.878,
+      "full_sharpe": 2.468,
+      "trades": 535,
+      "win_rate_pct": 48.2,
+      "selection": {
+        "return_pct": 36.28,
+        "mdd_pct": -13.878,
+        "sharpe": 2.541,
+        "trading_days": 83
+      },
+      "forward": {
+        "return_pct": 18.656,
+        "mdd_pct": -11.262,
+        "sharpe": 2.318,
+        "trading_days": 48
+      }
+    },
+    {
+      "scenario": "5_momentum_leg_only",
+      "overrides": {
+        "crowding_trend_gap_threshold": 9.9
+      },
+      "full_return_pct": 57.145,
+      "full_benchmark_pct": 15.724,
+      "full_mdd_pct": -14.871,
+      "full_sharpe": 2.276,
+      "trades": 536,
+      "win_rate_pct": 48.3,
+      "selection": {
+        "return_pct": 32.13,
+        "mdd_pct": -14.871,
+        "sharpe": 2.29,
+        "trading_days": 83
+      },
+      "forward": {
+        "return_pct": 18.699,
+        "mdd_pct": -10.84,
+        "sharpe": 2.209,
+        "trading_days": 48
+      }
+    },
+    {
+      "scenario": "6_tight_def_m25_g10",
+      "overrides": {
+        "crowding_momentum_threshold": 0.25,
+        "crowding_trend_gap_threshold": 0.1
+      },
+      "full_return_pct": 61.746,
+      "full_benchmark_pct": 15.724,
+      "full_mdd_pct": -13.878,
+      "full_sharpe": 2.468,
+      "trades": 535,
+      "win_rate_pct": 48.2,
+      "selection": {
+        "return_pct": 36.28,
+        "mdd_pct": -13.878,
+        "sharpe": 2.541,
+        "trading_days": 83
+      },
+      "forward": {
+        "return_pct": 18.67,
+        "mdd_pct": -11.263,
+        "sharpe": 2.318,
+        "trading_days": 48
+      }
+    }
+  ],
+  "notes": [
+    "Sleeved paper-aligned backtest (rank-primary); config on disk untouched.",
+    "Judge on the forward window first; selection window overlaps model selection history.",
+    "LLM gate is NOT replayed (no leak-free historical verdicts) — live counterfactual covers it.",
+    "Adoption gated on TODO.md forward-parity rule (20 trading days / 30 buy plans)."
+  ]
+}
