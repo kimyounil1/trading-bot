@@ -1,0 +1,7 @@
+{
+  "on_calendar": "*-*-* 00,04,08,12,16,20:00:00",
+  "timezone": "Asia/Seoul",
+  "service_name": "trading-bot-research-gdrive-sync.service",
+  "timer_name": "trading-bot-research-gdrive-sync.timer",
+  "comment": "Every 4 hours KST; incremental rclone copy (new/changed files only)"
+}

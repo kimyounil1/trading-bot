@@ -1,0 +1,38 @@
+{
+  "remote": "gdrive:trading-bot-research",
+  "description": "Full backup: data, models, research logs, reports, and private env.",
+  "directories": [
+    "data",
+    "models",
+    "logs/ml/llm_retro_checkpoints",
+    "logs/benchmark_gap",
+    "logs/paper_validation",
+    "logs/operational_alpha",
+    "logs/baselines/current_strategy",
+    "logs/ai_backtest",
+    "logs/allocation_compare",
+    "logs/portfolio_backtest",
+    "logs/llm_advisory",
+    "logs/guard_impact",
+    "logs/crowding_paper"
+  ],
+  "sync_full_logs_ml": true,
+  "logs_ml": {
+    "include_root_json_csv": true,
+    "include_patterns": [
+      "**/latest_summary.json",
+      "**/comparison_summary*.json",
+      "**/oos_scores.csv",
+      "**/*.joblib"
+    ],
+    "exclude_patterns": [
+      "**/model_calibration_rows.csv"
+    ]
+  },
+  "private_files": [],
+  "private_remote_subdir": "_private",
+  "private_files_note": "SECURITY: never put plaintext secrets (.env) here — Drive stores them unencrypted. Use rclone crypt or an offline backup for credentials.",
+  "exclude_report_paths": [
+    "reports/agent_pipeline"
+  ]
+}
