@@ -18,10 +18,208 @@ from src.trading.bot_helpers import (
     execution_block_label,
     execution_reference_price,
     get_signal_for_ticker,
+    order_is_filled,
     resolve_full_exit_reason,
 )
 from src.regime_stop_policy import resolve_exit_stop_params_from_settings
 from src.trading.run_context import TradingRunContext
+from src.instrument_meta import get_instrument, signal_source_ticker
+
+
+def _find_open_sell_order(ctx: TradingRunContext, ticker: str) -> dict | None:
+    symbol = str(ticker).upper()
+    open_orders = getattr(getattr(ctx, "sleeve_ctx", None), "open_orders", [])
+    for order in open_orders or []:
+        order_symbol = str(order.get("symbol") or "").upper()
+        order_side = str(order.get("side") or "").upper()
+        if order_symbol == symbol and order_side.endswith("SELL"):
+            return order
+    return None
+
+
+def _remember_open_sell_order(
+    ctx: TradingRunContext,
+    *,
+    ticker: str,
+    order_id: str,
+    status: str,
+) -> None:
+    open_orders = getattr(getattr(ctx, "sleeve_ctx", None), "open_orders", None)
+    if open_orders is None or _find_open_sell_order(ctx, ticker) is not None:
+        return
+    open_orders.append(
+        {
+            "id": str(order_id),
+            "symbol": str(ticker).upper(),
+            "side": "SELL",
+            "status": str(status),
+        }
+    )
+
+
+def _drop_dust_from_run_context(ctx: TradingRunContext, ticker: str) -> None:
+    ctx.positions_by_symbol.pop(ticker, None)
+    ctx.open_symbols.discard(ticker)
+    ctx.guard_open_symbols.discard(ticker)
+    ctx.partial_exit_taken.pop(ticker, None)
+
+
+def _cleanup_dust_position(
+    ctx: TradingRunContext,
+    position: dict,
+    *,
+    phase: str = "initial",
+) -> bool:
+    """Handle one dust position and return True when normal exit logic should skip it."""
+    if not is_dust_position(position, min_usd=ctx.dust_min_usd):
+        return False
+
+    ticker = str(position["symbol"]).upper()
+    dust_mv = float(position["market_value"])
+    dust_reason = f"dust position cleanup (<${ctx.dust_min_usd:g} market value)"
+    print(
+        f"{ticker}: DUST position qty={position['qty']}, "
+        f"market_value={dust_mv:.6f} — scheduling close"
+    )
+    ctx.exit_summary_rows.append(
+        f"{ticker}: DUST exit, market_value=${dust_mv:.6f}"
+    )
+
+    pending_order = _find_open_sell_order(ctx, ticker)
+    if pending_order is not None:
+        pending_status = str(pending_order.get("status") or "OPEN")
+        pending_id = str(pending_order.get("id") or "")
+        print(
+            f"  DUST_CLOSE_PENDING: {ticker}, order_id={pending_id}, "
+            f"status={pending_status} — duplicate skipped"
+        )
+        audit_log(
+            ctx.audit_ctx,
+            event_type="DUST_EXIT",
+            ticker=ticker,
+            action="CLOSE",
+            status="PENDING",
+            reason=f"{dust_reason}; existing sell order",
+            profile_name=ctx.profile_name,
+            regime=ctx.current_regime,
+            order_id=pending_id,
+        )
+        _drop_dust_from_run_context(ctx, ticker)
+        return True
+
+    audit_log(
+        ctx.audit_ctx,
+        event_type="DUST_EXIT",
+        ticker=ticker,
+        action="CLOSE",
+        status="SUBMITTED" if ctx.can_submit_orders else "DRY_RUN",
+        reason=dust_reason,
+        profile_name=ctx.profile_name,
+        regime=ctx.current_regime,
+    )
+    if not ctx.can_submit_orders:
+        print(f"  DRY_RUN: would close dust position {ticker}")
+        _drop_dust_from_run_context(ctx, ticker)
+        return True
+
+    try:
+        dust_submission = ctx.broker_adapter.submit_sell_qty(
+            ticker,
+            float(position["qty"]),
+            limit_price=float(position.get("current_price") or 0.0),
+            market_clock=ctx.market_clock,
+            slippage_pct=ctx.extended_slippage,
+            client_order_id=f"dust_{ctx.run_id}_{phase}_{ticker}",
+            close_all=True,
+        )
+        ctx.live_order_count += 1
+        log_order(
+            ticker=ticker,
+            notional=0.0,
+            order_id=dust_submission.order_id,
+            status=dust_submission.status,
+            side=dust_submission.side,
+            order_type=dust_submission.order_type,
+            reason=dust_reason,
+        )
+        checked_order = ctx.broker_adapter.wait_for_order_status(
+            dust_submission.order_id
+        )
+        checked_order_type = checked_order.get("type") or dust_submission.order_type
+        checked_status = str(checked_order["status"])
+        log_order_status(
+            ticker=ticker,
+            order_id=str(checked_order["id"]),
+            status=checked_status,
+            side=str(checked_order["side"]),
+            order_type=str(checked_order_type),
+            filled_qty=checked_order.get("filled_qty"),
+            filled_avg_price=checked_order.get("filled_avg_price"),
+            reason=dust_reason,
+        )
+        audit_log(
+            ctx.audit_ctx,
+            event_type="DUST_EXIT_STATUS",
+            ticker=ticker,
+            action="CLOSE",
+            status=checked_status,
+            reason=dust_reason,
+            profile_name=ctx.profile_name,
+            regime=ctx.current_regime,
+            order_id=str(checked_order["id"]),
+            order_type=str(checked_order_type),
+            side=str(checked_order["side"]),
+            filled_qty=checked_order.get("filled_qty"),
+            filled_avg_price=checked_order.get("filled_avg_price"),
+        )
+        if order_is_filled(checked_status):
+            print(
+                f"  PAPER_DUST_CLOSED: {ticker}, "
+                f"order_id={checked_order['id']}, status={checked_status}"
+            )
+            notify_info(
+                "🧹 Dust position closed",
+                f"{ticker}: closed negligible position (${dust_mv:.4f})",
+            )
+            ctx.sleeve_ctx.record_exit(ticker)
+        else:
+            print(
+                f"  PAPER_DUST_PENDING: {ticker}, "
+                f"order_id={checked_order['id']}, status={checked_status}"
+            )
+            _remember_open_sell_order(
+                ctx,
+                ticker=ticker,
+                order_id=str(checked_order["id"]),
+                status=checked_status,
+            )
+    except Exception as exc:
+        print(f"  Dust close error for {ticker}: {exc}")
+        ctx.api_error_count += 1
+        if isinstance(exc, ConnectionError) and ctx.execute_orders:
+            notify_error(
+                f"CRITICAL: Network error during dust close for {ticker}",
+                exc,
+            )
+
+    _drop_dust_from_run_context(ctx, ticker)
+    return True
+
+
+def _run_followup_dust_cleanup(ctx: TradingRunContext) -> None:
+    """Catch fractional remnants created by fills during the same run."""
+    if not ctx.can_submit_orders:
+        return
+    try:
+        refreshed_positions = ctx.broker_adapter.get_positions()
+        ctx.sleeve_ctx.open_orders = ctx.broker_adapter.get_open_orders()
+    except Exception as exc:
+        print(f"Warning: follow-up dust snapshot failed: {exc}")
+        ctx.api_error_count += 1
+        return
+
+    for position in refreshed_positions:
+        _cleanup_dust_position(ctx, position, phase="followup")
 
 
 def run_exit_pipeline(ctx: TradingRunContext) -> None:
@@ -32,80 +230,13 @@ def run_exit_pipeline(ctx: TradingRunContext) -> None:
     
         for position in ctx.positions:
             ticker = str(position["symbol"]).upper()
+            signal_ticker = signal_source_ticker(ticker)
             try:
-                if is_dust_position(position, min_usd=ctx.dust_min_usd):
-                    dust_reason = (
-                        f"dust position cleanup (<${ctx.dust_min_usd:g} market value)"
-                    )
-                    dust_mv = float(position["market_value"])
-                    print(
-                        f"{ticker}: DUST position qty={position['qty']}, "
-                        f"market_value={dust_mv:.6f} — scheduling close"
-                    )
-                    ctx.exit_summary_rows.append(
-                        f"{ticker}: DUST exit, market_value=${dust_mv:.6f}"
-                    )
-                    audit_log(
-                        ctx.audit_ctx,
-                        event_type="DUST_EXIT",
-                        ticker=ticker,
-                        action="CLOSE",
-                        status="SUBMITTED" if ctx.can_submit_orders else "DRY_RUN",
-                        reason=dust_reason,
-                        profile_name=ctx.profile_name,
-                        regime=ctx.current_regime,
-                    )
-                    if ctx.can_submit_orders:
-                        try:
-                            dust_qty = float(position["qty"])
-                            dust_submission = ctx.broker_adapter.submit_sell_qty(
-                                ticker,
-                                dust_qty,
-                                limit_price=float(position.get("current_price") or 0.0),
-                                market_clock=ctx.market_clock,
-                                slippage_pct=ctx.extended_slippage,
-                                client_order_id=f"dust_{ctx.run_id}_{ticker}",
-                            )
-                            ctx.live_order_count += 1
-                            log_order(
-                                ticker=ticker,
-                                notional=0.0,
-                                order_id=dust_submission.order_id,
-                                status=dust_submission.status,
-                                side=dust_submission.side,
-                                order_type=dust_submission.order_type,
-                                reason=dust_reason,
-                            )
-                            print(
-                                f"  PAPER_DUST_CLOSE: {ticker}, "
-                                f"order_id={dust_submission.order_id}, "
-                                f"status={dust_submission.status}"
-                            )
-                            notify_info(
-                                "🧹 Dust position closed",
-                                f"{ticker}: closed negligible position (${dust_mv:.4f})",
-                            )
-                        except Exception as e:
-                            print(f"  Dust close error for {ticker}: {e}")
-                            ctx.api_error_count += 1
-                            if isinstance(e, ConnectionError) and ctx.execute_orders:
-                                notify_error(
-                                    f"CRITICAL: Network error during dust close for {ticker}",
-                                    e,
-                                )
-                    else:
-                        print(f"  DRY_RUN: would close dust position {ticker}")
-                    ctx.positions_by_symbol.pop(ticker, None)
-                    ctx.open_symbols.discard(ticker)
-                    ctx.guard_open_symbols.discard(ticker)
-                    ctx.partial_exit_taken.pop(ticker, None)
-                    ctx.meaningful_positions_count = max(
-                        0, ctx.meaningful_positions_count - 1
-                    )
+                if _cleanup_dust_position(ctx, position):
                     continue
     
                 data_fresh, data_reason = ctx.price_data_freshness.get(
-                    ticker,
+                    signal_ticker,
                     (False, "price data not loaded"),
                 )
                 if not data_fresh:
@@ -132,8 +263,8 @@ def run_exit_pipeline(ctx: TradingRunContext) -> None:
                     ctx.peaks[ticker] = current_price
     
                 signal, latest, ai_score = get_signal_for_ticker(
-                    ticker,
-                    ctx.ticker_data[ticker],
+                    signal_ticker,
+                    ctx.ticker_data[signal_ticker],
                     ctx.settings,
                     ai_model_bundle=ctx.ai_model_bundle,
                     market_regime_bullish=ctx.market_regime_bullish,
@@ -185,8 +316,13 @@ def run_exit_pipeline(ctx: TradingRunContext) -> None:
                     atr_val = float(latest["atr"])
                     if atr_val > 0 and peak_price > 0:
                         multiplier = float(getattr(ctx.settings, "atr_multiplier", 3.0))
-                        # ATR 기반의 변동성을 백분율로 변환 (ATR * Multiplier 만큼 하락 시 스탑)
-                        trailing_pct = (atr_val * multiplier) / peak_price
+                        signal_price = float(latest["close"])
+                        leverage_multiple = get_instrument(ticker).abs_multiple
+                        # Underlying ATR drives a direct leveraged product's stop,
+                        # scaled by its daily leverage multiple.
+                        trailing_pct = (
+                            atr_val * multiplier * leverage_multiple / signal_price
+                        )
                         # 합리적 범위 내에서 제한 (예: 최소 2% ~ 최대 20%)
                         trailing_pct = max(0.02, min(0.20, trailing_pct))
     
@@ -426,6 +562,29 @@ def run_exit_pipeline(ctx: TradingRunContext) -> None:
                         ai_score=ai_score,
                     )
                     continue
+
+                pending_order = _find_open_sell_order(ctx, ticker)
+                if pending_order is not None:
+                    pending_id = str(pending_order.get("id") or "")
+                    pending_status = str(pending_order.get("status") or "OPEN")
+                    print(
+                        f"  CLOSE_PENDING: {ticker}, order_id={pending_id}, "
+                        f"status={pending_status} — duplicate skipped"
+                    )
+                    audit_log(
+                        ctx.audit_ctx,
+                        event_type="SKIP_EXIT",
+                        ticker=ticker,
+                        action="CLOSE",
+                        status="PENDING",
+                        reason="existing sell order pending",
+                        profile_name=ctx.profile_name,
+                        regime=ctx.current_regime,
+                        signal=signal,
+                        ai_score=ai_score,
+                        order_id=pending_id,
+                    )
+                    continue
     
                 exit_qty = float(position["qty"])
                 exit_submission = ctx.broker_adapter.submit_sell_qty(
@@ -438,6 +597,7 @@ def run_exit_pipeline(ctx: TradingRunContext) -> None:
                     market_clock=ctx.market_clock,
                     slippage_pct=ctx.extended_slippage,
                     client_order_id=f"exit_{ctx.run_id}_{ticker}",
+                    close_all=True,
                 )
                 ctx.live_order_count += 1
     
@@ -517,8 +677,17 @@ def run_exit_pipeline(ctx: TradingRunContext) -> None:
                     filled_qty=checked_order["filled_qty"],
                     filled_avg_price=checked_order["filled_avg_price"],
                 )
-    
-                if ticker in ctx.open_symbols:
+
+                exit_filled = order_is_filled(str(checked_order["status"]))
+                if not exit_filled:
+                    _remember_open_sell_order(
+                        ctx,
+                        ticker=ticker,
+                        order_id=str(checked_order["id"]),
+                        status=str(checked_order["status"]),
+                    )
+
+                if exit_filled and ticker in ctx.open_symbols:
                     ctx.open_symbols.remove(ticker)
                     ctx.positions_by_symbol.pop(ticker, None)
                     ctx.partial_exit_taken.pop(ticker, None)
@@ -543,4 +712,6 @@ def run_exit_pipeline(ctx: TradingRunContext) -> None:
                     regime=ctx.current_regime,
                 )
                 notify_error(f"{ticker} exit check error", exc)
+
+    _run_followup_dust_cleanup(ctx)
     

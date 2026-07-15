@@ -16,6 +16,19 @@ def _get_cache_path(ticker: str) -> Path:
     return EARNINGS_CACHE_DIR / f"{ticker.upper()}.json"
 
 
+def _first_earnings_timestamp(value) -> Optional[pd.Timestamp]:
+    """Normalize yfinance's scalar/list/DatetimeIndex calendar variants."""
+    if value is None:
+        return None
+    converted = pd.to_datetime(value, errors="coerce")
+    if isinstance(converted, pd.Timestamp):
+        return None if pd.isna(converted) else converted
+    if hasattr(converted, "__len__") and len(converted) > 0:
+        first = pd.Timestamp(converted[0])
+        return None if pd.isna(first) else first
+    return None
+
+
 def get_next_earnings_date(ticker: str, cache_ttl_hours: int = 24) -> Optional[pd.Timestamp]:
     """티커의 다음 실적 발표일을 가져온다 (캐시 지원)."""
     cache_path = _get_cache_path(ticker)
@@ -38,15 +51,10 @@ def get_next_earnings_date(ticker: str, cache_ttl_hours: int = 24) -> Optional[p
         
         earnings_date = None
         if isinstance(calendar, dict) and "Earnings Date" in calendar:
-            # 리스트 형태일 수 있음 [start, end]
-            dates = calendar["Earnings Date"]
-            if isinstance(dates, list) and len(dates) > 0:
-                earnings_date = pd.to_datetime(dates[0])
-            else:
-                earnings_date = pd.to_datetime(dates)
+            earnings_date = _first_earnings_timestamp(calendar["Earnings Date"])
         elif isinstance(calendar, pd.DataFrame) and "Earnings Date" in calendar.index:
             val = calendar.loc["Earnings Date"].iloc[0]
-            earnings_date = pd.to_datetime(val)
+            earnings_date = _first_earnings_timestamp(val)
         
         # fallback: earnings_dates property (최근 1~2개 일정 제공)
         if earnings_date is None:
@@ -55,11 +63,11 @@ def get_next_earnings_date(ticker: str, cache_ttl_hours: int = 24) -> Optional[p
                 # 미래 날짜 중 가장 가까운 것 선택
                 future_dates = dates_df[dates_df.index > pd.Timestamp.now(tz=dates_df.index.tz)]
                 if not future_dates.empty:
-                    earnings_date = future_dates.index[0]
+                    earnings_date = pd.Timestamp(future_dates.index[0])
 
-        if earnings_date:
+        if earnings_date is not None and not pd.isna(earnings_date):
             # 시간대 정보 제거 (비교 편의성)
-            earnings_date = earnings_date.tz_localize(None)
+            earnings_date = pd.Timestamp(earnings_date).tz_localize(None)
             
             # 캐시 저장
             EARNINGS_CACHE_DIR.mkdir(parents=True, exist_ok=True)

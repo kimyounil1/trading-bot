@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 REGISTRY_PATH = Path("config/instrument_registry.json")
+DISCOVERED_REGISTRY_PATH = Path("data/runtime/discovered_instruments.json")
 
 DEFAULT_META = {
     "kind": "stock",
@@ -61,6 +62,86 @@ def load_instrument_registry(path: Path = REGISTRY_PATH) -> dict[str, Instrument
 
 
 _registry_cache: dict[str, InstrumentMeta] | None = None
+_discovered_registry_cache: dict[str, InstrumentMeta] | None = None
+
+
+def load_discovered_instrument_registry(
+    path: Path | None = None,
+) -> dict[str, InstrumentMeta]:
+    target = path or DISCOVERED_REGISTRY_PATH
+    if not target.is_file():
+        return {}
+    try:
+        payload = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Invalid discovered instrument registry {target}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"{target} must be a JSON object")
+    registry: dict[str, InstrumentMeta] = {}
+    for ticker, meta in payload.items():
+        if not isinstance(meta, dict):
+            raise ValueError(f"Discovered registry entry for {ticker} must be an object")
+        registry[str(ticker).strip().upper()] = _parse_meta(meta)
+    return registry
+
+
+def _discovered_registry() -> dict[str, InstrumentMeta]:
+    global _discovered_registry_cache
+    if _discovered_registry_cache is None:
+        _discovered_registry_cache = load_discovered_instrument_registry()
+    return _discovered_registry_cache
+
+
+def register_discovered_leveraged_product(
+    symbol: str,
+    underlying: str,
+    *,
+    multiple: float = 2.0,
+    path: Path | None = None,
+) -> None:
+    """Persist broker-validated metadata so later runs keep safe exit/risk mapping."""
+    global _discovered_registry_cache
+    product = str(symbol).strip().upper()
+    source = str(underlying).strip().upper()
+    if not product or not source or float(multiple) <= 1.0:
+        raise ValueError("discovered leveraged product metadata is invalid")
+
+    target = path or DISCOVERED_REGISTRY_PATH
+    discovered = load_discovered_instrument_registry(target)
+    meta = InstrumentMeta(
+        kind="leveraged_etf",
+        multiple=float(multiple),
+        underlying=source,
+        direction="long",
+    )
+    if discovered.get(product) == meta:
+        _discovered_registry_cache = discovered
+        return
+    discovered[product] = meta
+    payload = {
+        ticker: {
+            "kind": meta.kind,
+            "multiple": meta.multiple,
+            "underlying": meta.underlying,
+            "direction": meta.direction,
+        }
+        for ticker, meta in sorted(discovered.items())
+    }
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = target.with_suffix(f"{target.suffix}.tmp")
+    try:
+        temp_path.write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        temp_path.replace(target)
+    except OSError as exc:
+        raise OSError(f"Unable to persist discovered instrument {product}: {exc}") from exc
+    _discovered_registry_cache = discovered
+
+
+def is_discovered_instrument(ticker: str) -> bool:
+    return str(ticker).strip().upper() in _discovered_registry()
 
 
 def get_instrument(ticker: str, registry: dict[str, InstrumentMeta] | None = None) -> InstrumentMeta:
@@ -71,16 +152,65 @@ def get_instrument(ticker: str, registry: dict[str, InstrumentMeta] | None = Non
     key = str(ticker).strip().upper()
     if key in reg:
         return reg[key]
+    if registry is None and key in _discovered_registry():
+        return _discovered_registry()[key]
     return _parse_meta(DEFAULT_META)
 
 
 def clear_instrument_registry_cache() -> None:
-    global _registry_cache
+    global _registry_cache, _discovered_registry_cache
     _registry_cache = None
+    _discovered_registry_cache = None
 
 
 def count_leveraged_etf_positions(open_symbols: set[str]) -> int:
     return sum(1 for sym in open_symbols if get_instrument(sym).is_leveraged_etf)
+
+
+def preferred_leveraged_long_product(
+    underlying: str,
+    *,
+    allowlist: list[str] | None = None,
+    registry: dict[str, InstrumentMeta] | None = None,
+) -> str | None:
+    """Return the preferred direct 2x-long product for an underlying ticker."""
+    source = str(underlying).strip().upper()
+    reg = registry if registry is not None else {
+        **_discovered_registry(),
+        **load_instrument_registry(),
+    }
+    candidates = {
+        symbol
+        for symbol, meta in reg.items()
+        if meta.is_leveraged_etf
+        and meta.direction == "long"
+        and meta.abs_multiple == 2.0
+        and meta.underlying == source
+    }
+    if not candidates:
+        return None
+
+    preferred = [
+        str(symbol).strip().upper()
+        for symbol in (allowlist or [])
+        if str(symbol).strip()
+    ]
+    if preferred:
+        allowlisted = next((symbol for symbol in preferred if symbol in candidates), None)
+        if allowlisted is not None:
+            return allowlisted
+        discovered = sorted(symbol for symbol in candidates if is_discovered_instrument(symbol))
+        return discovered[0] if discovered else None
+    return sorted(candidates)[0]
+
+
+def signal_source_ticker(ticker: str) -> str:
+    """Use the underlying signal for a direct long leveraged product."""
+    symbol = str(ticker).strip().upper()
+    meta = get_instrument(symbol)
+    if meta.is_leveraged_etf and meta.direction == "long" and meta.underlying:
+        return meta.underlying
+    return symbol
 
 
 def current_effective_leverage_exposure(
@@ -139,7 +269,11 @@ def check_instrument_buy_allowed(
             for symbol in (leveraged_etf_allowlist or [])
             if str(symbol).strip()
         }
-        if allowed_symbols and str(ticker).strip().upper() not in allowed_symbols:
+        if (
+            allowed_symbols
+            and str(ticker).strip().upper() not in allowed_symbols
+            and not is_discovered_instrument(ticker)
+        ):
             return (
                 False,
                 f"{kind_tag}; leveraged ETF not in allowlist",

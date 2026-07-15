@@ -1,0 +1,17 @@
+{
+  "timezone": "America/New_York",
+  "on_calendar": "Mon-Fri 23:30:00",
+  "backtest_start": "2026-01-02",
+  "initial_cash": 10000.0,
+  "backtest_output_dir": "logs/daily_paper_backtest/latest",
+  "report_output_dir": "logs/paper_backtest_parity",
+  "min_candidate_recall": 0.5,
+  "min_policy_parity": 0.95,
+  "max_notional_pct_abs_diff": 0.1,
+  "operational_error_lookback_hours": 24,
+  "max_adverse_slippage_bps": 60.0,
+  "forward_start_date": "2026-07-14",
+  "forward_min_market_days": 20,
+  "forward_min_unique_plans": 30,
+  "notify_anomalies": true
+}

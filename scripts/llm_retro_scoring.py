@@ -18,12 +18,14 @@ Work is ordered by date so partial runs still yield complete cross-sections.
 
 Usage:
   .venv/bin/python -m scripts.llm_retro_scoring --months 6 --max-calls 1000
+  .venv/bin/python -m scripts.llm_retro_scoring --provider vllm --max-calls 500
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import time
 from datetime import datetime, timezone
@@ -108,19 +110,32 @@ def _build_work_items(tickers: list[str], cutoff: pd.Timestamp) -> list[dict]:
     return items
 
 
-def _score_item(item: dict, *, model: str | None = None) -> dict:
+def _score_item(
+    item: dict,
+    *,
+    model: str | None = None,
+    provider: str = "auto",
+) -> dict:
     from src.llm_analyst import _generate_llm_text_with_provider, parse_llm_decision
+    from src.llm_vllm import vllm_model_name
 
     news_context = "\n".join(f"- {h}" for h in item["headlines"])
     prompt = PROMPT_TEMPLATE.format(
         ticker=item["ticker"], date=item["date"], news_context=news_context
     )
-    text, provider = _generate_llm_text_with_provider(prompt, model=model)
+    force_provider = provider if provider != "auto" else None
+    text, used_provider = _generate_llm_text_with_provider(
+        prompt, model=model, force_provider=force_provider
+    )
     approved, category, reason = parse_llm_decision(text)
     outlook = None
     match = _OUTLOOK_RE.search(text)
     if match:
         outlook = max(-5, min(5, int(match.group(1))))
+    if used_provider == "vllm":
+        model_name = model or vllm_model_name()
+    else:
+        model_name = model or "default"
     return {
         "key": f"{item['ticker']}_{item['date']}",
         "ticker": item["ticker"],
@@ -129,8 +144,8 @@ def _score_item(item: dict, *, model: str | None = None) -> dict:
         "category": category,
         "outlook": outlook,
         "n_headlines": len(item["headlines"]),
-        "provider": provider,
-        "model": model or "default",
+        "provider": used_provider,
+        "model": model_name,
         "reason": reason,
         "scored_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
@@ -144,18 +159,41 @@ def main() -> None:
     ap.add_argument("--tickers", default="", help="comma-separated subset (default: all)")
     ap.add_argument(
         "--model",
-        default="gemini-2.5-flash-lite",
-        help="Gemini model; per-model free-tier quota is separate from the live "
-        "veto's gemini-2.5-flash, so the default avoids starving live trading",
+        default="",
+        help="LLM model id (Gemini model name or vLLM served-model-name). "
+        "Default: gemini-2.5-flash-lite for auto/gemini, LLM_VLLM_MODEL for vllm",
+    )
+    ap.add_argument(
+        "--provider",
+        choices=("auto", "gemini", "vllm"),
+        default="auto",
+        help="LLM backend: auto (Gemini then vLLM fallback), gemini, or vllm only",
+    )
+    ap.add_argument(
+        "--vllm-url",
+        default="http://192.168.219.116:11434/v1",
+        help="OpenAI-compatible vLLM base URL when --provider vllm",
     )
     args = ap.parse_args()
 
+    if args.provider == "vllm":
+        os.environ.setdefault("LLM_VLLM_ENABLED", "1")
+        os.environ.setdefault("LLM_VLLM_BASE_URL", args.vllm_url.rstrip("/"))
+
     import src.config  # noqa: F401  (load_dotenv side effect for GEMINI_API_KEY)
     from src.llm_analyst import llm_backend_available
+    from src.llm_vllm import vllm_base_url, vllm_model_name
     from src.settings import load_settings
 
-    if not llm_backend_available():
+    if args.provider == "vllm":
+        if not vllm_base_url():
+            raise SystemExit("vLLM base URL missing (set LLM_VLLM_BASE_URL or --vllm-url)")
+    elif not llm_backend_available():
         raise SystemExit("No LLM backend available (GEMINI_API_KEY / vLLM missing)")
+
+    model = args.model.strip() or None
+    if model is None and args.provider in {"auto", "gemini"}:
+        model = "gemini-2.5-flash-lite"
 
     if args.tickers:
         tickers = [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
@@ -170,9 +208,13 @@ def main() -> None:
         for it in _build_work_items(tickers, cutoff)
         if f"{it['ticker']}_{it['date']}" not in scored
     ]
+    backend = args.provider
+    if backend == "vllm":
+        backend = f"vllm ({vllm_model_name()} @ {vllm_base_url()})"
     print(
         f"Work: {len(items):,} unscored ticker-days (cutoff {cutoff.date()}, "
-        f"already scored {len(scored):,}); this run caps at {args.max_calls:,} calls"
+        f"already scored {len(scored):,}); backend={backend}; "
+        f"this run caps at {args.max_calls:,} calls"
     )
 
     done = failures = consecutive_failures = 0
@@ -182,7 +224,7 @@ def main() -> None:
             if done + failures >= args.max_calls:
                 break
             try:
-                record = _score_item(item, model=args.model)
+                record = _score_item(item, model=model, provider=args.provider)
                 consecutive_failures = 0
             except Exception as exc:
                 failures += 1

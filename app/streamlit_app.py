@@ -13,7 +13,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
 from src.broker_adapter import get_broker_adapter
-from src.brokers import broker_account_snapshot
+from src.brokers import broker_account_snapshot, toss_client
 from src.execution_audit_io import read_execution_audit_csv
 from src.market_clock import get_market_clock, MarketClock
 from src.settings import load_settings, CONFIG_PATH
@@ -3621,6 +3621,151 @@ def render_portfolio_pnl() -> None:
     )
 
 
+@st.cache_data(ttl=30, show_spinner=False)
+def _load_toss_snapshot(closed_limit: int = 50):
+    """Read-only Toss snapshot: (account_seq, buying_power, positions, open, closed)."""
+    adapter = get_broker_adapter("toss")
+    seq = toss_client.resolve_account_seq()
+    buying_power: dict[str, dict] = {}
+    for currency in ("USD", "KRW"):
+        try:
+            buying_power[currency] = toss_client.get_buying_power(currency)
+        except Exception as exc:  # noqa: BLE001 - surface per-currency errors in UI
+            buying_power[currency] = {"error": str(exc)}
+    positions = adapter.get_positions()
+    open_orders = adapter.get_open_orders(limit=100)
+    closed_orders = adapter.get_recent_closed_orders(limit=int(closed_limit))
+    return seq, buying_power, positions, open_orders, closed_orders
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def _load_toss_us_prices(symbols: tuple[str, ...]):
+    """Live US quotes for the configured trading universe (read-only)."""
+    if not symbols:
+        return []
+    return toss_client.get_prices(list(symbols))
+
+
+def _toss_buying_power_value(data: dict) -> str:
+    if not isinstance(data, dict):
+        return "-"
+    if "error" in data:
+        return "오류"
+    for key in ("cashBuyingPower", "buyingPower", "cash", "amount"):
+        if data.get(key) not in (None, ""):
+            return str(data[key])
+    return "-"
+
+
+def render_toss_account() -> None:
+    st.header("토스증권 계좌 (조회 전용)")
+
+    if not toss_client.credentials_available():
+        st.warning(
+            "TOSS_CLIENT_ID / TOSS_SECRET_KEY 가 설정되지 않았습니다. "
+            ".env에 키를 넣은 뒤 새로고침하세요. (조회 전용, 주문 미지원)"
+        )
+        return
+
+    st.caption(
+        f"API: {toss_client.api_base()} · 조회 전용 (매수/매도/취소 비활성) · "
+        "국장·미장 통합 단일 계좌 (미장 매매 기준: USD)"
+    )
+
+    col_refresh, col_limit = st.columns([1, 3])
+    if col_refresh.button("토스 새로고침", type="primary", key="refresh_toss"):
+        st.cache_data.clear()
+        st.rerun()
+    closed_limit = col_limit.number_input(
+        "최근 종료 주문 조회 수",
+        min_value=10,
+        max_value=200,
+        value=50,
+        step=10,
+        key="toss_closed_limit",
+    )
+
+    try:
+        seq, buying_power, positions, open_orders, closed_orders = _load_toss_snapshot(
+            int(closed_limit)
+        )
+    except Exception as exc:  # noqa: BLE001 - show fetch failure to operator
+        st.error(f"토스 조회 실패: {exc}")
+        return
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("USD 매수가능 (미장)", _toss_buying_power_value(buying_power.get("USD", {})))
+    m2.metric("KRW 매수가능 (국장)", _toss_buying_power_value(buying_power.get("KRW", {})))
+    m3.metric("보유 종목", len(positions))
+    m4.metric("계좌 seq", str(seq or "-"))
+
+    for currency, data in buying_power.items():
+        if isinstance(data, dict) and "error" in data:
+            st.caption(f"{currency} 매수가능 조회 오류: {data['error']}")
+
+    st.subheader("보유 종목")
+    if positions:
+        pos_df = pd.DataFrame(
+            [{k: v for k, v in p.items() if k != "_raw"} for p in positions]
+        )
+        st.dataframe(pos_df, width="stretch", hide_index=True)
+    else:
+        st.info("보유 종목이 없습니다. (미장 종목 매수 시 여기에 표시됩니다)")
+
+    st.subheader("주문 현황")
+    tab_open, tab_closed = st.tabs(["미체결 / 대기 (OPEN)", "종료 (CLOSED)"])
+    with tab_open:
+        if open_orders:
+            st.dataframe(pd.DataFrame(open_orders), width="stretch", hide_index=True)
+        else:
+            st.info("미체결 주문이 없습니다.")
+    with tab_closed:
+        if closed_orders:
+            st.dataframe(pd.DataFrame(closed_orders), width="stretch", hide_index=True)
+        else:
+            st.info("종료된 주문이 없습니다.")
+
+    st.subheader("미장 실시간 시세 (트레이딩 유니버스)")
+    settings = load_settings()
+    universe = [str(t).strip().upper() for t in getattr(settings, "tickers", []) if str(t).strip()]
+    default_n = min(20, len(universe))
+    watch_n = st.slider(
+        "표시 종목 수",
+        min_value=1,
+        max_value=max(1, len(universe)),
+        value=max(1, default_n),
+        key="toss_us_watch_n",
+    )
+    watch_symbols = tuple(universe[:watch_n])
+    if watch_symbols:
+        try:
+            prices = _load_toss_us_prices(watch_symbols)
+        except Exception as exc:  # noqa: BLE001 - surface quote errors in UI
+            st.error(f"미장 시세 조회 실패: {exc}")
+        else:
+            if prices:
+                st.dataframe(pd.DataFrame(prices), width="stretch", hide_index=True)
+            else:
+                st.info("시세 결과가 없습니다.")
+    else:
+        st.info("설정된 트레이딩 종목이 없습니다.")
+
+    with st.expander("종목 직접 조회 (symbols)"):
+        symbols_text = st.text_input(
+            "심볼 (쉼표 구분, 예: AAPL, TSLA, 005930)", key="toss_quote_symbols"
+        )
+        if st.button("시세 조회", key="toss_quote_btn") and symbols_text.strip():
+            try:
+                prices = toss_client.get_prices(symbols_text.split(","))
+            except Exception as exc:  # noqa: BLE001 - surface quote errors in UI
+                st.error(f"시세 조회 실패: {exc}")
+            else:
+                if prices:
+                    st.dataframe(pd.DataFrame(prices), width="stretch", hide_index=True)
+                else:
+                    st.info("결과가 없습니다.")
+
+
 def main() -> None:
     sidebar_settings_editor()
 
@@ -3643,6 +3788,7 @@ def main() -> None:
             "Telegram",
             "AI 모델",
             "운영 · 가드",
+            "토스 계좌 (조회)",
         ],
     )
 
@@ -3678,6 +3824,8 @@ def main() -> None:
         render_ai_model()
     elif page == "운영 · 가드":
         render_ops_dashboard()
+    elif page == "토스 계좌 (조회)":
+        render_toss_account()
 
 
 if __name__ == "__main__":

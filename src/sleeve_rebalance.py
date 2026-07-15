@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal, ROUND_DOWN
 from typing import Any
 
 from src.portfolio_sleeves import (
@@ -87,7 +88,16 @@ def _plan_trim_from_sleeve(
         if price <= 0 or qty <= 0 or market_value <= 0:
             continue
         sell_value = min(remaining, market_value)
-        sell_qty = round(min(qty, sell_value / price), 4)
+        requested_qty = min(qty, sell_value / price)
+        if requested_qty >= qty:
+            sell_qty = qty
+        else:
+            sell_qty = float(
+                Decimal(str(requested_qty)).quantize(
+                    Decimal("0.000000001"),
+                    rounding=ROUND_DOWN,
+                )
+            )
         if sell_qty <= 0:
             continue
         actions.append(
@@ -187,7 +197,6 @@ def build_sleeve_rebalance_actions(
     if not snapshot.enabled:
         return []
 
-    actions: list[SleeveRebalanceAction] = []
     cash_min = min_cash_raise_usd if not allocation_mode else max(25.0, min_cash_raise_usd * 0.5)
     excess_min = min_excess_usd if not allocation_mode else max(25.0, min_excess_usd * 0.5)
 
@@ -198,36 +207,56 @@ def build_sleeve_rebalance_actions(
     cash_raise_needed = cash_budget is not None and (
         cash_budget.rebalance_needed if not allocation_mode else cash_deficit >= cash_min
     )
-    if cash_raise_needed and cash_deficit >= cash_min:
-        actions.extend(
-            _plan_trim_from_sleeve(
-                positions=positions,
-                sleeve_id=CORE_SLEEVE_ID,
-                sleeve_position_map=sleeve_position_map,
-                excess_notional=cash_deficit,
-                dust_min_usd=dust_min_usd,
-                reason_prefix="sleeve cash raise",
-            )
-        )
+    cash_trim_notional = (
+        cash_deficit if cash_raise_needed and cash_deficit >= cash_min else 0.0
+    )
 
+    excess_trim_by_sleeve: dict[str, float] = {}
     for sleeve_id in (CORE_SLEEVE_ID, TOURNAMENT_SLEEVE_ID):
         budget = snapshot.sleeves.get(sleeve_id)
         if budget is None:
             continue
         excess = budget.current_notional - budget.target_notional
+        excess_trim_notional = 0.0
         if allocation_mode:
-            if excess < excess_min:
-                continue
-        elif not budget.rebalance_needed or excess < excess_min:
+            if excess >= excess_min:
+                excess_trim_notional = excess
+        elif budget.rebalance_needed and excess >= excess_min:
+            excess_trim_notional = excess
+        excess_trim_by_sleeve[sleeve_id] = excess_trim_notional
+
+    # Any overweight trim also restores cash. Only add a core trim for the part
+    # of the cash deficit not already covered by core/tournament overweight.
+    planned_overweight_trim = sum(excess_trim_by_sleeve.values())
+    additional_cash_trim = max(0.0, cash_trim_notional - planned_overweight_trim)
+    if additional_cash_trim > 0:
+        excess_trim_by_sleeve[CORE_SLEEVE_ID] = (
+            excess_trim_by_sleeve.get(CORE_SLEEVE_ID, 0.0) + additional_cash_trim
+        )
+
+    actions: list[SleeveRebalanceAction] = []
+    for sleeve_id in (CORE_SLEEVE_ID, TOURNAMENT_SLEEVE_ID):
+        trim_notional = excess_trim_by_sleeve.get(sleeve_id, 0.0)
+        if trim_notional <= 0:
             continue
+
+        excess_trim_notional = trim_notional - (
+            additional_cash_trim if sleeve_id == CORE_SLEEVE_ID else 0.0
+        )
+        if additional_cash_trim > 0 and sleeve_id == CORE_SLEEVE_ID and excess_trim_notional > 0:
+            reason_prefix = "sleeve cash raise / core overweight trim"
+        elif additional_cash_trim > 0 and sleeve_id == CORE_SLEEVE_ID:
+            reason_prefix = "sleeve cash raise"
+        else:
+            reason_prefix = f"sleeve {sleeve_id} overweight trim"
         actions.extend(
             _plan_trim_from_sleeve(
                 positions=positions,
                 sleeve_id=sleeve_id,
                 sleeve_position_map=sleeve_position_map,
-                excess_notional=excess,
+                excess_notional=trim_notional,
                 dust_min_usd=dust_min_usd,
-                reason_prefix=f"sleeve {sleeve_id} overweight trim",
+                reason_prefix=reason_prefix,
             )
         )
 

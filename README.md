@@ -26,10 +26,12 @@
 - **Comprehensive Audit**: 모든 주문 사유, 적용 프로필, AI 점수, LLM 판정 결과를 통합 로그로 기록하여 완벽한 사후 추적성을 보장합니다.
 
 ### 5. Paper 검증 & Rank AI gate (Phase 32–33)
-- **Rank AI buy/add gate (paper)**: cross-sectional rank 모델로 신규 매수·추가매수만 필터 (`rank_ai_buy_gate_enabled`). 매도 로직은 변경 없음. Tier 규칙: [`docs/ai_authority_gates.md`](docs/ai_authority_gates.md)
+- **Rank AI primary selector (paper)**: cross-sectional rank 모델의 상위 15%를 신규 매수·추가매수의 주 선택기로 사용합니다 (`rank_ai_primary_selector_enabled`). MA·기존 방향성 AI는 진입 참고값으로 남고, Rank 점수 누락/컷 미달은 fail-closed입니다. 매도 로직은 별도 구조 규칙을 사용합니다. Tier 규칙: [`docs/ai_authority_gates.md`](docs/ai_authority_gates.md)
+- **Rank 품질 위험 배율**: 252일 고점 대비 25% 하락·`SMA20 < SMA200`을 공통 운영/백테스트 정책으로 평가합니다. 불량 조건 0/1/2개에 따라 진입금액을 100%/50%/25%로 조절하고, 두 조건 모두 불량이면 2배 상품 대신 본주로 fallback합니다.
 - **Paper validation**: AI vs LLM agreement, SKIP 레이어(AI/LLM/rank), 2주 rank gate 누적 → `logs/paper_validation/`
 - **신호 검증 리포트**: rank forward-return, LLM block precision, paper validation trend (Phase 33)
 - **일일 paper ops**: 평일 21:45 ET systemd timer → dry-run + bootstrap + 리포트 갱신
+- **일일 paper/backtest 동등성**: 평일 23:30 ET에 BUY_PLAN과 같은 설정의 진입 원장을 대조하고, 라우팅·배율·레버리지·슬리피지·운영 오류 이상만 Telegram으로 알립니다.
 
 ### 6. 포트폴리오 슬리브 & 증거 루프 (Phase 36–39 + 2026-07)
 - **슬리브 분할**: core 50% (rank gate 전략) / **tournament 30%** (알파 모델 집중 베팅, 최대 35% 포지션·14일 보유·노가드) / cash 20% — 레지스트리·드리프트 트림·할당 리밸런스 포함
@@ -38,6 +40,12 @@
   - 마켓 레짐 스냅샷 데일리 (`logs/market_regime/`) — BULL/BEAR 판정 + **전환 시 Telegram 알림**
   - 시뮬-페이퍼 갭 어트리뷰션 주간 (`logs/sim_paper_gap/`) — 가드별 기회비용, 슬리브 예산 완화 판정 규칙(8주 연속) 사전 등록
 - **리서치 결론 (2026-06/07)**: 유니버스 확대·피처 추가(실적/뉴스/gap_vol)·레짐 게이트 전부 게이트 기각 — 남은 수익 레버는 자본 배치 판단(~09월). 상세: [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md)
+
+### 7. 운영 정렬 백테스트
+- 운영과 백테스트가 같은 **당일 인과적 AI 피처 + 날짜별 point-in-time 레짐** 점수 경로를 사용합니다.
+- 현재 설정의 core/tournament/cash 예산, 직접 2배 상품 라우팅과 본주 fallback, 노출·상관·crowding·sector guard, 청산 규칙, 현금 하한을 일봉 기준으로 재현합니다.
+- 실행 결과에는 `monthly_attribution.csv`와 `monthly_review_queue.md`가 생성됩니다. 손실/벤치마크 미달 월은 원인 분석과 forward 검증 전에는 설정을 자동 변경하지 않습니다.
+- 2026-07-15 채택 설정은 Rank 상위 15%와 품질별 100%/50%/25% 진입 배율, 두 조건 불량 시 본주 fallback을 사용합니다. 2026-01-02~07-13 재생 결과는 +60.01%, MDD -13.62%, Sharpe 2.506입니다. 이는 체결 보장이 아닌 연구 결과입니다.
 
 ## 📂 프로젝트 구조
 
@@ -149,6 +157,16 @@ bash scripts/run_sleeve_performance_report.sh                       # 슬리브�
 bash scripts/run_portfolio_pnl_report.sh                            # paper P&L (FIFO realized)
 PYTHONPATH=. .venv/bin/python -m src.market_regime_snapshot         # 레짐 스냅샷 (데일리 자동)
 bash scripts/run_weekly_gap_attribution.sh                          # 갭 어트리뷰션 (일 18:00 ET 타이머)
+
+# paper BUY_PLAN vs 동일 설정 백테스트 진입 원장 (이상만 Telegram)
+bash scripts/run_daily_paper_backtest_parity.sh
+bash scripts/install_daily_paper_backtest_parity_timer.sh
+systemctl --user enable --now trading-bot-paper-backtest-parity.timer
+
+# 운영 정렬 백테스트 (슬리브 설정이 켜져 있으면 자동 분리 실행)
+PYTHONPATH=. .venv/bin/python -m src.run_portfolio_backtest \
+  --start 2026-01-01 --end 2026-07-14 \
+  --outdir logs/portfolio_backtest_aligned
 ```
 
 Live execute (double confirm): `TRADING_ENV=live CONFIRM_LIVE_TRADING=YES_I_UNDERSTAND PYTHONPATH=. .venv/bin/python src/main.py --execute`
@@ -172,9 +190,9 @@ PR/push 시 GitHub Actions가 `requirements.txt` 설치 후 pytest·CMS import·
 | **Paper P&L (Alpaca)** | all-time **+3.2%** ($103.2k) — 흑자 전환. 6월 한 달 **+5.1%** vs SPY **−0.9%** — `logs/portfolio_pnl/` |
 | **Sleeves** | tournament **+$5.5k** (승률 100%, 6/9 가동) vs core **−$2.3k** — 4주 표본, 배분 판단 ~09월 |
 | **Market regime** | **BULL** (최근 60일 중 50일) · 데일리 스냅샷 + 전환 알림 — `logs/market_regime/` |
-| **Rank AI (paper)** | buy/add gate ON · `rank_gate_ready` **true** (14/14, 2026-06-16) |
+| **Rank AI (paper)** | primary selector ON · 상위 15% fail-closed · `rank_gate_ready` **true** |
 | **LLM (paper)** | blocking mode · 20d 기준 reject −4.1% vs accept +0.5% 실증 — `logs/llm_advisory/precision.json` |
 | **Crowding** | `crowding_max_positions` **3** (06-16 적용, 유지) — 가드 기회비용은 주간 갭 어트리뷰션으로 계측 |
 | **Research** | 레버 전수 검증·기각 (2026-06/07) — 상세 [`docs/TODO_ARCHIVE.md`](docs/TODO_ARCHIVE.md) |
 
-⚠️ 백테스트 시뮬의 "+30%p gap"은 라이브 기대치가 아님 — 동일 윈도우 비교에서 실제 paper가 무제약 시뮬을 상회 (`logs/sim_paper_gap/`).
+⚠️ 백테스트 수익률은 라이브 기대치가 아닙니다. 과거 LLM/뉴스 판단, cross-sleeve 주문 경합, 장중 체결·거절·미체결은 완전 재현되지 않습니다.

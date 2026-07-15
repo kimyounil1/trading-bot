@@ -191,3 +191,63 @@ def build_features(
         raise ValueError("Feature frame is empty after indicator construction")
 
     return feature_df
+
+
+def build_inference_features(
+    df: pd.DataFrame,
+    prediction_horizon: int = 5,
+    target_return_threshold: float = 0.0,
+    vix_df: pd.DataFrame | None = None,
+    spy_df: pd.DataFrame | None = None,
+    macro_df: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Build causal features through the latest completed price row.
+
+    ``build_features`` also creates forward-return labels and therefore removes
+    the last ``prediction_horizon`` rows. Inference must not lag by that label
+    horizon. Flat synthetic rows keep those rows during feature construction;
+    they are removed before this function returns and none of their values are
+    used by the causal feature columns.
+    """
+    if df.empty:
+        raise ValueError("empty price frame")
+
+    working = df.copy().sort_values("date").reset_index(drop=True)
+    required_price_columns = [
+        column
+        for column in ("date", "open", "high", "low", "close", "volume")
+        if column in working.columns
+    ]
+    working = working.dropna(subset=required_price_columns).reset_index(drop=True)
+    if working.empty:
+        raise ValueError("price frame has no complete rows")
+    original_last_date = pd.to_datetime(working["date"], errors="coerce").max()
+    if pd.isna(original_last_date):
+        raise ValueError("price frame has no valid dates")
+
+    last = working.iloc[-1].copy()
+    synthetic_rows = []
+    for offset in range(1, prediction_horizon + 1):
+        row = last.copy()
+        row["date"] = original_last_date + pd.Timedelta(days=offset)
+        synthetic_rows.append(row)
+    if synthetic_rows:
+        working = pd.concat(
+            [working, pd.DataFrame(synthetic_rows)],
+            ignore_index=True,
+        )
+
+    features = build_features(
+        working,
+        prediction_horizon=prediction_horizon,
+        target_return_threshold=target_return_threshold,
+        vix_df=vix_df,
+        spy_df=spy_df,
+        macro_df=macro_df,
+    )
+    features = features[
+        pd.to_datetime(features["date"], errors="coerce") <= original_last_date
+    ].reset_index(drop=True)
+    if features.empty:
+        raise ValueError("Inference feature frame is empty")
+    return features

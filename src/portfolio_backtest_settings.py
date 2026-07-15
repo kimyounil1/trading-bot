@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.settings import StrategySettings
+from src.rank_quality_risk import build_rank_quality_risk_overrides
 
 
 def portfolio_backtest_kwargs(
@@ -21,8 +22,27 @@ def portfolio_backtest_kwargs(
     evaluation_end_date=None,
     initial_cash: float = 10000.0,
     transaction_cost_pct: float = 0.001,
+    leveraged_product_data: dict | None = None,
+    leveraged_product_routes: dict[str, str] | None = None,
+    historical_universe_by_date: dict | None = None,
+    base_universe: set[str] | list[str] | None = None,
+    benchmark_universe: set[str] | list[str] | None = None,
+    rank_ai_score_history: dict | None = None,
+    rank_ai_primary_selector_enabled: bool | None = None,
+    entry_parameter_overrides_by_date: dict | None = None,
+    entry_risk_overrides_by_date: dict | None = None,
+    exit_parameter_overrides_by_date: dict | None = None,
+    tournament_alpha_enabled: bool = False,
+    fractionable_symbols: set[str] | None = None,
+    cash_reserve_pct: float | None = None,
+    include_external_filters: bool = False,
 ) -> dict[str, Any]:
     """Single source of truth for portfolio backtest parameters from config."""
+    if entry_risk_overrides_by_date is None:
+        entry_risk_overrides_by_date = build_rank_quality_risk_overrides(
+            ticker_data,
+            settings,
+        )
     return {
         "ticker_data": ticker_data,
         "benchmark_df": benchmark_df,
@@ -69,6 +89,21 @@ def portfolio_backtest_kwargs(
         "ai_score_frames": ai_score_frames,
         "evaluation_start_date": evaluation_start_date,
         "evaluation_end_date": evaluation_end_date,
+        "crowding_guard_enabled": settings.crowding_guard_enabled,
+        "max_sector_positions": settings.max_sector_positions,
+        "correlation_guard_enabled": settings.correlation_guard_enabled,
+        "max_correlation_threshold": settings.max_correlation_threshold,
+        "max_portfolio_avg_correlation_threshold": settings.max_portfolio_avg_correlation_threshold,
+        "correlation_lookback_days": settings.correlation_lookback_days,
+        "regime_adaptive_stop_enabled": settings.regime_adaptive_stop_enabled,
+        "regime_stop_spy_df": benchmark_df,
+        "llm_filter_enabled": bool(
+            include_external_filters and not settings.llm_advisory_only
+        ),
+        "news_sentiment_filter_enabled": bool(
+            include_external_filters and settings.news_sentiment_enabled
+        ),
+        "news_sentiment_threshold": settings.news_sentiment_threshold,
         "rank_ai_buy_gate_enabled": settings.rank_ai_buy_gate_enabled,
         "rank_ai_buy_top_k_enabled": getattr(settings, "rank_ai_buy_top_k_enabled", True),
         "max_orders_per_run": settings.max_orders_per_run,
@@ -78,4 +113,30 @@ def portfolio_backtest_kwargs(
         "max_leveraged_etf_positions": settings.max_leveraged_etf_positions,
         "max_effective_leverage_exposure_pct": settings.max_effective_leverage_exposure_pct,
         "block_leveraged_etfs_vix_above": settings.block_leveraged_etfs_vix_above,
+        "prefer_leveraged_products": settings.prefer_leveraged_products,
+        "leveraged_product_data": leveraged_product_data,
+        "leveraged_product_routes": leveraged_product_routes,
+        "historical_universe_by_date": historical_universe_by_date,
+        "base_universe": base_universe,
+        "benchmark_universe": benchmark_universe,
+        "rank_ai_score_history": rank_ai_score_history,
+        "rank_ai_primary_selector_enabled": (
+            settings.rank_ai_primary_selector_enabled
+            if rank_ai_primary_selector_enabled is None
+            else rank_ai_primary_selector_enabled
+        ),
+        "entry_parameter_overrides_by_date": entry_parameter_overrides_by_date,
+        "entry_risk_overrides_by_date": entry_risk_overrides_by_date,
+        "exit_parameter_overrides_by_date": exit_parameter_overrides_by_date,
+        "tournament_alpha_enabled": tournament_alpha_enabled,
+        "tournament_alpha_rank_weight": settings.tournament_alpha_rank_weight,
+        "take_profit_partial_pct": settings.take_profit_partial_pct,
+        "partial_exit_ratio": settings.partial_exit_ratio,
+        "minimum_order_notional": max(10.0, settings.dust_position_min_usd),
+        "fractionable_symbols": fractionable_symbols,
+        "cash_reserve_pct": (
+            settings.min_cash_buffer_pct
+            if cash_reserve_pct is None
+            else cash_reserve_pct
+        ),
     }

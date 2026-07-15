@@ -302,6 +302,26 @@ def apply_portfolio_exposure_limits(
     projected_position_value = max(current_position_value, 0.0) + order_amount
     projected_single_name_loss = projected_position_value * stop_loss_pct
     if projected_single_name_loss > max_single_name_loss:
+        if stop_loss_pct <= 0:
+            return RiskDecision(
+                False,
+                f"single-name max loss exceeded for {ticker}",
+                0.0,
+            )
+        max_position_value = max_single_name_loss / stop_loss_pct
+        allowed_amount = max(
+            0.0,
+            max_position_value - max(current_position_value, 0.0),
+        )
+        if allowed_amount > 0:
+            return RiskDecision(
+                True,
+                (
+                    f"single-name max loss capped order for {ticker} "
+                    f"(max_position=${max_position_value:.2f})"
+                ),
+                min(order_amount, allowed_amount),
+            )
         return RiskDecision(
             False,
             f"single-name max loss exceeded for {ticker} (projected=${projected_single_name_loss:.2f}, max=${max_single_name_loss:.2f})",

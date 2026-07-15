@@ -139,6 +139,8 @@ class StrategySettings(StrategyProfile):
     dynamic_universe_enabled: bool = False
     dynamic_count: int = 50
     allow_leveraged_etfs: bool = False
+    prefer_leveraged_products: bool = False
+    auto_discover_leveraged_products: bool = False
     leveraged_etf_allowlist: List[str] = field(default_factory=list)
     max_leveraged_etf_positions: int = 1
     max_effective_leverage_exposure_pct: float = 1.25
@@ -170,6 +172,13 @@ class StrategySettings(StrategyProfile):
     rank_ai_buy_gate_min_score_quantile: float = 0.85
     rank_ai_buy_gate_fail_closed: bool = True
     rank_ai_buy_top_k_enabled: bool = True
+    rank_ai_primary_selector_enabled: bool = False
+    rank_quality_risk_enabled: bool = False
+    rank_quality_drawdown_threshold: float = 0.25
+    rank_quality_one_bad_multiplier: float = 0.5
+    rank_quality_two_bad_multiplier: float = 0.25
+    rank_quality_block_leverage_when_both_bad: bool = True
+    tournament_alpha_rank_weight: float = 0.65
     broker_provider: str = "alpaca"  # alpaca | paper (fake) | toss (reads live, orders not wired)
     live_safety_enabled: bool = False
     live_safety_kill_switch_path: str = "data/runtime/KILL_SWITCH"
@@ -332,6 +341,18 @@ def validate_settings(settings: StrategySettings) -> StrategySettings:
         raise ValueError("rank_ai_buy_gate_top_bucket_pct must be between 0 and 1")
     if not 0 < settings.rank_ai_buy_gate_min_score_quantile <= 1:
         raise ValueError("rank_ai_buy_gate_min_score_quantile must be between 0 and 1")
+    if not 0 < settings.rank_quality_drawdown_threshold < 1:
+        raise ValueError("rank_quality_drawdown_threshold must be between 0 and 1")
+    if not 0 <= settings.rank_quality_one_bad_multiplier <= 1:
+        raise ValueError("rank_quality_one_bad_multiplier must be between 0 and 1")
+    if not 0 <= settings.rank_quality_two_bad_multiplier <= 1:
+        raise ValueError("rank_quality_two_bad_multiplier must be between 0 and 1")
+    if settings.rank_quality_two_bad_multiplier > settings.rank_quality_one_bad_multiplier:
+        raise ValueError(
+            "rank_quality_two_bad_multiplier must not exceed one_bad_multiplier"
+        )
+    if not 0 <= settings.tournament_alpha_rank_weight <= 1:
+        raise ValueError("tournament_alpha_rank_weight must be between 0 and 1")
     if settings.max_holding_days <= 0:
         raise ValueError("max_holding_days must be positive")
     if not 0 <= settings.max_portfolio_drawdown_pct < 1:
@@ -376,6 +397,10 @@ def validate_settings(settings: StrategySettings) -> StrategySettings:
     if settings.allow_leveraged_etfs and not settings.leveraged_etf_allowlist:
         raise ValueError(
             "leveraged_etf_allowlist must not be empty when leveraged ETFs are enabled"
+        )
+    if settings.prefer_leveraged_products and not settings.allow_leveraged_etfs:
+        raise ValueError(
+            "allow_leveraged_etfs must be true when leveraged products are preferred"
         )
     if settings.max_leveraged_etf_positions <= 0:
         raise ValueError("max_leveraged_etf_positions must be positive")

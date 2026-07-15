@@ -1,6 +1,10 @@
 import pytest
 
-from src.alpaca_client import safe_order_qty_or_none, _safe_order_qty
+from src.alpaca_client import (
+    _safe_order_qty,
+    safe_full_close_qty_or_none,
+    safe_order_qty_or_none,
+)
 
 
 def test_safe_order_qty_or_none_dust():
@@ -14,3 +18,8 @@ def test_safe_order_qty_or_none_normal():
 def test_safe_order_qty_raises_on_dust():
     with pytest.raises(ValueError, match="positive after truncation"):
         _safe_order_qty(0.0000001)
+
+
+def test_full_close_qty_preserves_nine_decimal_position_precision():
+    assert safe_full_close_qty_or_none(0.000000497) == pytest.approx(0.000000497)
+    assert safe_full_close_qty_or_none(15.8465388) == pytest.approx(15.8465388)

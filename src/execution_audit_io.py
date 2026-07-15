@@ -47,6 +47,17 @@ EXECUTION_AUDIT_COLUMNS: tuple[str, ...] = (
     "sleeve_budget_before",
     "sleeve_budget_after",
     "sleeve_risk_mode",
+    "signal_ticker",
+    "execution_ticker",
+    "decision_market_date",
+    "quality_notional_multiplier",
+    "quality_allow_leveraged",
+    "quality_high_drawdown",
+    "quality_downtrend",
+    "route_leveraged",
+    "portfolio_value",
+    "planned_notional_pct",
+    "reference_price",
 )
 
 _LEGACY_EXTRA_COLUMNS: tuple[str, ...] = ("rank_ai_score", "rank_ai_percentile")
@@ -67,6 +78,19 @@ _V2_EXTRA_COLUMNS: tuple[str, ...] = (
     "sleeve_budget_before",
     "sleeve_budget_after",
     "sleeve_risk_mode",
+)
+_V3_EXTRA_COLUMNS: tuple[str, ...] = (
+    "signal_ticker",
+    "execution_ticker",
+    "decision_market_date",
+    "quality_notional_multiplier",
+    "quality_allow_leveraged",
+    "quality_high_drawdown",
+    "quality_downtrend",
+    "route_leveraged",
+    "portfolio_value",
+    "planned_notional_pct",
+    "reference_price",
 )
 
 
@@ -92,7 +116,11 @@ def read_execution_audit_csv(path: str | Path) -> pd.DataFrame:
                 record[column] = fields[index]
         extra = fields[len(header) :]
         extra_index = 0
-        for column in (*_LEGACY_EXTRA_COLUMNS, *_V2_EXTRA_COLUMNS):
+        for column in (
+            *_LEGACY_EXTRA_COLUMNS,
+            *_V2_EXTRA_COLUMNS,
+            *_V3_EXTRA_COLUMNS,
+        ):
             if column in header:
                 continue
             if extra_index < len(extra):

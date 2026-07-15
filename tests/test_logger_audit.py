@@ -33,6 +33,14 @@ class LoggerAuditTest(unittest.TestCase):
                     quantity=10.12345,
                     filled_qty=10.12345,
                     filled_avg_price=121.98765,
+                    signal_ticker="AAPL",
+                    execution_ticker="AAPB",
+                    decision_market_date="2026-07-14",
+                    quality_notional_multiplier=0.5,
+                    quality_allow_leveraged=True,
+                    route_leveraged=True,
+                    portfolio_value=10000.0,
+                    planned_notional_pct=0.05,
                 )
 
             frame = pd.read_csv(log_path)
@@ -45,6 +53,11 @@ class LoggerAuditTest(unittest.TestCase):
         self.assertAlmostEqual(frame.loc[0, "notional"], 1234.57, places=2)
         self.assertAlmostEqual(frame.loc[0, "quantity"], 10.1235, places=4)
         self.assertAlmostEqual(frame.loc[0, "filled_avg_price"], 121.9877, places=4)
+        self.assertEqual(frame.loc[0, "execution_ticker"], "AAPB")
+        self.assertAlmostEqual(
+            frame.loc[0, "quality_notional_multiplier"], 0.5, places=4
+        )
+        self.assertAlmostEqual(frame.loc[0, "planned_notional_pct"], 0.05, places=4)
 
     def test_summarize_run_metrics_formats_counts(self) -> None:
         summary = _summarize_run_metrics(
