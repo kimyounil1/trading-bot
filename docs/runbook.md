@@ -53,6 +53,30 @@
 
 Paper/dry-run 기본: **`llm_advisory_only: false`** — AI 임계값 통과 **및** LLM APPROVE일 때만 매수 진행. dry-run도 캐시 미스 시 **live LLM** 호출(기본).
 
+뉴스는 `src/news_feed.py`가 기존 Alpaca Market Data 키로 수집합니다. 정본은
+`data/news/news.sqlite3`, 신규 원문 감사 기록은 `data/news/raw/YYYY-MM-DD.jsonl`입니다.
+VADER와 LLM은 이 저장소를 함께 사용하며, Alpaca 실패 때만 yfinance를 명시적
+fallback으로 사용합니다. 과거 `as_of_date` 조회는 저장소만 읽고 외부 API를 호출하지
+않습니다. 같은 종목·날짜라도 뉴스 지문이 달라지면 LLM 판정을 갱신합니다.
+
+```bash
+# 설정 유니버스 전체 증분 수집(기본 TTL 10분)
+PYTHONPATH=. .venv/bin/python -m src.collect_news
+
+# 특정 종목 강제 수집 및 Alpaca 장애를 즉시 실패로 확인
+PYTHONPATH=. .venv/bin/python -m src.collect_news \
+  --tickers AAPL MSFT NVDA --force --no-yfinance-fallback
+
+# 110종목 전체를 10분 주기로 선행 수집하는 user systemd timer
+bash scripts/install_news_collector_timer.sh
+systemctl --user enable --now trading-bot-news-collector.timer
+```
+
+수집 관련 환경변수: `NEWS_CACHE_TTL_SECONDS`(기본 600),
+`NEWS_LOOKBACK_HOURS`(72), `NEWS_BATCH_SIZE`(20),
+`NEWS_MAX_PAGES_PER_BATCH`(20), `NEWS_DB_PATH`, `NEWS_RAW_DIR`,
+`NEWS_YFINANCE_FALLBACK`.
+
 | `llm_advisory_only` | 동작 |
 |---------------------|------|
 | `false` (paper 기본) | LLM REJECT → `SKIP_BUY` (AI 통과해도 차단) |
@@ -60,7 +84,7 @@ Paper/dry-run 기본: **`llm_advisory_only: false`** — AI 임계값 통과 **�
 
 | 환경 변수 | 동작 |
 |-----------|------|
-| (기본 dry-run) | cache miss → Gemini/vLLM 호출 |
+| (기본 dry-run) | cache miss → AGY Opus → AGY Gemini → vLLM(활성 시) |
 | `LLM_CACHE_ONLY_DRY_RUN=1` | dry-run은 캐시만 (`llm_degraded_mode` 적용) |
 | `TRADING_BOT_SKIP_LLM=1` | pytest/CI — LLM 가드 생략 |
 
@@ -85,19 +109,30 @@ bash scripts/run_llm_advisory_report.sh   # 따랐을 때 vs 무시한 매수 �
 bash scripts/warm_llm_cache_from_backtest.sh
 
 bash scripts/run_operational_alpha_validation.sh
-LIVE_LLM=1 bash scripts/run_operational_alpha_validation.sh   # cache miss 시 Gemini 호출
+LIVE_LLM=1 bash scripts/run_operational_alpha_validation.sh   # cache miss 시 설정된 LLM 호출
 ```
 
 산출물: `data/llm_cache.json`, `logs/llm_cache_warmup/latest_summary.json`, `logs/operational_alpha/latest_summary.json`  
-워밍업은 진입일 키(`{티커}_{YYYY-MM-DD}`)로 저장. 당일 yfinance에 기사가 없으면 **현재 헤드라인 fallback**으로 Gemini 호출(완전한 과거 뉴스 아카이브는 아님). paper `main.py` 실행 시 같은 키로 캐시가 계속 쌓임.
+워밍업은 진입일 키(`{티커}_{YYYY-MM-DD}`)로 저장합니다. 과거 날짜는 로컬 뉴스
+아카이브에 해당 시점 기사가 있을 때만 분석하며, 명시적으로 현재 뉴스 fallback을
+요청한 워크플로만 현재 스냅샷을 사용합니다. paper `main.py` 실행 시 같은 키로
+캐시가 계속 쌓입니다.
 
-**로컬 vLLM 서브모델 (Gemini quota/5xx 시)** — `src/llm_vllm.py` + `src/llm_analyst.py`:
+**AGY 구독 모델 체인 (기본)** — `src/llm_analyst.py`:
+- `LLM_PROVIDER=agy` (기본): `claude-opus-4-6-thinking` → `gemini-3.1-pro-high`
+- 각 모델의 AGY 쿼터/실패를 독립적으로 처리하며, 실제 사용 모델은 캐시의 `llm_model`에 기록
+- 모델 변경: `AGY_LLM_MODEL`, `AGY_LLM_FALLBACK_MODEL`
+- CLI 탐색 실패 시 `AGY_CLI_PATH`; 타임아웃은 `AGY_PRINT_TIMEOUT_SECONDS`, `AGY_PROCESS_TIMEOUT_SECONDS`
+- AGY는 `plan + sandbox` 및 별도 임시 작업공간에서 실행되며 브로커/API 비밀값을 자식 환경에서 제거
+- 기존 Gemini API 체인으로 돌아가려면 `LLM_PROVIDER=auto`; Gemini만 강제하려면 `LLM_PROVIDER=gemini`
+
+**로컬 vLLM 서브모델 (두 AGY 모델 실패 시)** — `src/llm_vllm.py` + `src/llm_analyst.py`:
 - **기본 OFF** (`LLM_VLLM_ENABLED` 미설정 시 116/gemma4로 폴백하지 않음)
 - 켜기: `.env`에 `LLM_VLLM_ENABLED=1`, `LLM_VLLM_BASE_URL=http://192.168.219.116:11434/v1`, `LLM_VLLM_MODEL=gemma4-26B`
-- Gemini 429/500/quota 등 → (활성 시) 로컬 vLLM 호출; 캐시 `llm_provider: vllm`
+- AGY Opus와 AGY Gemini가 모두 실패 → (활성 시) 로컬 vLLM 호출; 캐시 `llm_provider: vllm`
 - 점검: `PYTHONPATH=. .venv/bin/python -c "from src.llm_vllm import probe_vllm_models; print(probe_vllm_models())"`
 
-⚠️ **Gemini 무료 티어 한도 (2026-07 실측):** 모델당 **일 20콜** (`gemini-2.5-flash`·`flash-lite` 각각 별도 쿼터). 라이브 veto가 이 한도 위에서 돌고 있어 캐시 미스가 몰리면 `llm_degraded_mode`(기본 PASS = 자동승인)로 넘어감 — veto 실효성이 필요하면 유료 전환(월 ~$1) 또는 vLLM 폴백 활성 권장. 대량 배치(소급 스코어링 등)는 반드시 vLLM으로: `scripts/llm_retro_scoring.py --provider vllm`.
+⚠️ AGY 구독 쿼터는 모델별·시간 구간별로 달라지고 용량이 보장되지 않습니다. 캐시 미스가 몰릴 수 있는 대량 소급 스코어링은 AGY가 아닌 vLLM을 사용하세요: `scripts/llm_retro_scoring.py --provider vllm`.
 
 ```bash
 bash scripts/run_paper_ops_bootstrap.sh   # dry-run + advisory + alpha + crowding gate (report only)

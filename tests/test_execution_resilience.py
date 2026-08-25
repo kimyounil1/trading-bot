@@ -47,8 +47,11 @@ class TestExecutionResilience(unittest.TestCase):
     @patch("src.llm_analyst._load_cache")
     @patch("src.llm_analyst._save_cache")
     @patch("src.llm_analyst._headlines_before_date")
-    @patch("src.llm_analyst._generate_llm_text_with_provider")
-    def test_llm_caching(self, mock_generate, mock_headlines, mock_save, mock_load):
+    @patch("src.llm_analyst._generate_runtime_llm_text")
+    @patch("src.llm_analyst.llm_backend_available", return_value=True)
+    def test_llm_caching(
+        self, _backend_available, mock_generate, mock_headlines, mock_save, mock_load
+    ):
         mock_load.return_value = {}
         mock_headlines.return_value = ["Good News"]
         mock_generate.return_value = (
@@ -73,9 +76,12 @@ class TestExecutionResilience(unittest.TestCase):
         mock_generate.assert_called_once()
 
     @patch("src.llm_analyst.GEMINI_API_KEY", "test-key")
-    @patch("src.llm_analyst._generate_llm_text_with_provider")
+    @patch("src.llm_analyst._generate_runtime_llm_text")
     @patch("src.llm_analyst._headlines_before_date")
-    def test_llm_degraded_mode_fail(self, mock_headlines, mock_generate):
+    @patch("src.llm_analyst.llm_backend_available", return_value=True)
+    def test_llm_degraded_mode_fail(
+        self, _backend_available, mock_headlines, mock_generate
+    ):
         mock_headlines.return_value = ["Breaking: market halt"]
         mock_generate.side_effect = Exception("API Down")
 
@@ -86,9 +92,12 @@ class TestExecutionResilience(unittest.TestCase):
         self.assertIn("Auto-Rejected", reason)
 
     @patch("src.llm_analyst.GEMINI_API_KEY", "test-key")
-    @patch("src.llm_analyst._generate_llm_text_with_provider")
+    @patch("src.llm_analyst._generate_runtime_llm_text")
     @patch("src.llm_analyst._headlines_before_date")
-    def test_llm_degraded_mode_pass(self, mock_headlines, mock_generate):
+    @patch("src.llm_analyst.llm_backend_available", return_value=True)
+    def test_llm_degraded_mode_pass(
+        self, _backend_available, mock_headlines, mock_generate
+    ):
         mock_headlines.return_value = ["Breaking: API timeout"]
         mock_generate.side_effect = Exception("Gemini/YFinance Timeout")
 

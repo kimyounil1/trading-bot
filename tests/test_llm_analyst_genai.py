@@ -1,4 +1,5 @@
 import unittest
+import hashlib
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -54,9 +55,18 @@ class TestLlmAnalystGenai(unittest.TestCase):
         self.assertEqual(provider, "gemini")
         mock_gemini.assert_called_once()
 
-    @patch("src.llm_analyst._generate_llm_text_with_provider")
-    @patch("src.llm_analyst._headlines_before_date", return_value=["Headline"])
-    def test_evaluate_parses_reject(self, _headlines, mock_generate) -> None:
+    @patch("src.llm_analyst._generate_runtime_llm_text")
+    @patch("src.llm_analyst.llm_backend_available", return_value=True)
+    @patch(
+        "src.llm_analyst._headlines_before_date",
+        return_value=[
+            "[2026-07-23T10:00:00Z] benzinga: Headline\n"
+            "Summary: Material filing detail"
+        ],
+    )
+    def test_evaluate_parses_reject(
+        self, _headlines, _backend_available, mock_generate
+    ) -> None:
         mock_generate.return_value = (
             "DECISION: REJECT\nCATEGORY: Fraud\nREASON: 회계 이슈",
             "gemini",
@@ -68,6 +78,52 @@ class TestLlmAnalystGenai(unittest.TestCase):
             )
         self.assertFalse(ok)
         self.assertIn("Fraud", reason)
+        _headlines.assert_called_once_with(
+            "AAPL",
+            unittest.mock.ANY,
+            max_articles=8,
+            include_details=True,
+        )
+        prompt = mock_generate.call_args.args[0]
+        self.assertIn("Material filing detail", prompt)
+        self.assertIn("Prefer article body/summary evidence", prompt)
+
+    @patch("src.llm_analyst._save_cache")
+    @patch("src.llm_analyst._load_cache")
+    @patch("src.llm_analyst._generate_runtime_llm_text")
+    @patch("src.llm_analyst.llm_backend_available", return_value=True)
+    @patch(
+        "src.llm_analyst._headlines_before_date",
+        return_value=["[time] source: headline\nSummary: unchanged"],
+    )
+    def test_live_cache_reused_only_for_same_news_fingerprint(
+        self,
+        _headlines,
+        _backend,
+        mock_generate,
+        mock_load,
+        mock_save,
+    ) -> None:
+        news_item = "[time] source: headline\nSummary: unchanged"
+        fingerprint = hashlib.sha256(news_item.encode("utf-8")).hexdigest()
+        mock_load.return_value = {
+            "AAPL_2026-07-23": {
+                "is_approved": True,
+                "reason": "cached",
+                "category_reason": "cached",
+                "news_fingerprint": fingerprint,
+            }
+        }
+        with patch("src.llm_analyst.datetime") as mock_datetime:
+            mock_datetime.now.return_value.strftime.return_value = "2026-07-23"
+            ok, reason = evaluate_ticker_consensus(
+                "AAPL",
+                settings=SimpleNamespace(llm_cache_enabled=True),
+            )
+        self.assertTrue(ok)
+        self.assertEqual(reason, "cached")
+        mock_generate.assert_not_called()
+        mock_save.assert_not_called()
 
     def test_parse_llm_decision_simple_block(self) -> None:
         ok, category, reason = parse_llm_decision(
@@ -104,9 +160,22 @@ class TestLlmAnalystGenai(unittest.TestCase):
         self.assertEqual(category, "None")
         self.assertEqual(reason, "")
 
-    @patch("src.llm_analyst._generate_llm_text_with_provider")
+    def test_parse_llm_decision_accepts_agy_markdown_and_negative_alias(self) -> None:
+        ok, category, reason = parse_llm_decision(
+            "**DECISION:** Negative\n"
+            "**CATEGORY:** Legal / Regulatory\n"
+            "**REASON:** SEC 회계 사기 혐의가 제기됐습니다."
+        )
+        self.assertFalse(ok)
+        self.assertEqual(category, "Legal / Regulatory")
+        self.assertEqual(reason, "SEC 회계 사기 혐의가 제기됐습니다.")
+
+    @patch("src.llm_analyst._generate_runtime_llm_text")
+    @patch("src.llm_analyst.llm_backend_available", return_value=True)
     @patch("src.llm_analyst._headlines_before_date", return_value=["Headline"])
-    def test_evaluate_rejects_when_cot_mentions_approve(self, _headlines, mock_generate) -> None:
+    def test_evaluate_rejects_when_cot_mentions_approve(
+        self, _headlines, _backend_available, mock_generate
+    ) -> None:
         mock_generate.return_value = (
             "Maybe DECISION: APPROVE is defensible... no.\n"
             "DECISION: REJECT\nCATEGORY: Guidance\nREASON: 가이던스 하향.",

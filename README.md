@@ -8,7 +8,7 @@
 
 ### 1. 하이브리드 의사결정 엔진
 - **정량 모델 (Ensemble AI)**: LightGBM과 XGBoost를 결합한 앙상블 모델이 24개 이상의 피처(기술적 지표, 옵션 시장 tail risk, 매크로 지표)를 기반으로 매수 확률 점수를 산출합니다.
-- **정성 모델 (LLM Consensus)**: Google **Gen AI SDK** (`google-genai`) + Gemini API로 최신 뉴스를 분석합니다. `GEMINI_API_KEY` 또는 `GOOGLE_API_KEY` 필요. 소송, 부정회계, 가이던스 하향 등 정량 모델이 놓치기 쉬운 펀더멘털 리스크를 감지하여 최종 승인을 결정합니다. (결과는 비용 절감을 위해 로컬 캐싱되며, Gemini 429/quota 시 로컬 vLLM 폴백을 지원합니다 — `LLM_VLLM_*` env, [`docs/runbook.md`](docs/runbook.md) §2.3.1.)
+- **정성 모델 (LLM Consensus)**: 기존 Alpaca 키로 Benzinga 뉴스를 수집해 SQLite와 일별 JSONL에 보관하고, VADER와 WSL의 **Antigravity CLI (`agy`)**가 같은 뉴스 스냅샷을 분석합니다. 기본 체인은 **Claude Opus 4.6 Thinking → Gemini 3.1 Pro High → 로컬 vLLM(활성 시)**입니다. 제목뿐 아니라 출처·게시시각·요약·본문 발췌를 사용하며, 같은 날에도 뉴스 지문이 바뀌면 다시 분석합니다. 기존 Gemini API는 `LLM_PROVIDER=auto|gemini`로 선택할 수 있습니다. 상세 설정은 [`docs/runbook.md`](docs/runbook.md) §2.3.1을 참고하세요.
 
 ### 2. 시장 레짐 인지형 전략 (Regime-Aware)
 - VIX 지수와 지수 추세를 조합하여 시장 상태를 **BULL / BEAR / NEUTRAL**로 분류합니다.
@@ -65,7 +65,8 @@ trading-bot/
 │   ├── main.py         # 메인 트레이딩 루프
 │   ├── rank_ai_gate.py # Rank AI paper buy/add gate
 │   ├── paper_buy_validation_report.py
-│   └── llm_analyst.py  # Gemini LLM 분석 및 캐싱
+│   ├── news_feed.py    # Alpaca 뉴스 수집, SQLite/JSONL 보관
+│   └── llm_analyst.py  # AGY/Gemini/vLLM 분석 및 캐싱
 └── tests/              # 유닛 및 E2E 테스트 스위트
 ```
 
@@ -107,7 +108,7 @@ Champion·rank 모델은 **코드로 재생성** 가능. 바이트 단위 복제
 
 ### 환경 설정
 - **Python 3.11+** (로컬 `.venv`는 3.12 권장)
-- `.env.example`을 복사해 `.env` 생성 — Alpaca API Key, `GEMINI_API_KEY` 또는 `GOOGLE_API_KEY`
+- `.env.example`을 복사해 `.env` 생성 — Alpaca API Key 설정 후, 같은 WSL 사용자로 `agy` OAuth 로그인을 완료합니다. Gemini API를 명시적으로 사용할 때만 `GEMINI_API_KEY` 또는 `GOOGLE_API_KEY`가 필요합니다.
 - clone 직후 champion 모델 없음 → 아래 **Git에 없는 것** 표 참고
 
 ### 가상환경 구축 및 실행

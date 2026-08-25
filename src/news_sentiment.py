@@ -1,55 +1,62 @@
 from __future__ import annotations
 
-"""Live news sentiment using yfinance + VADER. Used for buy filtering only (not training)."""
+"""Live news sentiment using the shared Alpaca/local news store + VADER."""
 
 from datetime import datetime
 
-import pandas as pd
-import yfinance as yf
+from src.news_feed import NewsArticle, get_ticker_news, refresh_news_cache
 
 
-def _headlines_current(ticker: str, max_articles: int = 10) -> list[str]:
-    """Recent headlines from yfinance (no date filter). Used when historical replay has no articles."""
-    try:
-        news = yf.Ticker(ticker).news or []
-    except Exception:
-        return []
-    titles: list[str] = []
-    for item in news:
-        content = item.get("content") or {}
-        title = content.get("title") or item.get("title") or ""
-        if title:
-            titles.append(title)
-        if len(titles) >= max_articles:
-            break
-    return titles
+def _format_article_context(article: NewsArticle, *, max_text_chars: int = 1600) -> str:
+    """Render one stored article as bounded, attributable LLM context."""
+    body = " ".join((article.content or article.summary).split())
+    if len(body) > max_text_chars:
+        body = body[:max_text_chars].rstrip() + "…"
+    source = article.source or article.provider
+    lines = [
+        f"[{article.published_at}] {source}: {article.headline}",
+    ]
+    if article.summary and article.summary.strip() != body:
+        summary = " ".join(article.summary.split())
+        lines.append(f"Summary: {summary[:700]}")
+    if body:
+        lines.append(f"Article excerpt: {body}")
+    if article.url:
+        lines.append(f"Source URL: {article.url}")
+    return "\n".join(lines)
 
 
-def _headlines_before_date(ticker: str, as_of_date: str, max_articles: int = 10) -> list[str]:
-    """Headlines with pubDate on or before as_of_date (yfinance only retains recent articles)."""
-    try:
-        news = yf.Ticker(ticker).news or []
-    except Exception:
-        return []
+def _headlines_current(
+    ticker: str,
+    max_articles: int = 10,
+    *,
+    include_details: bool = False,
+) -> list[str]:
+    """Recent shared-cache news, refreshed from Alpaca when stale."""
+    articles = get_ticker_news(ticker, max_articles=max_articles)
+    if include_details:
+        return [_format_article_context(article) for article in articles]
+    return [article.headline for article in articles]
 
-    end = pd.Timestamp(as_of_date).normalize() + pd.Timedelta(days=1)
-    titles: list[str] = []
-    for item in news:
-        content = item.get("content") or {}
-        title = content.get("title") or item.get("title") or ""
-        if not title:
-            continue
-        pub = content.get("pubDate") or content.get("displayTime")
-        if pub:
-            pub_ts = pd.Timestamp(pub)
-            if pub_ts.tzinfo is not None:
-                pub_ts = pub_ts.tz_convert("UTC").tz_localize(None)
-            if pub_ts >= end:
-                continue
-        titles.append(title)
-        if len(titles) >= max_articles:
-            break
-    return titles
+
+def _headlines_before_date(
+    ticker: str,
+    as_of_date: str,
+    max_articles: int = 10,
+    *,
+    include_details: bool = False,
+) -> list[str]:
+    """Stored news published on/before the date; historical calls never hit APIs."""
+    is_current = str(as_of_date) >= datetime.now().date().isoformat()
+    articles = get_ticker_news(
+        ticker,
+        max_articles=max_articles,
+        as_of_date=None if is_current else as_of_date,
+        refresh=is_current,
+    )
+    if include_details:
+        return [_format_article_context(article) for article in articles]
+    return [article.headline for article in articles]
 
 
 def _get_vader():
@@ -73,33 +80,52 @@ def get_ticker_sentiment(
       -1 = very negative, 0 = neutral, +1 = very positive
     Returns None if news is unavailable (don't block on API failure).
     """
-    if as_of_date:
-        titles = _headlines_before_date(ticker, as_of_date, max_articles=max_articles)
-        if not titles:
-            return None
-        sia = _get_vader()
-        scores = [sia.polarity_scores(title)["compound"] for title in titles]
-        return sum(scores) / len(scores) if scores else None
-
-    try:
-        news = yf.Ticker(ticker).news or []
-    except Exception:
+    articles = get_ticker_news(
+        ticker,
+        max_articles=max_articles,
+        as_of_date=as_of_date,
+        refresh=as_of_date is None,
+    )
+    if not articles:
         return None
-
-    if not news:
-        return None
-
     sia = _get_vader()
-    scores = []
-    for item in news[:max_articles]:
-        content = item.get("content") or {}
-        title = content.get("title") or item.get("title") or ""
-        if title:
-            scores.append(sia.polarity_scores(title)["compound"])
-
+    scores = [
+        sia.polarity_scores(article.headline)["compound"]
+        for article in articles
+        if article.headline
+    ]
     return sum(scores) / len(scores) if scores else None
 
 
 def get_batch_sentiments(tickers: list[str]) -> dict[str, float | None]:
-    """Fetch sentiment for multiple tickers. Silently returns None on failure."""
-    return {ticker: get_ticker_sentiment(ticker) for ticker in tickers}
+    """Refresh in Alpaca batches, then score every ticker from the same snapshot."""
+    refresh_result = refresh_news_cache(tickers)
+    for error in refresh_result.errors:
+        print(f"Warning: {error}")
+    return {
+        ticker: get_ticker_sentiment_from_cache(ticker)
+        for ticker in tickers
+    }
+
+
+def get_ticker_sentiment_from_cache(
+    ticker: str,
+    max_articles: int = 10,
+    as_of_date: str | None = None,
+) -> float | None:
+    """VADER score without network access, for an already refreshed batch."""
+    articles = get_ticker_news(
+        ticker,
+        max_articles=max_articles,
+        as_of_date=as_of_date,
+        refresh=False,
+    )
+    if not articles:
+        return None
+    sia = _get_vader()
+    scores = [
+        sia.polarity_scores(article.headline)["compound"]
+        for article in articles
+        if article.headline
+    ]
+    return sum(scores) / len(scores) if scores else None

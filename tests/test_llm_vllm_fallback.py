@@ -41,9 +41,12 @@ class TestLlmVllmFallback(unittest.TestCase):
         self.assertIn("APPROVE", text)
         mock_vllm.assert_called_once()
 
-    @patch("src.llm_analyst._generate_llm_text_with_provider")
+    @patch("src.llm_analyst._generate_runtime_llm_text")
+    @patch("src.llm_analyst.llm_backend_available", return_value=True)
     @patch("src.llm_analyst._headlines_before_date", return_value=["Headline"])
-    def test_evaluate_tags_local_provider(self, mock_headlines, mock_llm) -> None:
+    def test_evaluate_tags_local_provider(
+        self, mock_headlines, _backend_available, mock_llm
+    ) -> None:
         mock_llm.return_value = (
             "DECISION: REJECT\nCATEGORY: Guidance\nREASON: 리스크",
             "vllm",

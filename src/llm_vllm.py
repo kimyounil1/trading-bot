@@ -6,6 +6,9 @@ import os
 from typing import Any
 
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Opt-in only (LLM_VLLM_ENABLED=1). Default off so a dead local host does not amplify Gemini outages.
 DEFAULT_VLLM_BASE_URL = ""

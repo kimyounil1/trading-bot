@@ -160,14 +160,15 @@ def main() -> None:
     ap.add_argument(
         "--model",
         default="",
-        help="LLM model id (Gemini model name or vLLM served-model-name). "
-        "Default: gemini-2.5-flash-lite for auto/gemini, LLM_VLLM_MODEL for vllm",
+        help="LLM model id (AGY/Gemini model name or vLLM served-model-name). "
+        "Defaults: AGY runtime default for agy, gemini-2.5-flash-lite for "
+        "auto/gemini, LLM_VLLM_MODEL for vllm",
     )
     ap.add_argument(
         "--provider",
-        choices=("auto", "gemini", "vllm"),
+        choices=("auto", "agy", "gemini", "vllm"),
         default="auto",
-        help="LLM backend: auto (Gemini then vLLM fallback), gemini, or vllm only",
+        help="LLM backend: auto (Gemini then vLLM fallback), agy, gemini, or vllm only",
     )
     ap.add_argument(
         "--vllm-url",
@@ -188,8 +189,8 @@ def main() -> None:
     if args.provider == "vllm":
         if not vllm_base_url():
             raise SystemExit("vLLM base URL missing (set LLM_VLLM_BASE_URL or --vllm-url)")
-    elif not llm_backend_available():
-        raise SystemExit("No LLM backend available (GEMINI_API_KEY / vLLM missing)")
+    elif not llm_backend_available(args.provider):
+        raise SystemExit(f"No {args.provider} LLM backend available")
 
     model = args.model.strip() or None
     if model is None and args.provider in {"auto", "gemini"}:
