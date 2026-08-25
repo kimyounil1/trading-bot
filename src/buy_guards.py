@@ -92,6 +92,9 @@ def apply_shared_buy_guards(
         instrument_ticker or ticker,
         open_symbols,
         allow_leveraged_etfs=bool(getattr(settings, "allow_leveraged_etfs", False)),
+        allow_single_name_leveraged_products=bool(
+            getattr(settings, "allow_single_name_leveraged_products", False)
+        ),
         leveraged_etf_allowlist=list(
             getattr(settings, "leveraged_etf_allowlist", [])
         ),

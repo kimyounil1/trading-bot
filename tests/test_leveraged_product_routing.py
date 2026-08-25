@@ -49,6 +49,7 @@ def _context(
         settings=SimpleNamespace(
             prefer_leveraged_products=True,
             allow_leveraged_etfs=True,
+            allow_single_name_leveraged_products=True,
             auto_discover_leveraged_products=auto_discover,
             leveraged_etf_allowlist=["PLUL"],
         ),
@@ -140,3 +141,14 @@ def test_discovery_api_error_blocks_ordinary_stock_fallback():
     assert route.leveraged is False
     assert route.route_allowed is False
     assert "discovery failed" in route.reason
+
+
+def test_falls_back_when_single_name_leveraged_products_disabled():
+    ctx = _context()
+    ctx.settings.allow_single_name_leveraged_products = False
+
+    route = resolve_leveraged_product_route(ctx, "PLUG")
+
+    assert route.execution_ticker == "PLUG"
+    assert route.leveraged is False
+    assert route.route_allowed is True

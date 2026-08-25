@@ -4,6 +4,7 @@ import os
 import re
 import time
 from pathlib import Path
+from typing import Any, Iterable
 
 import pandas as pd
 import yfinance as yf
@@ -41,29 +42,43 @@ def _write_price_cache(path: Path, df: pd.DataFrame) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(path, index=False)
 
+def _column_names_look_like_prices(labels: Iterable[Any]) -> bool:
+    lowered = {str(label).lower().replace(" ", "_") for label in labels}
+    return bool(lowered & {"open", "high", "low", "close"})
+
+
+def _flatten_price_columns(df: pd.DataFrame) -> pd.DataFrame:
+    if not isinstance(df.columns, pd.MultiIndex):
+        return df
+    level0 = [str(label) for label in df.columns.get_level_values(0)]
+    flattened = df.copy()
+    if _column_names_look_like_prices(level0):
+        flattened.columns = [str(col[0]) for col in flattened.columns]
+    else:
+        flattened.columns = [str(col[-1]) for col in flattened.columns]
+    return flattened
+
+
 def _normalize_price_frame(ticker: str, df: pd.DataFrame) -> pd.DataFrame:
     """데이터프레임을 표준 형식으로 정규화하고 adj_close를 추가합니다."""
     if df.empty:
         raise ValueError(f"No data returned for ticker: {ticker}")
 
-    # MultiIndex 처리 (yfinance batch download 대응)
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = [col[0] for col in df.columns]
-
+    df = _flatten_price_columns(df)
     df = df.reset_index()
-    # 컬럼명 소문자 및 언더바 통일
     df.columns = [str(col).lower().replace(" ", "_") for col in df.columns]
 
-    # 필수 컬럼 확인
     required_columns = {"date", "open", "high", "low", "close", "volume"}
     missing = required_columns - set(df.columns)
     if missing:
         raise ValueError(f"Missing columns for {ticker}: {missing}")
 
-    # qlib 및 향후 활용을 위해 adj_close 명시적 추가
-    # yfinance의 auto_adjust=True를 사용하면 close가 이미 수정 종가임
-    df["adj_close"] = df["close"]
+    for column in ("open", "high", "low", "close", "volume"):
+        df[column] = pd.to_numeric(df[column], errors="coerce")
+    if df["close"].dropna().empty:
+        raise ValueError(f"No valid close prices for ticker: {ticker}")
 
+    df["adj_close"] = df["close"]
     return df
 
 def load_price_data(
@@ -109,13 +124,27 @@ def _extract_ticker_from_batch(
     if not isinstance(downloaded.columns, pd.MultiIndex):
         return downloaded
 
+    for level in range(downloaded.columns.nlevels):
+        unique_labels = {
+            str(label) for label in downloaded.columns.get_level_values(level)
+        }
+        if ticker not in unique_labels:
+            continue
+        if _column_names_look_like_prices(unique_labels):
+            continue
+        if level == 0:
+            return downloaded[ticker]
+        return downloaded.xs(ticker, axis=1, level=level)
+
     ticker_labels = {str(label) for label in downloaded.columns.get_level_values(0)}
     if ticker in ticker_labels:
         return downloaded[ticker]
-
-    ticker_labels = {str(label) for label in downloaded.columns.get_level_values(1)}
+    last_level = downloaded.columns.nlevels - 1
+    ticker_labels = {
+        str(label) for label in downloaded.columns.get_level_values(last_level)
+    }
     if ticker in ticker_labels:
-        return downloaded.xs(ticker, axis=1, level=1)
+        return downloaded.xs(ticker, axis=1, level=last_level)
 
     if requested_count == 1:
         return downloaded

@@ -37,6 +37,7 @@ from src.instrument_meta import (
     adjust_position_cap_for_instrument,
     count_leveraged_etf_positions,
     get_instrument,
+    is_single_name_leveraged,
     preferred_leveraged_long_product,
 )
 
@@ -491,6 +492,7 @@ def run_portfolio_backtest(
     max_effective_leverage_exposure_pct: float = 1.25,
     block_leveraged_etfs_vix_above: float = 0.0,
     prefer_leveraged_products: bool = False,
+    allow_single_name_leveraged_products: bool = False,
     leveraged_product_data: dict[str, pd.DataFrame] | None = None,
     leveraged_product_routes: dict[str, str] | None = None,
     historical_universe_by_date: dict[Any, list[str]] | None = None,
@@ -727,6 +729,10 @@ def run_portfolio_backtest(
                     source,
                     allowlist=leveraged_etf_allowlist,
                 )
+            )
+            and (
+                allow_single_name_leveraged_products
+                or not is_single_name_leveraged(product)
             )
         }
     fractionable = (
@@ -1052,6 +1058,17 @@ def run_portfolio_backtest(
                     leveraged_mask = buy_candidates["ticker"].map(
                         lambda symbol: get_instrument(str(symbol)).is_leveraged_etf
                     )
+                if (
+                    not allow_single_name_leveraged_products
+                    and not buy_candidates.empty
+                ):
+                    single_name_mask = buy_candidates["ticker"].map(
+                        lambda symbol: is_single_name_leveraged(str(symbol))
+                    )
+                    buy_candidates = buy_candidates[~single_name_mask].copy()
+                    leveraged_mask = buy_candidates["ticker"].map(
+                        lambda symbol: get_instrument(str(symbol)).is_leveraged_etf
+                    )
                 leveraged_count = count_leveraged_etf_positions(set(positions))
                 block_leveraged = (
                     not allow_leveraged_etfs
@@ -1172,6 +1189,12 @@ def run_portfolio_backtest(
                 )
 
                 product = route_map.get(signal_ticker) if prefer_leveraged_products else None
+                if (
+                    product
+                    and not allow_single_name_leveraged_products
+                    and is_single_name_leveraged(product)
+                ):
+                    product = None
                 if (
                     product
                     and product in day_prices

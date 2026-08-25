@@ -185,14 +185,12 @@
   "dynamic_universe_enabled": true,
   "dynamic_count": 50,
   "allow_leveraged_etfs": true,
-  "prefer_leveraged_products": true,
-  "auto_discover_leveraged_products": true,
+  "prefer_leveraged_products": false,
+  "auto_discover_leveraged_products": false,
+  "allow_single_name_leveraged_products": false,
   "leveraged_etf_allowlist": [
-    "AAPB", "AMDL", "AMZZ", "AVGU", "BBUL", "CONL", "CRWL", "FBL",
-    "GOU", "INTW", "LNOK", "MRAL", "MSFL", "MULL", "NVDL", "PTIR", "QCML",
-    "RVNL", "TSLR", "TSMU", "AMAU", "ARMG", "ASMG", "AXPG", "BOEG",
-    "COTG", "GRAG", "HONG", "KLAG", "LULG", "NEMG", "NETG", "OPEG",
-    "PANG", "PLUL", "PYPG", "UNHG", "UPSG"
+    "TQQQ", "SQQQ", "QLD", "QID", "UPRO", "SPXU", "SSO", "SDS",
+    "SOXL", "SOXS", "TECL", "TECS", "FAS", "FAZ", "TNA", "TZA"
   ],
   "max_leveraged_etf_positions": 6,
   "max_effective_leverage_exposure_pct": 1.25,

@@ -273,6 +273,13 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
                             allow_leveraged_etfs=bool(
                                 getattr(ctx.settings, "allow_leveraged_etfs", False)
                             ),
+                            allow_single_name_leveraged_products=bool(
+                                getattr(
+                                    ctx.settings,
+                                    "allow_single_name_leveraged_products",
+                                    False,
+                                )
+                            ),
                             leveraged_etf_allowlist=list(
                                 getattr(ctx.settings, "leveraged_etf_allowlist", [])
                             ),
@@ -786,6 +793,7 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
             # Reserve immediately, including pending limit orders, so the
             # tournament sleeve cannot submit the same leveraged ticker again.
             ctx.guard_open_symbols.add(ticker)
+            ctx.sleeve_ctx.record_fill(ticker, sleeve_id="core")
     
             log_order(
                 ticker=ticker,
@@ -897,7 +905,6 @@ def run_buy_pipeline(ctx: TradingRunContext) -> None:
                     ctx.positions_count += 1
                 ctx.cash -= fill_notional_amt
                 ctx.current_gross_exposure += fill_notional_amt
-                ctx.sleeve_ctx.record_fill(ticker, sleeve_id="core")
         except Exception as exc:
             ctx.live_safety_guard.record_order_failure()
             if isinstance(exc, ConnectionError) and ctx.execute_orders:

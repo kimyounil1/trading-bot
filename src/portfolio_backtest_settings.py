@@ -114,6 +114,9 @@ def portfolio_backtest_kwargs(
         "max_effective_leverage_exposure_pct": settings.max_effective_leverage_exposure_pct,
         "block_leveraged_etfs_vix_above": settings.block_leveraged_etfs_vix_above,
         "prefer_leveraged_products": settings.prefer_leveraged_products,
+        "allow_single_name_leveraged_products": getattr(
+            settings, "allow_single_name_leveraged_products", False
+        ),
         "leveraged_product_data": leveraged_product_data,
         "leveraged_product_routes": leveraged_product_routes,
         "historical_universe_by_date": historical_universe_by_date,

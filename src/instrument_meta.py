@@ -17,6 +17,8 @@ DEFAULT_META = {
     "direction": "long",
 }
 
+_BASKET_UNDERLYING_KINDS = frozenset({"etf", "leveraged_etf", "index"})
+
 
 @dataclass(frozen=True)
 class InstrumentMeta:
@@ -167,6 +169,21 @@ def count_leveraged_etf_positions(open_symbols: set[str]) -> int:
     return sum(1 for sym in open_symbols if get_instrument(sym).is_leveraged_etf)
 
 
+def is_single_name_leveraged(
+    ticker: str,
+    registry: dict[str, InstrumentMeta] | None = None,
+) -> bool:
+    """True for 2x/3x products whose underlying is a stock, not an index/sector ETF."""
+    meta = get_instrument(ticker, registry)
+    if not meta.is_leveraged_etf:
+        return False
+    underlying = str(meta.underlying or "").strip().upper()
+    if not underlying:
+        return False
+    underlying_meta = get_instrument(underlying, registry)
+    return underlying_meta.kind not in _BASKET_UNDERLYING_KINDS
+
+
 def preferred_leveraged_long_product(
     underlying: str,
     *,
@@ -250,6 +267,7 @@ def check_instrument_buy_allowed(
     open_symbols: set[str],
     *,
     allow_leveraged_etfs: bool = False,
+    allow_single_name_leveraged_products: bool = False,
     leveraged_etf_allowlist: list[str] | None = None,
     max_leveraged_etf_positions: int = 1,
     block_leveraged_etfs_vix_above: float = 0.0,
@@ -263,6 +281,11 @@ def check_instrument_buy_allowed(
             return (
                 False,
                 f"{kind_tag}; leveraged ETF buys disabled (allow_leveraged_etfs=false)",
+            )
+        if not allow_single_name_leveraged_products and is_single_name_leveraged(ticker):
+            return (
+                False,
+                f"{kind_tag}; single-name leveraged ETF buys disabled",
             )
         allowed_symbols = {
             str(symbol).strip().upper()

@@ -45,10 +45,12 @@ def drop_incomplete_session_bar(raw_df: pd.DataFrame, market_clock) -> pd.DataFr
 
     session_date = to_session_date(market_clock.timestamp)
     df = raw_df.copy()
-    bar_dates = normalize_bar_dates(df["date"])
-    if bar_dates.empty:
-        return df
-    return df.loc[bar_dates < session_date].copy()
+    parsed = pd.to_datetime(df["date"], errors="coerce")
+    if getattr(parsed.dt, "tz", None) is not None:
+        parsed = parsed.dt.tz_convert("UTC").dt.tz_localize(None)
+    parsed = parsed.dt.normalize()
+    mask = parsed.notna() & (parsed < session_date)
+    return df.loc[mask.to_numpy()].copy()
 
 
 def check_price_frame_freshness(raw_df, market_clock) -> tuple[bool, str]:

@@ -118,6 +118,7 @@ def test_direct_product_route_uses_underlying_signal_and_product_price() -> None
         leveraged_product_routes={"AAPL": "AAPB"},
         prefer_leveraged_products=True,
         allow_leveraged_etfs=True,
+        allow_single_name_leveraged_products=True,
         leveraged_etf_allowlist=["AAPB"],
         max_leveraged_etf_positions=1,
         max_holding_days=10,
@@ -137,6 +138,7 @@ def test_direct_product_route_falls_back_when_product_history_is_missing() -> No
         leveraged_product_routes={"AAPL": "AAPB"},
         prefer_leveraged_products=True,
         allow_leveraged_etfs=True,
+        allow_single_name_leveraged_products=True,
         leveraged_etf_allowlist=["AAPB"],
         **_base_kwargs(),
     )
@@ -159,6 +161,7 @@ def test_entry_risk_override_blocks_leveraged_route() -> None:
         leveraged_product_routes={"AAPL": "AAPB"},
         prefer_leveraged_products=True,
         allow_leveraged_etfs=True,
+        allow_single_name_leveraged_products=True,
         leveraged_etf_allowlist=["AAPB"],
         entry_risk_overrides_by_date=overrides,
         max_holding_days=10,

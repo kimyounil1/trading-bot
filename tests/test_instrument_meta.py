@@ -8,6 +8,7 @@ from src.instrument_meta import (
     clear_instrument_registry_cache,
     get_instrument,
     is_discovered_instrument,
+    is_single_name_leveraged,
     load_instrument_registry,
     preferred_leveraged_long_product,
     register_discovered_leveraged_product,
@@ -123,6 +124,61 @@ def test_discovered_product_persists_and_bypasses_static_allowlist(
         "XYZL",
         set(),
         allow_leveraged_etfs=True,
+        allow_single_name_leveraged_products=True,
         leveraged_etf_allowlist=["PLUL"],
     )
     assert allowed is True
+
+
+def test_index_and_sector_leverage_are_not_single_name():
+    assert is_single_name_leveraged("TQQQ") is False
+    assert is_single_name_leveraged("SOXL") is False
+    assert is_single_name_leveraged("AAPL") is False
+    assert is_single_name_leveraged("AMDL") is True
+    assert is_single_name_leveraged("NVDL") is True
+
+
+def test_single_name_leveraged_buy_blocked_even_if_allowlisted():
+    allowed, reason = check_instrument_buy_allowed(
+        "AMDL",
+        set(),
+        allow_leveraged_etfs=True,
+        leveraged_etf_allowlist=["AMDL", "TQQQ", "SOXL"],
+    )
+    assert allowed is False
+    assert "single-name" in reason
+
+
+def test_index_leveraged_buy_still_allowed():
+    vix = pd.DataFrame({"close": [20.0]})
+    for ticker in ("TQQQ", "SOXL"):
+        allowed, _ = check_instrument_buy_allowed(
+            ticker,
+            set(),
+            allow_leveraged_etfs=True,
+            leveraged_etf_allowlist=["TQQQ", "SOXL"],
+            max_leveraged_etf_positions=2,
+            block_leveraged_etfs_vix_above=28.0,
+            vix_df=vix,
+        )
+        assert allowed is True
+
+
+def test_discovered_single_name_product_blocked_by_default(
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "discovered_instruments.json"
+    monkeypatch.setattr(instrument_meta, "DISCOVERED_REGISTRY_PATH", path)
+    clear_instrument_registry_cache()
+    register_discovered_leveraged_product("XYZL", "XYZ", multiple=2.0)
+    clear_instrument_registry_cache()
+
+    allowed, reason = check_instrument_buy_allowed(
+        "XYZL",
+        set(),
+        allow_leveraged_etfs=True,
+        leveraged_etf_allowlist=["TQQQ"],
+    )
+    assert allowed is False
+    assert "single-name" in reason

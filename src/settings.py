@@ -141,6 +141,7 @@ class StrategySettings(StrategyProfile):
     allow_leveraged_etfs: bool = False
     prefer_leveraged_products: bool = False
     auto_discover_leveraged_products: bool = False
+    allow_single_name_leveraged_products: bool = False
     leveraged_etf_allowlist: List[str] = field(default_factory=list)
     max_leveraged_etf_positions: int = 1
     max_effective_leverage_exposure_pct: float = 1.25
@@ -401,6 +402,10 @@ def validate_settings(settings: StrategySettings) -> StrategySettings:
     if settings.prefer_leveraged_products and not settings.allow_leveraged_etfs:
         raise ValueError(
             "allow_leveraged_etfs must be true when leveraged products are preferred"
+        )
+    if settings.allow_single_name_leveraged_products and not settings.allow_leveraged_etfs:
+        raise ValueError(
+            "allow_leveraged_etfs must be true when single-name leveraged products are allowed"
         )
     if settings.max_leveraged_etf_positions <= 0:
         raise ValueError("max_leveraged_etf_positions must be positive")

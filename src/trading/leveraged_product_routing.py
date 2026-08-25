@@ -8,6 +8,7 @@ from typing import Any
 from src.daily_bar_session import check_price_frame_freshness
 from src.data_loader import load_price_data_batch
 from src.instrument_meta import (
+    is_single_name_leveraged,
     preferred_leveraged_long_product,
     register_discovered_leveraged_product,
 )
@@ -177,17 +178,29 @@ def resolve_leveraged_product_route(
             "leveraged ETF buys disabled",
             fallback_price=fallback_price,
         )
+    allow_single_name = bool(
+        getattr(settings, "allow_single_name_leveraged_products", False)
+    )
 
     product = preferred_leveraged_long_product(
         source,
         allowlist=list(getattr(settings, "leveraged_etf_allowlist", [])),
     )
+    if product is not None and not allow_single_name and is_single_name_leveraged(product):
+        product = None
     if product is None:
         if not bool(getattr(settings, "auto_discover_leveraged_products", False)):
             return _underlying_route(
                 ctx,
                 source,
                 "no direct 2x-long product mapped; auto discovery disabled",
+                fallback_price=fallback_price,
+            )
+        if not allow_single_name:
+            return _underlying_route(
+                ctx,
+                source,
+                "single-name leveraged products disabled",
                 fallback_price=fallback_price,
             )
         product, discovery_reason, lookup_succeeded = _discover_product(ctx, source)

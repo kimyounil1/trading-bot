@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -18,6 +19,7 @@ from src.portfolio_sleeves import (
 )
 from src.sleeve_position_registry import (
     bootstrap_open_positions,
+    last_audit_sleeves_for_symbols,
     load_sleeve_position_map,
     tag_symbol,
     untag_symbol,
@@ -223,7 +225,13 @@ def init_sleeve_run_context(
         if position.get("symbol")
     }
     if sleeves_enabled(settings):
-        sleeve_position_map = bootstrap_open_positions(open_symbols)
+        inferred_sleeves: dict[str, str] = {}
+        if "PYTEST_CURRENT_TEST" not in os.environ:
+            inferred_sleeves = last_audit_sleeves_for_symbols(open_symbols)
+        sleeve_position_map = bootstrap_open_positions(
+            open_symbols,
+            inferred_sleeves=inferred_sleeves,
+        )
     else:
         sleeve_position_map = load_sleeve_position_map()
 

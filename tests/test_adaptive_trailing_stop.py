@@ -20,6 +20,21 @@ class TestAdaptiveTrailingStop(unittest.TestCase):
         df_with_indicators = add_indicators(df)
         self.assertIn("atr", df_with_indicators.columns)
         self.assertFalse(df_with_indicators["atr"].isna().all())
+
+    def test_add_indicators_coerces_numeric_ohlc(self) -> None:
+        rows = 40
+        df = pd.DataFrame(
+            {
+                "open": [str(100 + i) for i in range(rows)],
+                "high": [str(105 + i) for i in range(rows)],
+                "low": [str(95 + i) for i in range(rows)],
+                "close": [str(102 + i) for i in range(rows)],
+                "volume": [str(1000 + i) for i in range(rows)],
+            }
+        )
+        out = add_indicators(df)
+        self.assertFalse(out.empty)
+        self.assertIn("ma_slow", out.columns)
         
     def test_adaptive_logic_mock(self):
         # In main.py, the logic is:

@@ -183,6 +183,13 @@ def run_tournament_buy_pipeline(ctx: TradingRunContext) -> None:
             allow_leveraged_etfs=bool(
                 getattr(tournament_settings, "allow_leveraged_etfs", False)
             ),
+            allow_single_name_leveraged_products=bool(
+                getattr(
+                    tournament_settings,
+                    "allow_single_name_leveraged_products",
+                    False,
+                )
+            ),
             leveraged_etf_allowlist=list(
                 getattr(tournament_settings, "leveraged_etf_allowlist", [])
             ),
@@ -364,6 +371,10 @@ def run_tournament_buy_pipeline(ctx: TradingRunContext) -> None:
                 order_amount,
                 sleeve_id=TOURNAMENT_SLEEVE_ID,
             )
+            ctx.sleeve_ctx.record_fill(
+                execution_ticker,
+                sleeve_id=TOURNAMENT_SLEEVE_ID,
+            )
             audit_log(
                 ctx.audit_ctx,
                 event_type="BUY_SUBMITTED",
@@ -410,10 +421,6 @@ def run_tournament_buy_pipeline(ctx: TradingRunContext) -> None:
                 ),
             )
             if order_is_filled(checked["status"]):
-                ctx.sleeve_ctx.record_fill(
-                    execution_ticker,
-                    sleeve_id=TOURNAMENT_SLEEVE_ID,
-                )
                 filled = filled_notional(checked, order_amount)
                 if filled > 0:
                     ctx.cash -= filled

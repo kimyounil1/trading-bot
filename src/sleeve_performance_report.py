@@ -20,7 +20,10 @@ from src.portfolio_sleeves import (
     sleeves_enabled,
 )
 from src.settings import load_settings
-from src.sleeve_position_registry import load_sleeve_position_map
+from src.sleeve_position_registry import (
+    last_sleeves_from_audit_frame,
+    load_sleeve_position_map,
+)
 
 DEFAULT_OUTPUT_DIR = Path("logs/sleeves")
 DEFAULT_HISTORY = DEFAULT_OUTPUT_DIR / "history.jsonl"
@@ -63,25 +66,13 @@ def _fetch_live_account() -> tuple[dict[str, Any] | None, list[dict[str, Any]] |
 
 
 def _build_ticker_sleeve_map(audit_df: pd.DataFrame) -> dict[str, str]:
-    """Registry first; audit sleeve tags as fallback for already-closed tickers."""
-    mapping: dict[str, str] = {}
-    if not audit_df.empty and "sleeve_id" in audit_df.columns:
-        tagged = audit_df[
-            audit_df["sleeve_id"].notna()
-            & (audit_df["sleeve_id"].astype(str) != "")
-            & (audit_df.get("profile_name", pd.Series(dtype=str)).astype(str) != "TEST_PROFILE")
-        ]
-        if not tagged.empty:
-            mapping.update(
-                tagged.groupby("ticker")["sleeve_id"]
-                .agg(lambda s: s.value_counts().index[0])
-                .to_dict()
-            )
+    """Last BUY sleeve from audit, then registry overlay for currently tagged names."""
+    mapping = last_sleeves_from_audit_frame(audit_df)
     try:
         mapping.update(load_sleeve_position_map())
     except Exception:
         pass
-    return {str(t).upper(): str(s) for t, s in mapping.items()}
+    return {str(ticker).upper(): str(sleeve_id) for ticker, sleeve_id in mapping.items()}
 
 
 def _sleeve_pnl_stats(
@@ -148,15 +139,24 @@ def build_sleeve_performance_report(
     positions = positions or []
     open_orders = open_orders or []
 
+    audit_df = load_execution_audit(audit_path)
+    ticker_sleeve = _build_ticker_sleeve_map(audit_df)
+    sleeve_position_map = {
+        str(position.get("symbol", "")).upper(): ticker_sleeve.get(
+            str(position.get("symbol", "")).upper(),
+            CORE_SLEEVE_ID,
+        )
+        for position in positions
+        if position.get("symbol")
+    }
     allocator = PortfolioSleeveAllocator(
         settings,
         account=account,
         positions=positions,
         open_orders=open_orders,
+        sleeve_position_map=sleeve_position_map,
     )
     snapshot = allocator.build_snapshot()
-    audit_df = load_execution_audit(audit_path)
-    ticker_sleeve = _build_ticker_sleeve_map(audit_df)
 
     sleeves_out: dict[str, Any] = {}
     for sleeve_id in (CORE_SLEEVE_ID, TOURNAMENT_SLEEVE_ID, CASH_SLEEVE_ID):

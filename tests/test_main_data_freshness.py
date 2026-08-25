@@ -41,6 +41,22 @@ class MainDataFreshnessTest(unittest.TestCase):
         self.assertEqual(len(trimmed), 1)
         self.assertEqual(pd.Timestamp(trimmed["date"].iloc[-1]).date().isoformat(), "2026-05-26")
 
+    def test_drop_incomplete_session_bar_uses_positional_mask(self) -> None:
+        frame = pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2026-05-26", "2026-05-27"]),
+                "close": [100.0, 101.0],
+            },
+            index=[10, 20],
+        )
+        market_clock = SimpleNamespace(
+            is_open=True,
+            timestamp="2026-05-27T14:00:00Z",
+        )
+        trimmed = drop_incomplete_session_bar(frame, market_clock)
+        self.assertEqual(len(trimmed), 1)
+        self.assertEqual(pd.Timestamp(trimmed["date"].iloc[-1]).date().isoformat(), "2026-05-26")
+
     def test_rejects_when_only_incomplete_session_bar(self) -> None:
         frame = _frame_for_dates("2026-05-27")
         market_clock = SimpleNamespace(

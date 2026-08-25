@@ -229,8 +229,8 @@ def get_signal_for_ticker(
     )
     if df.empty:
         raise ValueError(
-            f"Not enough price history to generate signal for {ticker} "
-            f"(rows={len(raw_df)}, ma_slow={settings.ma_slow})"
+            f"Price OHLC empty after cleaning for {ticker} "
+            f"(rows={len(raw_df)}, usable={len(signal_df)}, ma_slow={settings.ma_slow})"
         )
     signal = generate_signal(df, rsi_buy_limit=settings.rsi_buy_limit)
     if (

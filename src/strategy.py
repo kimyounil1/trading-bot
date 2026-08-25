@@ -19,6 +19,8 @@ def add_indicators(
     # Drop invalid bars so rolling indicators don't become NaN at the latest row.
     required_cols = [col for col in ("close", "high", "low") if col in df.columns]
     if required_cols:
+        for col in required_cols:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
         df = df.dropna(subset=required_cols).copy()
     if df.empty:
         return df
